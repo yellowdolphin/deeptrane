@@ -1,0 +1,32 @@
+import os
+
+cfg = {
+    "debug": True,
+    "image_dir": "/kaggle/input/siim-covid19-resized-to-512px-png",
+    "train_csv_path": "data/train_split_seed42.csv",
+    "size": (384, 384),
+    "aux_loss": False,
+    "folds": [0, 1, 2, 3, 4],
+    "augmentation": "faster.yaml",
+    "weight_file": '/kaggle/input/siimnihpretrained/n_cf2_pretraining/eca_nfnet_l1b/best_map_fold0_st0.pth',
+    "resume_training": False,
+    "dropout": 0.6,
+    "pool": "gem",
+    "batch_size": 24,
+    "num_workers": 4,
+    "optimizer": "AdamW",  # Adam, AdamW, SGD
+    "lr": 1e-4,
+    "mixed_precision": 0, 
+    "distributed":0,
+    "find_unused_parameters":0,
+    "dp":0,
+    "accumulation_steps": 1,
+    "seed": 42,
+    "neptune_project": None,  
+    "scheduler": "steplr",
+    "model": "model_1",
+    "epochs": 10,
+    "mode": "train",
+    "loss": 'bce',
+    "muliscale": 0,
+}
