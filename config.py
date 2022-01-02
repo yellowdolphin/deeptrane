@@ -56,7 +56,7 @@ parser.add_argument("-M", "--mode", default='train', help="mode type")
 parser_args, _ = parser.parse_known_args(sys.argv)
 
 print("[ √ ] Config file:", parser_args.config_file)
-print("[ √ ] Mode:       ", parser_args.mode)
+print("[ √ ] Mode:", parser_args.mode)
 
 cfg = Config('configs/defaults')
 if parser_args.config_file: 
@@ -64,3 +64,9 @@ if parser_args.config_file:
 
 cfg.mode = parser_args.mode
 cfg.save_yaml()
+
+# Consistency checks
+if cfg.frac != 1: assert do_class_sampling, 'frac w/o class_sampling not implemented'
+if cfg.rst_name is not None:
+    rst_file = Path(rst_path)/f'{rst_name}.pth'
+    assert rst_file.exists(), f'{rst_file} not found'  # fail early
