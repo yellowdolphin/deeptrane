@@ -105,6 +105,7 @@ if cfg.use_aux_loss:
 
 from datasets import get_metadata
 metadata = get_metadata(cfg)
+metadata.to_json(f'{cfg.out_dir}/metadata.json')
 
 from models import get_pretrained_model, get_smp_model
 from xla_train import _mp_fn
@@ -150,9 +151,9 @@ for use_fold in cfg.use_folds:
             print("Best saved model:", last_saved)
             for saved_model in saved_models[:-1]:
                 path_stem = removesuffix(saved_model, '.pth')
-                Path(f'{path_stem}.pth').unlink(missing_ok=True)
-                Path(f'{path_stem}.opt').unlink(missing_ok=True)
-                Path(f'{path_stem}.sched').unlink(missing_ok=True)
+                for suffix in 'pth opt sched'.split():
+                    fn = f'{path_stem}.{suffix}'
+                    if os.path.exists(fn): Path(fn).unlink()
         elif len(saved_models) == 1: 
             print(print("Best saved model:", saved_models[0]))
         else:
