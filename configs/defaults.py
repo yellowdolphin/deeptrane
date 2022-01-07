@@ -34,6 +34,7 @@ cfg = dict(
     reduce_on_plateau = False,                 # else use Step/MultiStep
     step_lr_epochs = None,                     # scheduler.step() does not work properly
     step_lr_gamma = 1,
+    save_best = None,                          # metric name or None
 
 # Model
     use_timm = True,           # timm or torchvision pretrained models
@@ -44,14 +45,14 @@ cfg = dict(
     use_gem = False,            # GeM pooling
     dropout_ps = [0.5],
     lin_ftrs = [],
-    bn_eps = 1e-3,              # torch default 1e-5
+    bn_eps = 1e-5,
     bn_momentum = 0.1,
     wd = 0.05,                  # default 1e-2
 
     rst_path = '.',
     rst_name = None,
     reset_opt = False,          # don't load optimizer/scheduler state dicts
-    out_dir = 'outputs',
+    out_dir = '..',
 
     xla = False,
 
@@ -62,9 +63,9 @@ cfg = dict(
 
 ### Examples for dependent (inferred) settings
 
-cfg["tag"] = cfg["name"].split("_v")[0]
-if cfg["tag"].startswith('pretrain'): cfg["num_folds"] = 50
-if 'cait' in cfg["tag"]: 
+cfg["tags"] = cfg["name"].split("_")
+if 'pretrain' in cfg["tags"]: cfg["num_folds"] = 50
+if 'cait' in cfg["tags"]: 
     cfg["arch_name"] = 'cait_xs24_384'
-elif 'nfnet' in cfg["tag"]:
+elif 'nfnet' in cfg["tags"]:
     cfg["arch_name"] = 'eca_nfnet_l1'

@@ -1,32 +1,29 @@
-import os
+from pathlib import Path
 
 cfg = {
-    "debug": True,
-    "image_dir": "/kaggle/input/siim-covid19-resized-to-512px-png",
-    "train_csv_path": "data/train_split_seed42.csv",
+    "name": Path(__file__).stem,
+    "use_folds": [0, 1, 2, 3, 4],
     "size": (384, 384),
-    "aux_loss": False,
-    "folds": [0, 1, 2, 3, 4],
-    "augmentation": "faster.yaml",
-    "weight_file": '/kaggle/input/siimnihpretrained/n_cf2_pretraining/eca_nfnet_l1b/best_map_fold0_st0.pth',
-    "resume_training": False,
-    "dropout": 0.6,
-    "pool": "gem",
-    "batch_size": 24,
-    "num_workers": 4,
-    "optimizer": "AdamW",  # Adam, AdamW, SGD
-    "lr": 1e-4,
-    "mixed_precision": 0, 
-    "distributed":0,
-    "find_unused_parameters":0,
-    "dp":0,
-    "accumulation_steps": 1,
-    "seed": 42,
-    "neptune_project": None,  
-    "scheduler": "steplr",
-    "model": "model_1",
+    "multilabel": True,
+    "use_albumentations": True,
+    "augmentation": "tfms_faster",
+    "num_tpu_cores": 8,
+    "bs": 8,
     "epochs": 10,
-    "mode": "train",
-    "loss": 'bce',
-    "muliscale": 0,
+    "lr_head": 2e-5,
+    "save_best": "mAP",
+    "use_gem": True,
+    "dropout_ps": [0.6],
+    "rst_path": '/kaggle/input/siimcovid-classifiers-pretrained',
+    "rst_name": 'chest14_nfnetl1_ep4',
+    "optimizer": "AdamW",  # Adam, AdamW, SGD
 }
+
+cfg["tags"] = cfg["name"].split("_")
+if 'pretrain' in cfg["tags"]: cfg["num_folds"] = 50
+if 'cait' in cfg["tags"]: 
+    cfg["arch_name"] = 'cait_xs24_384'
+elif 'nfnet' in cfg["tags"]:
+    cfg["arch_name"] = 'eca_nfnet_l1'
+cfg["lr_bn"] = cfg["lr_head"]
+cfg["lr_body"] = cfg["lr_head"]

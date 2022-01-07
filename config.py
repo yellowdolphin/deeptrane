@@ -46,27 +46,10 @@ class Config(DotDict):
         save_yaml(filename, dict(self), width=width)
 
 
-parser = argparse.ArgumentParser(description="")
+parser = argparse.ArgumentParser(description="Command line arguments supersede config file")
 
-parser.add_argument("-C", "--config_file", help="config file path")
-parser.add_argument("-M", "--mode", default='train', help="mode type")
-#parser.add_argument("-S", "--stage", default=0, help="stage")
-#parser.add_argument("-W", "--wei_dir", default='.', help="test weight dir")
-
-parser_args, _ = parser.parse_known_args(sys.argv)
-
-print("[ √ ] Config file:", parser_args.config_file)
-print("[ √ ] Mode:", parser_args.mode)
-
-cfg = Config('configs/defaults')
-if parser_args.config_file: 
-    cfg.update(parser_args.config_file)
-
-cfg.mode = parser_args.mode
-cfg.save_yaml()
-
-# Consistency checks
-if cfg.frac != 1: assert do_class_sampling, 'frac w/o class_sampling not implemented'
-if cfg.rst_name is not None:
-    rst_file = Path(rst_path)/f'{rst_name}.pth'
-    assert rst_file.exists(), f'{rst_file} not found'  # fail early
+parser.add_argument("-c", "--config_file", help="config file path")
+parser.add_argument("-m", "--mode", default='train', help="mode")
+parser.add_argument("-f", "--use_folds", nargs="+", type=int, help="cfg.use_folds")
+#parser.add_argument("-s", "--stage", default=0, help="stage")
+#parser.add_argument("-w", "--weight_dir", default='.', help="test weight dir")
