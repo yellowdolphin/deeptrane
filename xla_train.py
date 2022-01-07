@@ -164,7 +164,7 @@ def train_fn(model, cfg, xm, epoch, para_loader, optimizer, criterion, seg_crit,
             seg_logits, preds = preds
             seg_loss = seg_crit(seg_logits, masks)
             cls_loss = criterion(preds, labels)
-            loss = seg_weight * seg_loss + (1 - seg_weight) * cls_loss
+            loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
         else:
             loss = criterion(preds, labels)
         loss = loss / cfg.n_acc

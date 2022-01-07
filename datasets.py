@@ -232,7 +232,6 @@ def add_image_dims(metadata, meta_csv):
 def split_data(metadata, cfg, class_column='category_id', seed=42):
     if cfg.train_on_all:
         metadata['fold'] = 0
-        train_idx, valid_idx = metadata.index, np.array([], dtype='int')
     else:
         if 'folds' in cfg and cfg.folds:
             # Get splitting from existing folds.json
@@ -396,18 +395,15 @@ class MySiimCovidAuxDataset(Dataset):
                 mask[y1:y2, x1:x2] = np.ones((y2 - y1, x2 - x1), dtype=np.uint8)
             #print(f"mask with {nums} boxes: {mask.dtype, mask.min(), mask.max()}")
 
-            if self.transform and use_albumentations:
-                transformed = self.transform(image=np.array(image), mask=mask)
-                image = transformed["image"]
-                image = (image / 255).float()
-                mask = transformed["mask"]
-                #print(f"transformed mask:", mask.dtype, mask.min(), mask.max())
-            elif self.transform:
-                raise NotImplementedError("implement torchvision mask transform first")
-            if self.tensor_transform:
-                image = self.tensor_transform(image)
-                mask = transforms.ToTensor()(mask)            
-            mask = mask.float()
+        if self.transform:
+            transformed = self.transform(image=np.array(image), mask=mask)
+            image = transformed["image"]
+            image = (image / 255).float()
+            mask = transformed["mask"]  # -> uint8 tensor
+        if self.tensor_transform:
+            image = self.tensor_transform(image)
+            mask = transforms.ToTensor()(mask)
+        mask = mask.float()
         mask = torch.unsqueeze(mask, 0)
     
         if self.labeled:

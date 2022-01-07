@@ -27,6 +27,7 @@ if cfg.frac != 1: assert do_class_sampling, 'frac w/o class_sampling not impleme
 if cfg.rst_name is not None:
     rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
+if cfg.use_aux_loss: assert cfg.use_albumentations, 'torchvision transforms not implemented in MySiimCovidDataset'
 
 # Install torch.xla on kaggle TPU supported nodes
 if 'TPU_NAME' in os.environ:
