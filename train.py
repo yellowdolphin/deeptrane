@@ -136,7 +136,7 @@ for use_fold in cfg.use_folds:
     # Or train on CPU/GPU if no xla
     else:
         wrapped_model = pretrained_model
-        _mp_fn(None, cfg, metadata, wrapped_model, xm, use_fold)
+        _mp_fn(None, cfg, metadata, wrapped_model, None, xm, use_fold)
         #_mp_fn(None)
         del wrapped_model
         del pretrained_model
