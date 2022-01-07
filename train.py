@@ -29,8 +29,7 @@ if cfg.rst_name is not None:
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
 
 # Install torch.xla on kaggle TPU supported nodes
-if (os.path.exists('/opt/conda/lib/python3.7/site-packages/cloud_tpu_client') and not 
-    os.path.exists('/opt/conda/lib/python3.7/site-packages/cloud_tpu_profiler')):
+if 'TPU_NAME' in os.environ:
     cfg.xla = True        # pull out of cfg?
     xla_version = '1.8.1' # only '1.8.1' works on python3.7
 
