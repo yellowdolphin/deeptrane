@@ -1,0 +1,23 @@
+cfg = dict(
+    shift_scale_rotate = 0.75,
+    skip_crop_resize   = False,
+    horizontal_flip    = True,
+    vertical_flip      = False,
+    max_random_zoom    = 1.30,
+    max_shift          = 0.06,
+    rotate_90          = False,
+    max_rotate         = 0,
+    jitter_brightness  = 0,
+    jitter_contrast    = 0,
+    jitter_hue         = 0,
+    jitter_saturation  = 0,
+    one_of_three       = 0,
+    hist_equalize      = 0,
+    p_grayscale        = 0,
+    p_cutout           = 0,
+    max_height         = 38,
+    max_width         = 38,
+    max_holes          = 10,
+    interpolation      = 1, #PIL.Image.BILINEAR, #PIL.Image.NEAREST, #
+    normalize          = False,
+)
