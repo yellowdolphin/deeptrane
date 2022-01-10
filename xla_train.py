@@ -84,7 +84,7 @@ def get_one_cycle_scheduler(optimizer, dataset, max_lr, cfg, xm, rst_epoch=1, da
     return scheduler
 
 
-def train_fn(model, cfg, xm, epoch, para_loader, optimizer, criterion, seg_crit, scheduler, device):
+def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer, scheduler, device):
     
     # initialize
     batch_start = time.perf_counter()

@@ -2,7 +2,7 @@ import os
 import gc
 import sys
 from glob import glob
-from subprocess import run
+from utils import quietly_run
 from pathlib import Path
 
 from config import Config, parser
@@ -35,10 +35,11 @@ if 'TPU_NAME' in os.environ:
     xla_version = '1.8.1' # only '1.8.1' works on python3.7
 
     # Auto installation
-    run('curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py'.split(),
-        capture_output=True)
-    run(['python', 'pytorch-xla-env-setup.py', '--version', xla_version], capture_output=True)
-    run('pip install -Uq --progress-bar off catalyst'.split(), capture_output=True)  # for DistributedSamplerWrapper
+    quietly_run(
+        'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
+        f'python pytorch-xla-env-setup.py --version {xla_version}',
+        'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
+    )
     print("[ √ ] XLA:", xla_version)
 
 # Install timm
@@ -46,7 +47,7 @@ if cfg.use_timm:
     try:
         import timm
     except ModuleNotFoundError:
-        run('pip install timm'.split(), capture_output=True)
+        quietly_run('pip install timm')
         import timm
     print("[ √ ] timm:", timm.__version__)
 
@@ -99,7 +100,7 @@ if cfg.use_aux_loss:
     try:
         import segmentation_models_pytorch as smp
     except ModuleNotFoundError:
-        run('pip install -qU git+https://github.com/qubvel/segmentation_models.pytorch'.split(), capture_output=True)
+        quietly_run('pip install -qU git+https://github.com/qubvel/segmentation_models.pytorch')
         import segmentation_models_pytorch as smp
     print("[ √ ] segmentation_models_pytorch:", smp.__version__)
 
