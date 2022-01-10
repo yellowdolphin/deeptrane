@@ -12,6 +12,7 @@ cfg = {
     "bs": 8,
     "n_acc": 2,
     "epochs": 12,
+    "batch_verbose": 200,
     "lr_head": 5e-5,
     "save_best": 'mAP',
     "use_gem": False,
@@ -31,5 +32,7 @@ if 'cait' in cfg["tags"]:
     cfg["arch_name"] = 'cait_xs24_384'
 elif 'nfnet' in cfg["tags"]:
     cfg["arch_name"] = 'eca_nfnet_l1'
+elif 'efnv2' in cfg["tags"]:
+    cfg["arch_name"] = 'tf_efficientnetv2_s_in21ft1k'
 cfg["lr_bn"] = cfg["lr_head"]
 cfg["lr_body"] = cfg["lr_head"]

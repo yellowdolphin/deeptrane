@@ -2,7 +2,7 @@ from pathlib import Path
 
 cfg = {
     "name": Path(__file__).stem,
-    "use_folds": [0,1,2,3,4],
+    "use_folds": [0],
     "size": (384, 384),
     "multilabel": True,
     "exclude_multiimage_studies": True,   # as in v257...261
@@ -10,7 +10,7 @@ cfg = {
     "augmentation": "tfms_faster",
     "num_tpu_cores": 8,
     "bs": 8,
-    "epochs": 10,
+    "epochs": 3,
     "lr_head": 2e-5,
     "save_best": 'mAP',
     "use_gem": True,

@@ -121,11 +121,12 @@ def get_tfms(cfg, mode='train'):
             RandomCrop, RandomSizedCrop, SmallestMaxSize, Equalize,
             HorizontalFlip, VerticalFlip, Transpose, RandomRotate90, ShiftScaleRotate, 
             RandomBrightnessContrast, OpticalDistortion, GridDistortion, ElasticTransform, CLAHE, CoarseDropout)
-        if os.path.exists('/kaggle'):
-            from albumentations.pytorch import ToTensorV2 as ToTensor  # not in v0.1.12
-        else:
+        try:
+            from albumentations.pytorch import ToTensorV2 as ToTensor
+        except ModuleNotFoundError:
+            # module torch was renamed pytorch
             import albumentations
-            print("albumentations:", albumentations.__version__)
+            print("Old albumentations version:", albumentations.__version__)
             from albumentations.torch import ToTensor
     else:
         from torchvision.transforms import (

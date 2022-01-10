@@ -19,8 +19,12 @@ def get_metadata(cfg):
         competition_path, meta_csv = Path('/kaggle/input/data'), 'Data_Entry_2017.csv'
         df = pd.read_csv(competition_path/meta_csv)
         df['image_id'] = df['Image Index'].str.split('.').str[0]
-    else:
+    elif 'study' in cfg.tags or 'image' in cfg.tags:
         competition_path, meta_csv = Path('/kaggle/input/siim-covid19-detection'), 'train_image_level.csv'
+        df = pd.read_csv(competition_path/meta_csv)
+        df['image_id'] = df.id.str.split('_').str[0]
+    else:
+        competition_path, meta_csv = Path('../data'), 'deeptrane_test_meta.csv'
         df = pd.read_csv(competition_path/meta_csv)
         df['image_id'] = df.id.str.split('_').str[0]
     if DEBUG: print(df.head(3))
@@ -28,8 +32,8 @@ def get_metadata(cfg):
     if 'image' in cfg.tags or ('add_5th_class' in cfg and cfg.add_5th_class):
         df = add_2class_label(df)
 
-    if 'study' in cfg.tags:
-        df = add_study_label(df, cfg)  # study labels stored in oh_columns and/or 'category_id'
+    if 'study' in cfg.tags or 'defaults' in cfg.tags:
+        df = add_study_label(df, cfg, competition_path)  # study labels stored in oh_columns and/or 'category_id'
     elif 'pretrain' in cfg.tags:
         df = add_chest14_labels(df, cfg)
 
@@ -74,8 +78,7 @@ def add_2class_label(metadata, class_column='category_id'):
     if DEBUG: print(metadata.head(3))
     return metadata
 
-def add_study_label(metadata, cfg, singlelabel_column='category_id'):
-    competition_path = Path('/kaggle/input/siim-covid19-detection') 
+def add_study_label(metadata, cfg, competition_path, singlelabel_column='category_id'):
     meta_csv = 'train_study_level.csv'
     train_labels_study = pd.read_csv(competition_path/meta_csv)
     train_labels_study['StudyInstanceUID'] = train_labels_study.id.str.split('_').str[0]
@@ -164,7 +167,10 @@ def add_chest14_labels(metadata, cfg, singlelabel_column='category_id'):
 
 def add_filename(metadata, cfg):
     n_parts = 1
-    if 'pretrain' in cfg.tags:
+    if 'defaults' in cfg.tags:
+        datasets = ['../data/images']
+        datatype = 'png'
+    elif 'pretrain' in cfg.tags:
         datasets = [f'/kaggle/input/data/images_{i:03d}/images' for i in range(1,13)]
         datatype = 'png'
     elif cfg.size[0] <= 224:
@@ -178,7 +184,7 @@ def add_filename(metadata, cfg):
         datatype = 'jpg'
 
     # Copy data (colab) and set image_root path
-    path = Path(datasets[0]) if os.path.exists('/kaggle') else Path('.')
+    path = Path(datasets[0]) if 'defaults' in cfg.tags or os.path.exists('/kaggle') else Path('.')
     assert path.exists(), f"no folder {path}"
     if cfg.xla and False:  # dataloader.show_batch() hangs
         from kaggle_datasets import KaggleDatasets

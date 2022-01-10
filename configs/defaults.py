@@ -9,7 +9,7 @@ cfg = dict(
     use_folds = [0],
 
 # Image params
-    size = (384, 384),
+    size = (64, 64),
 
 # Dataloader
     multilabel = False,
@@ -38,7 +38,7 @@ cfg = dict(
 
 # Model
     use_timm = True,           # timm or torchvision pretrained models
-    arch_name = 'tf_efficientnetv2_s_in21ft1k',
+    arch_name = 'resnet18',
     use_aux_loss = False,
     seg_weight = 0.4,
     add_hidden_layer = False,   # add hidden_layer from efficientnet to smp model

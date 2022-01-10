@@ -58,7 +58,7 @@ def get_pretrained_model(cfg):
     
     Only fold-dependent variables must be passed in."""
     # AdaptiveMaxPool2d does not work with xla, use pmp = concat_pool = False
-    pretrained = (cfg.rst_name is None)    
+    pretrained = (cfg.rst_name is None) and not 'defaults' in cfg.tags
     pooling_layer = GeM() if cfg.use_gem else nn.AdaptiveAvgPool2d(output_size=1)
     body = timm.create_model(cfg.arch_name, pretrained=pretrained)
     n_features = get_n_features(body)
