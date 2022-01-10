@@ -303,10 +303,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
     ds_valid = ImageDataset(metadata.loc[  metadata.is_valid], cfg, mode='valid',
                                          transform=test_tfms, tensor_transform=tensor_tfms)
 
-    xm.master_print("train_tfms:")
-    xm.master_print(ds_train.transform)
-    xm.master_print("test_tfms:")
-    xm.master_print(ds_valid.transform)
+    #xm.master_print("train_tfms:")
+    #xm.master_print(ds_train.transform)
+    #xm.master_print("test_tfms:")
+    #xm.master_print(ds_valid.transform)
     
     if cfg.do_class_sampling:
         # Use torch's WeightedRandomSampler with custom class weights
@@ -451,6 +451,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
             if not is_bn(n):
                 p.requires_grad = False
     
+
     ### Training Loop ---------------------------------------------------------
     
     lrs = []
@@ -527,6 +528,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         xm.master_print('')
         
         # Save weights, optimizer state, scheduler state
+        # Note: xm.save must not be inside an if statement that may validate differently on
+        # different TPU cores. Reason: rendezvous inside them will hang if any core
+        # does not arrive at the rendezvous.
         model_score = (metrics_dict[cfg.save_best] if cfg.save_best and cfg.save_best in metrics_dict else
                        -valid_loss)
         if model_score > best_model_score or not cfg.save_best:
@@ -547,28 +551,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
                 xm.save({'scheduler_state_dict': {
                     k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
                         f'{cfg.out_dir}/{model_name}_ep{epoch+1}.sched')
-        #else:
-        #    xm.master_print(f'{cfg.save_best or "valid_loss"} worse')
-        #    print(f'    {xm.get_ordinal()}:{cfg.save_best or "valid_loss"} = {model_score} worse, saving checkpoint anyways...')
-        
-        #xm.rendezvous('after_opt_save')
-        #xm.master_print(f"xm.save {model_name}_epoch_{epoch+1}.")
-        
-        #if valid_loss < best_valid_loss:
-        #    best_valid_loss = valid_loss
-            #xm.master_print(f"Improved loss: {valid_loss:.6f}")
-            # xm.save: only save the data for the master device ordinal
-            # xser.save: reduces the memory footprint on the host. Load model with
-            #            state_dict = xser.load(path); model.load_state_dict(state_dict)
-            #            needs to be restricted to master proc
-            #            Saves each tensor in separate file!!!
-            # Both: must not be inside if statement that may validate differently on
-            # different TPU cores. Reason: rendezvous inside them will hang if any core
-            # does not arrive at the rendezvous.
-            #xm.save(model.state_dict(), '{}_epoch_{}.pth'.format(model_name, epoch))
-            #if xm.get_ordinal() == 0:
-            #    print(f"master proc: xser.save({model_name}_epoch_{epoch}.pth...")
-            #    xser.save(model.state_dict(), '{}_epoch_{}.pth'.format(model_name, epoch))
                         
         # Save losses, metrics
         train_losses.append(train_loss)

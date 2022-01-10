@@ -20,6 +20,7 @@ cfg.use_folds = parser_args.use_folds or cfg.use_folds
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
 print("[ √ ] Folds:", cfg.use_folds)
+print("[ √ ] Architecture:", cfg.arch_name)
 cfg.save_yaml()
 
 # Config consistency checks
@@ -36,9 +37,10 @@ if 'TPU_NAME' in os.environ:
 
     # Auto installation
     quietly_run(
-        'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-        f'python pytorch-xla-env-setup.py --version {xla_version}',
-        'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
+        #'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
+        f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
+        #'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper, catalyst 21.8 already installed
+        #debug=True
     )
     print("[ √ ] XLA:", xla_version)
 
@@ -47,21 +49,20 @@ if cfg.use_timm:
     try:
         import timm
     except ModuleNotFoundError:
-        quietly_run('pip install timm')
+        if os.path.exists('/kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl'):
+            quietly_run('pip install /kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl')
+        else:
+            quietly_run('pip install timm', debug=True)
         import timm
     print("[ √ ] timm:", timm.__version__)
 
 import torch
 print("[ √ ] torch:", torch.__version__)
 if cfg.xla:
-    #import torch_xla
-    #import torch_xla.debug.metrics as met
-    #import torch_xla.distributed.data_parallel as dp
-    #import torch_xla.distributed.parallel_loader as pl
-    #import torch_xla.utils.utils as xu
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.xla_multiprocessing as xmp
-    #import torch_xla.test.test_utils as test_utils
+    #import torch_xla.debug.metrics as met
+    #import torch_xla.distributed.parallel_loader as pl
     #from catalyst.data import DistributedSamplerWrapper
     #from torch.utils.data.distributed import DistributedSampler
 else:
@@ -92,7 +93,9 @@ else:
 
 from multiprocessing import cpu_count
 print(f"[ √ ] {cpu_count()} CPUs")
-if not cfg.xla and not torch.cuda.is_available():
+if cfg.xla:
+    print(f"[ √ ] Using {cfg.num_tpu_cores} TPU cores")
+elif not torch.cuda.is_available():
     cfg.bs = min(cfg.bs, 3 * cpu_count())
     print(f"[ √ ] No GPU found, reducing bs to {cfg.bs}")
 
