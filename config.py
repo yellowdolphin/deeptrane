@@ -51,5 +51,6 @@ parser = argparse.ArgumentParser(description="Command line arguments supersede c
 parser.add_argument("-c", "--config_file", help="config file path")
 parser.add_argument("-m", "--mode", default='train', help="mode")
 parser.add_argument("-f", "--use_folds", nargs="+", type=int, help="cfg.use_folds")
+parser.add_argument("-v", "--batch_verbose", help="mbatch frequency of progress outputs")
 #parser.add_argument("-s", "--stage", default=0, help="stage")
 #parser.add_argument("-w", "--weight_dir", default='.', help="test weight dir")

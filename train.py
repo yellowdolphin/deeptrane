@@ -2,12 +2,11 @@ import os
 import gc
 import sys
 from glob import glob
-from utils import quietly_run
 from pathlib import Path
 
 from config import Config, parser
 from future import removesuffix
-
+from utils import quietly_run
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -17,6 +16,7 @@ if parser_args.config_file: cfg.update(parser_args.config_file)
 
 cfg.mode = parser_args.mode
 cfg.use_folds = parser_args.use_folds or cfg.use_folds
+cfg.batch_verbose = parser_args.batch_verbose or cfg.batch_verbose
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
 print("[ √ ] Folds:", cfg.use_folds)
@@ -115,10 +115,10 @@ from models import get_pretrained_model, get_smp_model
 from xla_train import _mp_fn
 
 for use_fold in cfg.use_folds:
-    print(f"Fold: {use_fold}")
+    print(f"\nFold: {use_fold}")
     metadata['is_valid'] = metadata.fold == use_fold
-    print(f"train_set: {(~ metadata.is_valid).sum():12d}")
-    print(f"valid_set: {   metadata.is_valid.sum():12d}")
+    print(f"Train set: {(~ metadata.is_valid).sum():12d}")
+    print(f"Valid set: {   metadata.is_valid.sum():12d}")
     
     if cfg.use_aux_loss:
         pretrained_model = get_smp_model(cfg)

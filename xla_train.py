@@ -21,6 +21,7 @@ import torchvision.transforms.functional as TF
 from torch.optim import lr_scheduler
 import torch.optim as optim
 from augmentation import get_tfms
+from utils import listify
 
 
 class AverageMeter(object):
@@ -66,13 +67,13 @@ def get_one_cycle_scheduler(optimizer, dataset, max_lr, cfg, xm, rst_epoch=1, da
     total_steps = (rst_epoch + cfg.epochs) * steps_per_epoch
     last_step = rst_epoch * steps_per_epoch - 1 if rst_epoch else -1
     #xm.master_print(f"cfg.epochs: {cfg.epochs}, frac: {frac}, len(ds): {len(dataset)}, num_cores: {num_cores}")
-    xm.master_print(f"rst_epoch:   {rst_epoch}")
-    xm.master_print(f"total_steps: {total_steps} (my guess)")
-    if hasattr(dataloader, '__len__'):
-        #xm.master_print(f"len(dataloader): {len(dataloader)}")
-        xm.master_print(f"total_steps: {(rst_epoch + cfg.epochs) * len(dataloader)} (dataloader)")
+    if rst_epoch != 0:
+        xm.master_print(f"Restart epoch: {rst_epoch}")
+        xm.master_print(f"Total steps: {total_steps} (my guess)")
+        if hasattr(dataloader, '__len__'):
+            xm.master_print(f"Total steps: {(rst_epoch + cfg.epochs) * len(dataloader)} (dataloader)")
     if last_step != -1:
-        xm.master_print(f"last_step: {last_step}")
+        xm.master_print(f"Last step: {last_step}")
     scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=total_steps, last_epoch=last_step,
                                         div_factor=cfg.div_factor, pct_start=cfg.pct_start)
     fn = Path(cfg.rst_path)/f'{removesuffix(cfg.rst_name or "", ".pth")}.sched'
@@ -93,9 +94,9 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
     loss_meter = AverageMeter(xm)
     if cfg.use_aux_loss: seg_loss_meter = AverageMeter(xm)
     
-    #scheduler.step()  # here?
-    if scheduler and hasattr(scheduler, 'get_lr'): 
-        xm.master_print("scaled lrs before train loop:", scheduler.get_last_lr())
+    #scheduler.step()  # here? no!
+    #if scheduler and hasattr(scheduler, 'get_lr'): 
+    #    xm.master_print("scaled lrs before train loop:", scheduler.get_last_lr())
     
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
@@ -181,13 +182,16 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
         else:
             loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))
         
-        # feedback
+        # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
-            xm.master_print('-- batch {} | cur_loss = {:.6f}, avg_loss = {:.6f}, Min = {:.2f}'.format(
-                batch_idx, loss_meter.current, loss_meter.average, (time.perf_counter() - batch_start) / 60))
-            if cfg.use_aux_loss:
-                xm.master_print('-- batch {} | seg_loss = {:.6f}, avg_loss = {:.6f}, Min = {:.2f}'.format(
-                    batch_idx, seg_loss_meter.current, seg_loss_meter.average, (time.perf_counter() - batch_start) / 60))
+            info_strings = [
+                f'        batch {batch_idx}',
+                f'current loss {loss_meter.current:.5f}']
+            if cfg.use_aux_loss: 
+                info_strings.append(f'seg_loss {seg_loss_meter.current:.5f}')
+            info_strings.append(f'avg loss {loss_meter.average:.5f}')
+            info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
+            xm.master_print(', '.join(info_strings))
             batch_start = time.perf_counter()
     
         # scheduler step after batch or epoch. Needs testing on TPU!
@@ -236,16 +240,7 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, metrics=None
             all_scores.append(preds.detach().softmax(dim=1))  # for mAP
             all_preds.append(preds.detach().argmax(dim=1))
             all_labels.append(labels)
-        
-        # feedback
-        #if batch_idx % cfg.batch_verbose == 0:
-        #    info_str = '-- batch {} | cur_loss = {:.6f}, avg_loss = {:.6f}'
-        #    for m, val in zip(metrics, metric_vals):
-        #        info_str += f', {m.__name__} = ' + '{:.6f}'
-        #    xm.master_print(info_str.format(
-        #        batch_idx, loss_meter.current, loss_meter.average, 
-        #        *[m.avg for m in metric_meters]))
-        
+            
     # mesh_reduce loss
     avg_loss = loss_meter.average
     
@@ -268,8 +263,8 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, metrics=None
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if hasattr(m, 'needs_scores') else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
-        wall_metrics = time.perf_counter() - metrics_start
-        xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
+        #wall_metrics = time.perf_counter() - metrics_start
+        #xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
         
     return avg_loss, avg_metrics
 
@@ -442,7 +437,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
                                              gamma=cfg.step_lr_gamma)
     else: 
         scheduler = None
-    if scheduler: xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
+    if scheduler: 
+        xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
+        xm.master_print(f"Initial lrs: {', '.join(f'{lr:7.2e}' for lr in listify(scheduler.get_last_lr()))}")
+        xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in listify(max_lrs))}")
     
     # Maybe freeze body
     if hasattr(model, 'body') and lr_body == 0:
@@ -450,6 +448,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         for n, p in model.body.named_parameters():
             if not is_bn(n):
                 p.requires_grad = False
+
+    model_name = f'{cfg.name}_fold{use_fold}'
+    xm.master_print(f'Checkpoints will be saved as {cfg.out_dir}/{model_name}_ep*')
+
     
 
     ### Training Loop ---------------------------------------------------------
@@ -461,16 +463,21 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
     minutes = []
     best_valid_loss = 10
     best_model_score = -np.inf
+    epoch_summary_header = ''.join(['epoch   ', ' train_loss ', ' valid_loss ',
+        ' '.join([f'{m.__name__:^8}' for m in metrics]),
+        '   lr    ', 'min_train  min_total'])
+    xm.master_print("\n", epoch_summary_header)
+    xm.master_print("=" * (len(epoch_summary_header) + 2))
         
     for epoch in range(rst_epoch, rst_epoch + cfg.epochs):
         
         # Verbose info
-        current_lr = scheduler.get_last_lr()[-1] if hasattr(scheduler, 'get_lr') else scaled_lr_head
-        xm.master_print('-'*55)
-        xm.master_print('EPOCH {}/{}'.format(epoch + 1, rst_epoch + cfg.epochs))
-        xm.master_print('-'*55)            
-        xm.master_print('- initialization | TPU cores = {}, lr = {:.6f}'.format(
-            xm.xrt_world_size(), current_lr / xm.xrt_world_size()))
+        scaled_lr = scheduler.get_last_lr()[-1] if hasattr(scheduler, 'get_last_lr') else scaled_lr_head
+        #xm.master_print('-'*55)
+        #xm.master_print('EPOCH {}/{}'.format(epoch + 1, rst_epoch + cfg.epochs))
+        #xm.master_print('-'*55)            
+        #xm.master_print('- initialization | TPU cores = {}, lr = {:.6f}'.format(
+        #    xm.xrt_world_size(), scaled_lr / xm.xrt_world_size()))
         epoch_start = time.perf_counter()
         
         # Update train_loader shuffling
@@ -478,7 +485,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         
         # Training
         train_start = time.perf_counter()
-        xm.master_print('- training...')
+        #xm.master_print('- training...')
         
         para_loader = (pl.ParallelLoader(train_loader, [device],
                                          loader_prefetch_size=loader_prefetch_size,
@@ -499,33 +506,31 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         valid_start = time.perf_counter()
         if cfg.train_on_all:
             valid_loss, valid_metrics = 0, []
-        else:
-            xm.master_print('- validation...')
-            
+        else:            
             para_loader = (pl.ParallelLoader(valid_loader, [device],
                                              loader_prefetch_size=loader_prefetch_size,
                                              device_prefetch_size=device_prefetch_size
                                              ).per_device_loader(device) if cfg.xla else
                            valid_loader)
-            
+
             valid_loss, valid_metrics = valid_fn(model, cfg, xm,
                                                  epoch       = epoch + 1, 
                                                  para_loader = para_loader,
                                                  criterion   = criterion, 
                                                  device      = device,
                                                  metrics     = metrics)
+        metrics_dict = {m.__name__: val for m, val in zip(metrics, valid_metrics)}
 
         # Print epoch summary
-        xm.master_print('- elapsed time | train = {:.2f} min, valid = {:.2f} min'.format(
-            (valid_start - train_start) / 60, (time.perf_counter() - valid_start) / 60))
-        xm.master_print('- average loss | train = {:.6f}, valid = {:.6f}'.format(
-            train_loss, valid_loss))
-        metrics_dict = {m.__name__: val for m, val in zip(metrics, valid_metrics)}
-        for key, val in metrics_dict.items():
-            xm.master_print('- {:<12} |                 valid = {:.6f}'.format(
-                key, val))
-        xm.master_print('-'*55)
-        xm.master_print('')
+        epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']          # ep/epochs
+        epoch_summary_strings.append(f'{train_loss:10.5f}')                                # train_loss
+        epoch_summary_strings.append(f'{valid_loss:10.5f}')                                # valid_loss
+        for val in valid_metrics:                                                          # metrics
+            epoch_summary_strings.append(f'{val:7.5f}')
+        epoch_summary_strings.append(f'{scaled_lr / xm.xrt_world_size():7.1e}')            # lr
+        epoch_summary_strings.append(f'{(valid_start - train_start) / 60:7.2f}')           # Wall train
+        epoch_summary_strings.append(f'{(time.perf_counter() - train_start) / 60:7.2f}')   # Wall total
+        xm.master_print('  '.join(epoch_summary_strings))
         
         # Save weights, optimizer state, scheduler state
         # Note: xm.save must not be inside an if statement that may validate differently on
@@ -536,18 +541,17 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         if model_score > best_model_score or not cfg.save_best:
             if cfg.save_best:
                 best_model_score = model_score
-                xm.master_print(f'{cfg.save_best or "valid_loss"} improved.')
-            model_name = f'{cfg.name}_fold{use_fold}'
+                #xm.master_print(f'{cfg.save_best or "valid_loss"} improved.')
             
-            xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
+            #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
             xm.save(model.state_dict(), f'{cfg.out_dir}/{model_name}_ep{epoch+1}.pth')
             
-            xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
+            #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
             xm.save({'optimizer_state_dict': optimizer.state_dict(),
                      'epoch': epoch}, f'{cfg.out_dir}/{model_name}_ep{epoch+1}.opt')
             
             if hasattr(scheduler, 'state_dict'):
-                xm.master_print(f'saving {model_name}_ep{epoch+1}.sched ...')
+                #xm.master_print(f'saving {model_name}_ep{epoch+1}.sched ...')
                 xm.save({'scheduler_state_dict': {
                     k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
                         f'{cfg.out_dir}/{model_name}_ep{epoch+1}.sched')
@@ -556,7 +560,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         train_losses.append(train_loss)
         valid_losses.append(valid_loss)
         metrics_dicts.append(metrics_dict)
-        lrs.append(current_lr / xm.xrt_world_size())
+        lrs.append(scaled_lr / xm.xrt_world_size())
         minutes.append((time.perf_counter() - train_start) / 60)
     
     if xm.xrt_world_size() > 1:

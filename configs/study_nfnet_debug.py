@@ -28,3 +28,4 @@ elif 'nfnet' in cfg["tags"]:
     cfg["arch_name"] = 'eca_nfnet_l1'
 cfg["lr_bn"] = cfg["lr_head"]
 cfg["lr_body"] = cfg["lr_head"]
+if cfg["epochs"] == 1: cfg["batch_verbose"] = 10
