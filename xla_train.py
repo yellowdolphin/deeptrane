@@ -173,6 +173,7 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
         if batch_idx % cfg.n_acc == 0:
             xm.optimizer_step(optimizer, barrier=True)   # rendevouz, required for proper xmp shutdown
             optimizer.zero_grad()
+            if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'): scheduler.step()
         
         # aggregate loss locally
         if cfg.use_aux_loss:
@@ -194,8 +195,7 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
             xm.master_print(', '.join(info_strings))
             batch_start = time.perf_counter()
     
-        # scheduler step after batch or epoch. Needs testing on TPU!
-        if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'): scheduler.step()
+    # scheduler step after epoch
     if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'): scheduler.step()
 
     return loss_meter.average

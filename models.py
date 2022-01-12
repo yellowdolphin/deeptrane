@@ -118,11 +118,14 @@ def get_pretrained_model(cfg):
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)            
 
     # change BN running average parameters
+    n_bn_layers = 0
     for n, m in pretrained_model.named_modules():
         if isinstance(m, torch.nn.BatchNorm2d) or isinstance(m, torch.nn.BatchNorm1d):
-            print("Setting BN eps, momentum")
+            n_bn_layers += 1
             m.eps      = cfg.bn_eps
             m.momentum = cfg.bn_momentum
+    if n_bn_layers:
+        print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
 
     # EfficientNet-V2 body has SiLU, BN (everywhere), but no Dropout.
     # Fused-MBConv (stages 1-3) and SE + 3x3-group_conv (group_size=1, stages 4-7).
