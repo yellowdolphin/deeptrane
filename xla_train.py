@@ -62,16 +62,17 @@ def get_one_cycle_scheduler(optimizer, dataset, max_lr, cfg, xm, rst_epoch=1, da
     # ToDo: Rid dataloader if its attributes prove useless
     if hasattr(dataloader, 'drop_last'): assert dataloader.drop_last is True
     frac = cfg.frac if cfg.do_class_sampling else 1
+    n_acc = cfg.n_acc
     num_cores = cfg.num_tpu_cores if cfg.xla else 1
-    steps_per_epoch = int(len(dataset) * frac) // (cfg.bs * num_cores)
+    steps_per_epoch = int(len(dataset) * frac) // (cfg.bs * num_cores * n_acc)
     total_steps = (rst_epoch + cfg.epochs) * steps_per_epoch
     last_step = rst_epoch * steps_per_epoch - 1 if rst_epoch else -1
     #xm.master_print(f"cfg.epochs: {cfg.epochs}, frac: {frac}, len(ds): {len(dataset)}, num_cores: {num_cores}")
+    xm.master_print(f"Total steps: {total_steps} (my guess)")
     if rst_epoch != 0:
         xm.master_print(f"Restart epoch: {rst_epoch}")
-        xm.master_print(f"Total steps: {total_steps} (my guess)")
-        if hasattr(dataloader, '__len__'):
-            xm.master_print(f"Total steps: {(rst_epoch + cfg.epochs) * len(dataloader)} (dataloader)")
+    if hasattr(dataloader, '__len__'):
+        xm.master_print(f"Total steps: {(rst_epoch + cfg.epochs) * (len(dataloader) // n_acc)} (dataloader)")
     if last_step != -1:
         xm.master_print(f"Last step: {last_step}")
     scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=total_steps, last_epoch=last_step,
@@ -93,11 +94,7 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
     optimizer.zero_grad()
     loss_meter = AverageMeter(xm)
     if cfg.use_aux_loss: seg_loss_meter = AverageMeter(xm)
-    
-    #scheduler.step()  # here? no!
-    #if scheduler and hasattr(scheduler, 'get_lr'): 
-    #    xm.master_print("scaled lrs before train loop:", scheduler.get_last_lr())
-    
+        
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
         raise NotImplementedError('get aug_flags first!')
