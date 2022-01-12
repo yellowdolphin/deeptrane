@@ -188,6 +188,8 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
             if cfg.use_aux_loss: 
                 info_strings.append(f'seg_loss {seg_loss_meter.current:.5f}')
             info_strings.append(f'avg loss {loss_meter.average:.5f}')
+            if hasattr(scheduler, 'get_last_lr'):
+                info_strings.append(f'lr {scheduler.get_last_lr()[-1]:7.1e}')
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
             xm.master_print(', '.join(info_strings))
             batch_start = time.perf_counter()
