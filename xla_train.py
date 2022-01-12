@@ -77,7 +77,7 @@ def get_one_cycle_scheduler(optimizer, dataset, max_lr, cfg, xm, rst_epoch=1, da
         xm.master_print(f"Last step: {last_step}")
     scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=total_steps, last_epoch=last_step,
                                         div_factor=cfg.div_factor, pct_start=cfg.pct_start)
-    fn = Path(cfg.rst_path)/f'{removesuffix(cfg.rst_name or "", ".pth")}.sched'
+    fn = Path(cfg.rst_path or '.')/f'{removesuffix(cfg.rst_name or "", ".pth")}.sched'
     if fn.exists() and not cfg.reset_opt:
         checkpoint = torch.load(fn, map_location='cpu')
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
@@ -481,9 +481,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         if hasattr(train_loader.sampler, 'set_epoch'): train_loader.sampler.set_epoch(epoch)
         
         # Training
-        train_start = time.perf_counter()
-        #xm.master_print('- training...')
-        
+        train_start = time.perf_counter()        
         para_loader = (pl.ParallelLoader(train_loader, [device],
                                          loader_prefetch_size=loader_prefetch_size,
                                          device_prefetch_size=device_prefetch_size
@@ -557,7 +555,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         train_losses.append(train_loss)
         valid_losses.append(valid_loss)
         metrics_dicts.append(metrics_dict)
-        lrs.append(scaled_lr / xm.xrt_world_size())
+        last_lr = scheduler.get_last_lr()[-1] if hasattr(scheduler, 'get_last_lr') else scaled_lr
+        lrs.append(0.5 * (scaled_lr + last_lr) / xm.xrt_world_size())
         minutes.append((time.perf_counter() - train_start) / 60)
     
     if xm.xrt_world_size() > 1:
