@@ -23,6 +23,7 @@ cfg = dict(
     use_batch_tfms = False,
 
 # Optimizer, Scheduler
+    optimizer = 'AdamW',
     n_acc = 1,
     lr_head = 1e-4,
     lr_bn = 1e-4,
@@ -32,8 +33,8 @@ cfg = dict(
     div_factor = 1,                            # default: 25, from Chest14: 1
     pct_start = 0.3,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     reduce_on_plateau = False,                 # else use Step/MultiStep
-    step_lr_epochs = None,                     # scheduler.step() does not work properly
-    step_lr_gamma = 1,
+    step_lr_after = None,
+    step_lr_factor = 1,
     save_best = None,                          # metric name or None
 
 # Model

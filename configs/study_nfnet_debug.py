@@ -11,6 +11,7 @@ cfg = {
     "num_tpu_cores": 8,
     "bs": 8,
     "epochs": 3,
+    "batch_verbose": 10,
     "lr_head": 2e-5,
     "save_best": 'mAP',
     "use_gem": True,
@@ -18,6 +19,9 @@ cfg = {
     "rst_path": '/kaggle/input/siimcovid-classifiers-pretrained',
     "rst_name": 'chest14_nfnetl1_ep4',
     "optimizer": "AdamW",  # Adam, AdamW, SGD
+    "one_cycle": False,
+    "step_lr_after": [1, 2],
+    "step_lr_factor": 0.1,
 }
 
 cfg["tags"] = cfg["name"].split("_")

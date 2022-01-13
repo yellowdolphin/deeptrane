@@ -189,7 +189,7 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
                 info_strings.append(f'seg_loss {seg_loss_meter.current:.5f}')
             info_strings.append(f'avg loss {loss_meter.average:.5f}')
             if hasattr(scheduler, 'get_last_lr'):
-                info_strings.append(f'lr {scheduler.get_last_lr()[-1]:7.1e}')
+                info_strings.append(f'lr {scheduler.get_last_lr()[-1] / xm.xrt_world_size():7.1e}')
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
             xm.master_print(', '.join(info_strings))
             batch_start = time.perf_counter()
@@ -409,9 +409,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         params = model.parameters()
 
     # Optimizer
-    optimizer = optim.AdamW(params, lr=scaled_lr_head, betas=cfg.betas, eps=1e-8, weight_decay=cfg.wd)
-    #optimizer = optim.Adam(params, lr=scaled_lr_head, betas=cfg.betas, eps=1e-8)
-    #optimizer = optim.SGD(params, lr=scaled_lr_head, momentum=cfg.betas[0], dampening=1-cfg.betas[1])
+    optimizer = (
+        optim.AdamW(params, lr=scaled_lr_head, betas=cfg.betas, weight_decay=cfg.wd) if cfg.optimizer == 'AdamW' else
+        optim.Adam(params, lr=scaled_lr_head, betas=cfg.betas)                       if cfg.optimizer == 'Adam' else
+        optim.SGD(params, lr=scaled_lr_head, momentum=cfg.betas[0], dampening=1-cfg.betas[1]))
     rst_epoch = 0
     if cfg.rst_name:
         fn = Path(cfg.rst_path)/f'{removesuffix(cfg.rst_name, ".pth")}.opt'
@@ -428,18 +429,18 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         # ReduceLROnPlateau must be called after validation
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5,
                                                    patience=5, verbose=True, eps=1e-6)
-    elif isinstance(cfg.step_lr_epochs, int) and cfg.step_lr_gamma > 0:
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=cfg.step_lr_epochs, 
-                                        gamma=cfg.step_lr_gamma)
-    elif hasattr(cfg.step_lr_epochs, '__iter__') and cfg.step_lr_gamma > 0:
-        scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=cfg.step_lr_epochs,
-                                             gamma=cfg.step_lr_gamma)
+    elif isinstance(cfg.step_lr_after, int) and cfg.step_lr_factor > 0:
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=cfg.step_lr_after, 
+                                        gamma=cfg.step_lr_factor)
+    elif hasattr(cfg.step_lr_after, '__iter__') and cfg.step_lr_factor > 0:
+        scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=cfg.step_lr_after,
+                                             gamma=cfg.step_lr_factor)
     else: 
         scheduler = None
     if scheduler: 
         xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
-        xm.master_print(f"Initial lrs: {', '.join(f'{lr:7.2e}' for lr in listify(scheduler.get_last_lr()))}")
-        xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in listify(max_lrs))}")
+        xm.master_print(f"Initial lrs: {', '.join(f'{lr/xm.xrt_world_size():7.2e}' for lr in listify(scheduler.get_last_lr()))}")
+        xm.master_print(f"Max lrs:     {', '.join(f'{lr/xm.xrt_world_size():7.2e}' for lr in listify(max_lrs))}")
     
     # Maybe freeze body
     if hasattr(model, 'body') and lr_body == 0:
@@ -517,6 +518,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
                                                  device      = device,
                                                  metrics     = metrics)
         metrics_dict = {m.__name__: val for m, val in zip(metrics, valid_metrics)}
+        last_lr = scheduler.get_last_lr()[-1] if hasattr(scheduler, 'batchwise') else scaled_lr
+        avg_lr = 0.5 * (scaled_lr + last_lr) / xm.xrt_world_size()
 
         # Print epoch summary
         epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']          # ep/epochs
@@ -524,7 +527,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                                # valid_loss
         for val in valid_metrics:                                                          # metrics
             epoch_summary_strings.append(f'{val:7.5f}')
-        epoch_summary_strings.append(f'{scaled_lr / xm.xrt_world_size():7.1e}')            # lr
+        epoch_summary_strings.append(f'{avg_lr:7.1e}')                                     # lr
         epoch_summary_strings.append(f'{(valid_start - train_start) / 60:7.2f}')           # Wall train
         epoch_summary_strings.append(f'{(time.perf_counter() - train_start) / 60:7.2f}')   # Wall total
         xm.master_print('  '.join(epoch_summary_strings))
@@ -557,8 +560,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         train_losses.append(train_loss)
         valid_losses.append(valid_loss)
         metrics_dicts.append(metrics_dict)
-        last_lr = scheduler.get_last_lr()[-1] if hasattr(scheduler, 'get_last_lr') else scaled_lr
-        lrs.append(0.5 * (scaled_lr + last_lr) / xm.xrt_world_size())
+        lrs.append(avg_lr)
         minutes.append((time.perf_counter() - train_start) / 60)
     
     if xm.xrt_world_size() > 1:
