@@ -53,7 +53,7 @@ cfg = dict(
     rst_path = '.',
     rst_name = None,
     reset_opt = False,          # don't load optimizer/scheduler state dicts
-    out_dir = '..',
+    out_dir = '../../temp',
 
     xla = False,
 

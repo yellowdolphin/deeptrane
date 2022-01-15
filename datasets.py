@@ -24,7 +24,7 @@ def get_metadata(cfg):
         df = pd.read_csv(competition_path/meta_csv)
         df['image_id'] = df.id.str.split('_').str[0]
     else:
-        competition_path, meta_csv = Path('../data'), 'deeptrane_test_meta.csv'
+        competition_path, meta_csv = Path('../../data'), 'deeptrane_test_meta.csv'
         df = pd.read_csv(competition_path/meta_csv)
         df['image_id'] = df.id.str.split('_').str[0]
     if DEBUG: print(df.head(3))
@@ -168,7 +168,7 @@ def add_chest14_labels(metadata, cfg, singlelabel_column='category_id'):
 def add_filename(metadata, cfg):
     n_parts = 1
     if 'defaults' in cfg.tags:
-        datasets = ['../data/images']
+        datasets = ['../../data/images']
         datatype = 'png'
     elif 'pretrain' in cfg.tags:
         datasets = [f'/kaggle/input/data/images_{i:03d}/images' for i in range(1,13)]

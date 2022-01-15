@@ -184,14 +184,16 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
             info_strings = [
                 f'        batch {batch_idx}',
-                f'current loss {loss_meter.current:.5f}']
+                f'current_loss {loss_meter.current:.5f}']
             if cfg.use_aux_loss: 
                 info_strings.append(f'seg_loss {seg_loss_meter.current:.5f}')
-            info_strings.append(f'avg loss {loss_meter.average:.5f}')
-            if hasattr(scheduler, 'get_last_lr'):
-                info_strings.append(f'lr {scheduler.get_last_lr()[-1] / xm.xrt_world_size():7.1e}')
+            info_strings.append(f'avg_loss {loss_meter.average:.5f}')
+            info_strings.append(f'lr {optimizer.param_groups[-1]["lr"] / xm.xrt_world_size():7.1e}')
+            info_strings.append(f'mom {optimizer.param_groups[-1]["betas"][0]:.3f}')
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
             xm.master_print(', '.join(info_strings))
+            if hasattr(scheduler, 'get_last_lr'):
+                assert scheduler.get_last_lr()[-1] == optimizer.param_groups[-1]['lr']
             batch_start = time.perf_counter()
     
     # scheduler step after epoch
@@ -439,7 +441,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         scheduler = None
     if scheduler: 
         xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
-        xm.master_print(f"Initial lrs: {', '.join(f'{lr/xm.xrt_world_size():7.2e}' for lr in listify(scheduler.get_last_lr()))}")
+        xm.master_print(f"""Initial lrs: {', '.join(f'{p["lr"]/xm.xrt_world_size():7.2e}' for p in optimizer.param_groups)}""")
         xm.master_print(f"Max lrs:     {', '.join(f'{lr/xm.xrt_world_size():7.2e}' for lr in listify(max_lrs))}")
     
     # Maybe freeze body
@@ -471,13 +473,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         
     for epoch in range(rst_epoch, rst_epoch + cfg.epochs):
         
-        # Verbose info
-        scaled_lr = scheduler.get_last_lr()[-1] if hasattr(scheduler, 'get_last_lr') else scaled_lr_head
-        #xm.master_print('-'*55)
-        #xm.master_print('EPOCH {}/{}'.format(epoch + 1, rst_epoch + cfg.epochs))
-        #xm.master_print('-'*55)            
-        #xm.master_print('- initialization | TPU cores = {}, lr = {:.6f}'.format(
-        #    xm.xrt_world_size(), scaled_lr / xm.xrt_world_size()))
+        # Data for verbose info
+        scaled_lr = optimizer.param_groups[-1]["lr"]
+        if hasattr(scheduler, 'get_last_lr'):
+            assert scheduler.get_last_lr()[-1] == optimizer.param_groups[-1]["lr"]
         epoch_start = time.perf_counter()
         
         # Update train_loader shuffling
@@ -518,7 +517,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
                                                  device      = device,
                                                  metrics     = metrics)
         metrics_dict = {m.__name__: val for m, val in zip(metrics, valid_metrics)}
-        last_lr = scheduler.get_last_lr()[-1] if hasattr(scheduler, 'batchwise') else scaled_lr
+        last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else scaled_lr
         avg_lr = 0.5 * (scaled_lr + last_lr) / xm.xrt_world_size()
 
         # Print epoch summary
