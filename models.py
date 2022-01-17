@@ -28,6 +28,10 @@ class GeM(nn.Module):
             self.eps) + ')'
 
 
+def is_bn(name):
+    return any((name.startswith('bn1.'), name.startswith('bn2.'), name.startswith('bn3.'),
+                '.bn1.' in name, '.bn2.' in name, '.bn3.' in name))
+
 def get_n_features(m):
     if hasattr(m, 'num_features'): return m.num_features            
     if hasattr(m, 'final_conv'  ): return m.final_conv.out_channels

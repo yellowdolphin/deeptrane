@@ -22,7 +22,7 @@ from torch.optim import lr_scheduler
 import torch.optim as optim
 from augmentation import get_tfms
 from utils import listify
-
+from models import is_bn
 
 class AverageMeter(object):
     '''Computes and stores the average and current value'''
