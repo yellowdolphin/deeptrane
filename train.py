@@ -131,9 +131,12 @@ for use_fold in cfg.use_folds:
         pretrained_model = get_smp_model(cfg)
     else:
         pretrained_model = get_pretrained_model(cfg)
-    
     #print(pretrained_model)
-
+    
+    init_file = Path(cfg.out_dir) / f'{cfg.name}_init.pth'
+    if not init_file.exists():
+        print(f"Saving initial model as {init_file}")
+        torch.save(pretrained_model.state_dict(), init_file)
     
     # Start distributed training on TPU cores
     if cfg.xla:
