@@ -19,7 +19,7 @@ cfg = dict(
     epochs = 1,
     batch_verbose = None,
     do_class_sampling = False,
-    frac = 1,
+    frac = 1.0,
     use_batch_tfms = False,
 
 # Optimizer, Scheduler
@@ -34,7 +34,7 @@ cfg = dict(
     pct_start = 0.3,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     reduce_on_plateau = False,                 # else use Step/MultiStep
     step_lr_after = None,
-    step_lr_factor = 1,
+    step_lr_factor = 1.0,
     save_best = None,                          # metric name or None
 
 # Model

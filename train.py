@@ -6,7 +6,7 @@ from pathlib import Path
 
 from config import Config, parser
 from future import removesuffix
-from utils import quietly_run
+from utils import quietly_run, listify, sizify, autotype
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -17,6 +17,13 @@ if parser_args.config_file: cfg.update(parser_args.config_file)
 cfg.mode = parser_args.mode
 cfg.use_folds = parser_args.use_folds or cfg.use_folds
 cfg.batch_verbose = parser_args.batch_verbose or cfg.batch_verbose
+cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
+cfg.betas = parser_args.betas or cfg.betas
+cfg.dropout_ps = cfg.dropout_ps if parser_args.dropout_ps is None else listify(parser_args.dropout_ps)
+cfg.lin_ftrs = cfg.lin_ftrs if parser_args.lin_ftrs is None else listify(parser_args.lin_ftrs)
+for key, value in listify(parser_args.set):
+    autotype(cfg, key, value)
+
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
 print("[ √ ] Folds:", cfg.use_folds)

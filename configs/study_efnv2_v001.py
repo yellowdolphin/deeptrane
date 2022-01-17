@@ -11,7 +11,7 @@ cfg = {
     "bs": 32,
     "n_acc": 2,
     "epochs": 10,
-    "batch_verbose": 20,
+    "batch_verbose": None,
     "lr_head": 3e-4,
     "save_best": 'mAP',
     "use_gem": True,
@@ -23,6 +23,7 @@ cfg = {
     "rst_path": '/kaggle/input/siimcovid-classifiers-pretrained',
     "rst_name": 'chest14_efnv2_ep8',
     "optimizer": "AdamW",  # Adam, AdamW, SGD
+    "out_dir": '../',
 }
 
 cfg["tags"] = cfg["name"].split("_")

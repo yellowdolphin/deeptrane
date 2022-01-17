@@ -24,6 +24,7 @@ cfg = {
     "rst_path": '/kaggle/input/siimcovid-classifiers-pretrained',
     "rst_name": 'chest14_efnv2_ep8',
     "optimizer": "AdamW",  # Adam, AdamW, SGD
+    "out_dir": '../',
 }
 
 cfg["tags"] = cfg["name"].split("_")
