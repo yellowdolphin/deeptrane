@@ -49,6 +49,7 @@ if 'TPU_NAME' in os.environ:
         #'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper, catalyst 21.8 already installed
         #debug=True
     )
+    print("[ √ ] Python:", sys.version.replace('\n',''))
     print("[ √ ] XLA:", xla_version)
 
 # Install timm
@@ -132,7 +133,7 @@ for use_fold in cfg.use_folds:
     else:
         pretrained_model = get_pretrained_model(cfg)
     #print(pretrained_model)
-    
+
     init_file = Path(cfg.out_dir) / f'{cfg.name}_init.pth'
     if not init_file.exists():
         print(f"Saving initial model as {init_file}")
