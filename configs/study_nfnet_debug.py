@@ -22,7 +22,7 @@ cfg = {
     "one_cycle": False,
     "step_lr_after": [1, 2],
     "step_lr_factor": 0.1,
-    "out_dir": '../',
+    "out_dir": '..',
 }
 
 cfg["tags"] = cfg["name"].split("_")

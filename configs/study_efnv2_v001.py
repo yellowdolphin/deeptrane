@@ -20,10 +20,12 @@ cfg = {
     "seg_weight": 0.4,
     "add_hidden_layer": False,
     "bn_eps": 1e-5,
-    "rst_path": '/kaggle/input/siimcovid-classifiers-pretrained',
-    "rst_name": 'chest14_efnv2_ep8',
+    #"rst_path": '/kaggle/input/siimcovid-classifiers-pretrained',
+    #"rst_name": 'chest14_efnv2_ep8',
+    "rst_path": '/kaggle/input/siimcovid-classifiers-rst',
+    "rst_name": 'study_efnv2_v001_init',
     "optimizer": "AdamW",  # Adam, AdamW, SGD
-    "out_dir": '../',
+    "out_dir": '..',
 }
 
 cfg["tags"] = cfg["name"].split("_")
