@@ -1,0 +1,4 @@
+[flake8]
+ignore = E701,E266
+exclude = .git,__pycache__,pytorch-xla-env-setup.py
+max_line_length = 100

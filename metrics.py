@@ -4,6 +4,7 @@ import os
 import shutil
 import math
 import numpy as np
+from sklearn.metrics import average_precision_score
 
 
 def log_average_miss_rate(prec, rec, num_images):
@@ -37,9 +38,9 @@ def log_average_miss_rate(prec, rec, num_images):
     mr_tmp = np.insert(mr, 0, 1.0)
 
     # Use 9 evenly spaced reference points in log-space
-    ref = np.logspace(-2.0, 0.0, num = 9)
+    ref = np.logspace(-2.0, 0.0, num=9)
     for i, ref_i in enumerate(ref):
-        # np.where() will always find at least 1 index, since min(ref) = 0.01 and min(fppi_tmp) = -1.0
+        # np.where() will always find at least 1 index as min(ref) = 0.01 and min(fppi_tmp) = -1.0
         j = np.where(fppi_tmp <= ref_i)[-1][-1]
         ref[i] = mr_tmp[j]
 
@@ -48,12 +49,11 @@ def log_average_miss_rate(prec, rec, num_images):
 
     return lamr, mr, fppi
 
-"""
- Calculate the AP given the recall and precision array
-    1st) We compute a version of the measured precision/recall curve with
-         precision monotonically decreasing
-    2nd) We compute the AP as the area under this curve by numerical integration.
-"""
+
+# Calculate the AP given the recall and precision array
+#    1st) We compute a version of the measured precision/recall curve with
+#         precision monotonically decreasing
+#    2nd) We compute the AP as the area under this curve by numerical integration.
 def voc_ap(rec, prec):
     """
     --- Official matlab code VOC2012---
@@ -65,11 +65,11 @@ def voc_ap(rec, prec):
     i=find(mrec(2:end)~=mrec(1:end-1))+1;
     ap=sum((mrec(i)-mrec(i-1)).*mpre(i));
     """
-    rec.insert(0, 0.0) # insert 0.0 at begining of list
-    rec.append(1.0) # insert 1.0 at end of list
+    rec.insert(0, 0.0)   # insert 0.0 at begining of list
+    rec.append(1.0)      # insert 1.0 at end of list
     mrec = rec[:]
-    prec.insert(0, 0.0) # insert 0.0 at begining of list
-    prec.append(0.0) # insert 0.0 at end of list
+    prec.insert(0, 0.0)  # insert 0.0 at begining of list
+    prec.append(0.0)     # insert 0.0 at end of list
     mpre = prec[:]
     """
      This part makes the precision monotonically decreasing
@@ -81,16 +81,16 @@ def voc_ap(rec, prec):
     #     range(start=(len(mpre) - 2), end=0, step=-1)
     # also the python function range excludes the end, resulting in:
     #     range(start=(len(mpre) - 2), end=-1, step=-1)
-    for i in range(len(mpre)-2, -1, -1):
-        mpre[i] = max(mpre[i], mpre[i+1])
+    for i in range(len(mpre) - 2, -1, -1):
+        mpre[i] = max(mpre[i], mpre[i + 1])
     """
      This part creates a list of indexes where the recall changes
         matlab: i=find(mrec(2:end)~=mrec(1:end-1))+1;
     """
     i_list = []
     for i in range(1, len(mrec)):
-        if mrec[i] != mrec[i-1]:
-            i_list.append(i) # if it was matlab would be i + 1
+        if mrec[i] != mrec[i - 1]:
+            i_list.append(i)  # if it was matlab would be i + 1
     """
      The Average Precision (AP) is the area under the curve
         (numerical integration)
@@ -98,9 +98,8 @@ def voc_ap(rec, prec):
     """
     ap = 0.0
     for i in i_list:
-        ap += ((mrec[i]-mrec[i-1])*mpre[i])
+        ap += ((mrec[i] - mrec[i - 1]) * mpre[i])
     return ap, mrec, mpre
-
 
 
 def map_calc(det_data, gt_data, xm=None):
@@ -108,8 +107,7 @@ def map_calc(det_data, gt_data, xm=None):
      Create a ".temp_files/" and "output/" directory
     """
     TEMP_FILES_PATH = ".temp_files"
-    #if 'xm' in globals() and hasattr(xm, 'get_ordinal'): 
-    if hasattr(xm, 'get_ordinal'): 
+    if hasattr(xm, 'get_ordinal'):
         TEMP_FILES_PATH += str(xm.get_ordinal())
     os.makedirs(TEMP_FILES_PATH, exist_ok=True)
 
@@ -125,7 +123,6 @@ def map_calc(det_data, gt_data, xm=None):
         file_id = str(frame)
         # create ground-truth dictionary
         bounding_boxes = frame_data
-        is_difficult = False
         already_seen_classes = []
         for box in bounding_boxes:
             class_name = box['class_name']
@@ -152,7 +149,6 @@ def map_calc(det_data, gt_data, xm=None):
     gt_classes = sorted(gt_classes)
     n_classes = len(gt_classes)
 
-
     """
      detection-results
         Load each of the detection-results files into a temporary ".json" file.
@@ -164,23 +160,16 @@ def map_calc(det_data, gt_data, xm=None):
             for box in frame_data:
                 tmp_class_name, confidence, bbox = box['class_name'], box['confidence'], box['bbox']
                 if tmp_class_name == class_name:
-                    bounding_boxes.append({"confidence":confidence, "file_id":file_id, "bbox":bbox})
-        bounding_boxes.sort(key=lambda x:float(x['confidence']), reverse=True)
+                    bounding_boxes.append({"confidence": confidence, "file_id": file_id,
+                                           "bbox": bbox})
+        bounding_boxes.sort(key=lambda x: float(x['confidence']), reverse=True)
         with open(TEMP_FILES_PATH + "/" + class_name + "_dr.json", 'w') as outfile:
             json.dump(bounding_boxes, outfile)
-
 
     """
      Calculate the AP for each class
     """
     sum_AP = 0.0
-    ap_dictionary = {}
-    lamr_dictionary = {}
-    # open file to store the output
-    # output_filename = gt_path.replace('.txt', '_map.txt')
-    # with open(output_filename, 'w') as output_file:
-        # output_file.write("# AP per class\n")
-        # output_file.write('=============\n')
     ap_list = []
     count_true_positives = {}
     for class_index, class_name in enumerate(gt_classes):
@@ -195,7 +184,7 @@ def map_calc(det_data, gt_data, xm=None):
          Assign detection-results to ground-truth objects
         """
         nd = len(dr_data)
-        tp = [0] * nd # creates an array of zeros of size nd
+        tp = [0] * nd  # creates an array of zeros of size nd
         fp = [0] * nd
         for idx, detection in enumerate(dr_data):
             file_id = detection["file_id"]
@@ -204,18 +193,19 @@ def map_calc(det_data, gt_data, xm=None):
             ovmax = -1
             gt_match = -1
             # load detected object bounding-box
-            bb = [ float(x) for x in detection["bbox"].split() ]
+            bb = [float(x) for x in detection["bbox"].split()]
             for obj in ground_truth_data:
                 # look for a class_name match
                 if obj["class_name"] == class_name:
-                    bbgt = [ float(x) for x in obj["bbox"].split() ]
-                    bi = [max(bb[0],bbgt[0]), max(bb[1],bbgt[1]), min(bb[2],bbgt[2]), min(bb[3],bbgt[3])]
+                    bbgt = [float(x) for x in obj["bbox"].split()]
+                    bi = [max(bb[0], bbgt[0]), max(bb[1], bbgt[1]),
+                          min(bb[2], bbgt[2]), min(bb[3], bbgt[3])]
                     iw = bi[2] - bi[0] + 1
                     ih = bi[3] - bi[1] + 1
                     if iw > 0 and ih > 0:
                         # compute overlap (IoU) = area of intersection / area of union
-                        ua = (bb[2] - bb[0] + 1) * (bb[3] - bb[1] + 1) + (bbgt[2] - bbgt[0]
-                                        + 1) * (bbgt[3] - bbgt[1] + 1) - iw * ih
+                        ua = (bb[2] - bb[0] + 1) * (bb[3] - bb[1] + 1) + \
+                             (bbgt[2] - bbgt[0] + 1) * (bbgt[3] - bbgt[1] + 1) - iw * ih
                         ov = iw * ih / ua
                         if ov > ovmax:
                             ovmax = ov
@@ -230,24 +220,21 @@ def map_calc(det_data, gt_data, xm=None):
             #         min_overlap = float(iou_list[index])
             if ovmax >= min_overlap:
                 if "difficult" not in gt_match:
-                        if not bool(gt_match["used"]):
-                            # true positive
-                            tp[idx] = 1
-                            gt_match["used"] = True
-                            count_true_positives[class_name] += 1
-                            # update the ".json" file
-                            with open(gt_file, 'w') as f:
-                                    f.write(json.dumps(ground_truth_data))
-                        else:
-                            # false positive (multiple detection)
-                            fp[idx] = 1
+                    if not bool(gt_match["used"]):
+                        # true positive
+                        tp[idx] = 1
+                        gt_match["used"] = True
+                        count_true_positives[class_name] += 1
+                        # update the ".json" file
+                        with open(gt_file, 'w') as f:
+                            f.write(json.dumps(ground_truth_data))
+                    else:
+                        # false positive (multiple detection)
+                        fp[idx] = 1
             else:
                 # false positive
                 fp[idx] = 1
-                if ovmax > 0:
-                    status = "INSUFFICIENT OVERLAP"
 
-        #print(tp)
         # compute precision/recall
         cumsum = 0
         for idx, val in enumerate(fp):
@@ -257,50 +244,25 @@ def map_calc(det_data, gt_data, xm=None):
         for idx, val in enumerate(tp):
             tp[idx] += cumsum
             cumsum += val
-        #print(tp)
         rec = tp[:]
         for idx, val in enumerate(tp):
             rec[idx] = float(tp[idx]) / gt_counter_per_class[class_name]
-        #print(rec)
         prec = tp[:]
         for idx, val in enumerate(tp):
             prec[idx] = float(tp[idx]) / (fp[idx] + tp[idx])
-        #print(prec)
 
         ap, mrec, mprec = voc_ap(rec[:], prec[:])
         sum_AP += ap
 
         ap_list.append(ap)
 
-        # text = "{0:.2f}%".format(ap*100) + " = " + class_name + " AP " 
-        # text = class_name + " AP = {0:.2f}%".format(ap*100)
-        """
-         Write to output.txt
-        """
-        # rounded_prec = [ '%.2f' % elem for elem in prec ]
-        # rounded_rec = [ '%.2f' % elem for elem in rec ]
-        # output_file.write(text + "\n Precision: " + str(rounded_prec) + "\n Recall :" + str(rounded_rec) + "\n\n")
-        # output_file.write(text + "\n")
-        # print(text)
-        # ap_dictionary[class_name] = ap
-
-        # n_images = counter_images_per_class[class_name]
-        # lamr, mr, fppi = log_average_miss_rate(np.array(prec), np.array(rec), n_images)
-        # lamr_dictionary[class_name] = lamr
-
-
-    # output_file.write("\n# mAP of all classes\n")
-    # output_file.write('=============\n')
     mAP = sum_AP / n_classes
-    # print('='*20)
-    # text = "mAP = {0:.4f}%".format(mAP*100)
-    # output_file.write(text + "\n")
-    # print(text)
 
     # remove the temp_files directory
     shutil.rmtree(TEMP_FILES_PATH)
 
     return mAP, ap_list
+
 
 def val_map(gt_labels, pred_scores, score_thresh=1e-5, classwise=False, xm=None):
     gt_labels = gt_labels.numpy() if hasattr(gt_labels, 'numpy') else gt_labels
@@ -310,19 +272,17 @@ def val_map(gt_labels, pred_scores, score_thresh=1e-5, classwise=False, xm=None)
     det_data = {}
     gt_data = {}
     for cc, (gt_label, pred_score) in enumerate(zip(gt_labels, pred_scores)):
-        gt_data[cc]  = ([{"class_name": str(i), "bbox": bbox, "used": False}
-                             for i, s in enumerate(gt_label) if s > 0] if multilabel else
-                        [{"class_name": str(gt_label), "bbox": bbox, "used": False}])
+        gt_data[cc] = ([{"class_name": str(i), "bbox": bbox, "used": False}
+                            for i, s in enumerate(gt_label) if s > 0] if multilabel else
+                       [{"class_name": str(gt_label), "bbox": bbox, "used": False}])
         det_data[cc] = [{"class_name": str(i),        "bbox": bbox, "confidence": str(s)}
-                                    for i, s in enumerate(pred_score) if s > score_thresh]
+                            for i, s in enumerate(pred_score) if s > score_thresh]
     map, ap_list = map_calc(det_data, gt_data, xm)
-    
+
     return ap_list if classwise else map
 
 
 # More metrics
-from sklearn.metrics import average_precision_score
-
 def multiclass_average_precision_score(y_true, y_score):
     "Return class-mean of single-class AP scores"
     n_classes = y_true.shape[1]

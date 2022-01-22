@@ -6,13 +6,14 @@ import timm
 import torch
 from torch import nn
 from torch.nn.parameter import Parameter
-from future import *
+from future import removesuffix
 
 DEBUG = False
 
 
 def gem(x, p=1.5, eps=1e-6):
     return nn.functional.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1. / p)
+
 
 class GeM(nn.Module):
     def __init__(self, p=1.5, eps=1e-6):
@@ -24,30 +25,33 @@ class GeM(nn.Module):
         return gem(x, p=self.p, eps=self.eps)
 
     def __repr__(self):
-        return self.__class__.__name__ + '(' + 'p=' + '{:.4f}'.format(self.p.data.tolist()[0]) + ', ' + 'eps=' + str(
-            self.eps) + ')'
+        return self.__class__.__name__ + '(' + 'p=' + '{:.4f}'.format(self.p.data.tolist()[0]) + \
+            ', ' + 'eps=' + str(self.eps) + ')'
 
 
 def is_bn(name):
     return any((name.startswith('bn1.'), name.startswith('bn2.'), name.startswith('bn3.'),
                 '.bn1.' in name, '.bn2.' in name, '.bn3.' in name))
 
+
 def get_n_features(m):
-    if hasattr(m, 'num_features'): return m.num_features            
+    if hasattr(m, 'num_features'): return m.num_features
     if hasattr(m, 'final_conv'  ): return m.final_conv.out_channels
-    if hasattr(m, 'head'        ): return m.head.in_features       
-    if hasattr(m, 'classifier'  ): return m.classifier.in_features 
-    if hasattr(m, 'fc'          ): return m.fc.in_features         
+    if hasattr(m, 'head'        ): return m.head.in_features
+    if hasattr(m, 'classifier'  ): return m.classifier.in_features
+    if hasattr(m, 'fc'          ): return m.fc.in_features
     raise NotImplementedError(f"unkown model type:\n{m}")
+
 
 def skip_head(m):
     for attr in ['classifier', 'global_pool', 'head', 'fc']:
         if hasattr(m, attr): setattr(m, attr, nn.Identity())
     return m
 
+
 def compare_state_dicts(a, b, check_shapes=False):
-    missing_in_a = [k for k in b if not k in a]
-    missing_in_b = [k for k in a if not k in b]
+    missing_in_a = [k for k in b if k not in a]
+    missing_in_b = [k for k in a if k not in b]
     for k in missing_in_a:
         print(f"{' ':40}{k:40}")
     for k in missing_in_b:
@@ -57,12 +61,13 @@ def compare_state_dicts(a, b, check_shapes=False):
             if a[k].shape != b[k].shape:
                 print(f"size mismatch in {k:40} {str(list(a[k].shape)):12} {str(list(b[k].shape)):12}")
 
+
 def get_pretrained_model(cfg):
     """Initialize pretrained_model for a new fold based on global variables
-    
+
     Only fold-dependent variables must be passed in."""
     # AdaptiveMaxPool2d does not work with xla, use pmp = concat_pool = False
-    pretrained = (cfg.rst_name is None) and not 'defaults' in cfg.tags
+    pretrained = (cfg.rst_name is None) and 'defaults' not in cfg.tags
     pooling_layer = GeM() if cfg.use_gem else nn.AdaptiveAvgPool2d(output_size=1)
     body = timm.create_model(cfg.arch_name, pretrained=pretrained)
     n_features = get_n_features(body)
@@ -82,7 +87,7 @@ def get_pretrained_model(cfg):
 
     if cfg.rst_name:
         # Dont ever use xser: stores each tensor in a separate file!
-        rst_file = Path(cfg.rst_path)/f'{removesuffix(cfg.rst_name, ".pth")}.pth'
+        rst_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.pth'
         state_dict = torch.load(rst_file, map_location=torch.device('cpu'))
         keys = list(state_dict.keys())
         if keys[0].startswith('0.') and keys[-1].startswith('1.'):
@@ -116,17 +121,17 @@ def get_pretrained_model(cfg):
             compare_state_dicts(pretrained_model.state_dict(), state_dict, check_shapes=True)
             raise
         print(f"Restarting training from {rst_file}")
-        if len(incomp) == 2: 
+        if len(incomp) == 2:
             print(f"Loaded state_dict has {len(incomp[0])} missing keys, {len(incomp[1])} unexpected keys.")
-            if len(incomp[0]) + len(incomp[1]) > 2: 
-                compare_state_dicts(pretrained_model.state_dict(), state_dict)            
+            if len(incomp[0]) + len(incomp[1]) > 2:
+                compare_state_dicts(pretrained_model.state_dict(), state_dict)
 
     # change BN running average parameters
     n_bn_layers = 0
     for n, m in pretrained_model.named_modules():
         if isinstance(m, torch.nn.BatchNorm2d) or isinstance(m, torch.nn.BatchNorm1d):
             n_bn_layers += 1
-            m.eps      = cfg.bn_eps
+            m.eps = cfg.bn_eps
             m.momentum = cfg.bn_momentum
     if n_bn_layers:
         print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
@@ -134,53 +139,59 @@ def get_pretrained_model(cfg):
     # EfficientNet-V2 body has SiLU, BN (everywhere), but no Dropout.
     # Fused-MBConv (stages 1-3) and SE + 3x3-group_conv (group_size=1, stages 4-7).
     #print("FC stats:")
-    #print("weight:", pretrained_model.state_dict()['head.3.weight'].mean(), pretrained_model.state_dict()['head.3.weight'].std())
-    #print("bias:  ", pretrained_model.state_dict()['head.3.bias'].mean(), pretrained_model.state_dict()['head.3.bias'].std())    
+    #print("weight:",
+    #      pretrained_model.state_dict()['head.3.weight'].mean(),
+    #      pretrained_model.state_dict()['head.3.weight'].std())
+    #print("bias:  ",
+    #      pretrained_model.state_dict()['head.3.bias'].mean(),
+    #      pretrained_model.state_dict()['head.3.bias'].std())
     return pretrained_model
+
 
 def get_smp_model(cfg):
     try:
         import segmentation_models_pytorch as smp
     except ModuleNotFoundError:
-        run('pip install -qU git+https://github.com/qubvel/segmentation_models.pytorch'.split(), capture_output=True)
+        run('pip install -qU git+https://github.com/qubvel/segmentation_models.pytorch'.split())
         import segmentation_models_pytorch as smp
     print("[ √ ] segmentation_models_pytorch:", smp.__version__)
 
     pretrained_model = smp.DeepLabV3Plus(
-        encoder_name=f'tu-{cfg.arch_name}',           # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
+        encoder_name=f'tu-{cfg.arch_name}',  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
         encoder_depth=5,
         encoder_weights=None if cfg.rst_name else "imagenet",
         encoder_output_stride=16,
         decoder_atrous_rates=[12, 24, 36],
-        decoder_channels=256,                     # segmentation_head bottleneck
-        in_channels=3,                            # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-        classes=1,                                # model output channels (number of classes in your dataset)
-        aux_params=dict(                          # for classifier head
+        decoder_channels=256,                # segmentation_head bottleneck
+        in_channels=3,                       # 1 for gray-scale images, 3 for RGB
+        classes=1,                           # model output channels
+        aux_params=dict(                     # for classifier head
             classes=cfg.n_classes,
             pooling="avg",
             dropout=cfg.dropout_ps[0],
             activation=None,
         ),
     )
-    
+
     if cfg.add_hidden_layer:
         nf = 1280
-        pooling_layer = GeM() if cfg.use_gem else timm.models.layers.SelectAdaptivePool2d(pool_type='avg', flatten=True)
+        pooling_layer = (GeM() if cfg.use_gem else
+                         timm.models.layers.SelectAdaptivePool2d(pool_type='avg', flatten=True))
         if not isinstance(pretrained_model.classification_head[0], nn.AdaptiveAvgPool2d):
             print(f"Warning: replacing {pretrained_model.classification_head[0]} -> hidden_layer")
         else:
             print(f"Adding efficientnet hidden_layer(256, {nf}) to classifier head.")
         pretrained_model.classification_head = nn.Sequential(OrderedDict(
-            conv_head = nn.Conv2d(256, nf, kernel_size=(1, 1), stride=(1, 1), bias=False),
-            #bn2 = nn.BatchNorm2d(nf, eps=0.001, momentum=0.1, affine=True, track_running_stats=True),
-            act2 = nn.SiLU(inplace=True),
-            global_pool = pooling_layer,
-            dropout = nn.Dropout(p=cfg.dropout_ps[0]),
-            classifier = nn.Linear(in_features=nf, out_features=cfg.n_classes, bias=True),
+            conv_head=nn.Conv2d(256, nf, kernel_size=(1, 1), stride=(1, 1), bias=False),
+            #bn2=nn.BatchNorm2d(nf, eps=0.001, momentum=0.1, affine=True, track_running_stats=True),
+            act2=nn.SiLU(inplace=True),
+            global_pool=pooling_layer,
+            dropout=nn.Dropout(p=cfg.dropout_ps[0]),
+            classifier=nn.Linear(in_features=nf, out_features=cfg.n_classes, bias=True),
         ))
-    
+
     if cfg.rst_name:
-        rst_file = Path(cfg.rst_path)/f'{removesuffix(cfg.rst_name, ".pth")}.pth'
+        rst_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.pth'
         state_dict = torch.load(rst_file, map_location=torch.device('cpu'))
         keys = list(state_dict.keys())
         print(f"{cfg.rst_name} keys:", keys[0])
@@ -238,14 +249,14 @@ def get_smp_model(cfg):
             missing, unexpected = incomp
             missing = [k for k in missing if not (k.startswith('decoder') or k.startswith('seg'))]
             print(f"[ √ ] Loaded state_dict has {len(missing)} missing keys, {len(unexpected)} unexpected keys.")
-            if len(missing) + len(unexpected) > 2: 
+            if len(missing) + len(unexpected) > 2:
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)
-    
+
     # change BN running average parameters
     for n, m in pretrained_model.named_modules():
         if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
             if DEBUG: print("Setting BN eps, momentum")
-            m.eps      = cfg.bn_eps
+            m.eps = cfg.bn_eps
             m.momentum = cfg.bn_momentum
-    
+
     return pretrained_model

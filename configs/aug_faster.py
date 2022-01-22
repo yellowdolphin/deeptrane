@@ -11,6 +11,6 @@ cfg = dict(
     max_height         = 40,
     max_width          = 40,
     max_holes          = 15,
-    interpolation      = 1, #PIL.Image.BILINEAR, #PIL.Image.NEAREST, #
+    interpolation      = 1,
     normalize          = False,
 )

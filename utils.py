@@ -1,6 +1,7 @@
 from subprocess import run
 from typing import Iterable
 
+
 def quietly_run(*commands, debug=False):
     "Run `commands` in subprocess, only report on errors, unless debug is True"
     for cmd in commands:
@@ -15,6 +16,7 @@ def quietly_run(*commands, debug=False):
             print(res.stdout.decode())
             raise Exception(res.stderr.decode())
 
+
 def listify(o):
     if o is None: return []
     if isinstance(o, list): return o
@@ -23,16 +25,18 @@ def listify(o):
     if isinstance(o, Iterable): return list(o)
     return [o]
 
+
 def sizify(o, dims=2):
     if isinstance(o, int): return (o,) * dims
     if isinstance(o, float): return (int(o),) * dims
     if isinstance(o, list) and len(o) == 1: return tuple(o) * dims
     return tuple(o)
 
+
 def autotype(cfg, key, value):
     "Update `cfg.key` with converted `value`, infer type from `cfg.key`."
     none_or_int = set(['batch_verbose', 'step_lr_after'])
-    if not key in cfg:
+    if key not in cfg:
         raise KeyError(f"Unrecognized key: `{key}` is not an attribute of cfg")
     if isinstance(cfg[key], bool):
         cfg[key] = value.lower() == 'true'

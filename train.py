@@ -3,6 +3,9 @@ import gc
 import sys
 from glob import glob
 from pathlib import Path
+from multiprocessing import cpu_count
+#import warnings
+#warnings.filterwarnings('ignore')
 
 from config import Config, parser
 from future import removesuffix
@@ -31,16 +34,16 @@ print("[ √ ] Architecture:", cfg.arch_name)
 cfg.save_yaml()
 
 # Config consistency checks
-if cfg.frac != 1: assert do_class_sampling, 'frac w/o class_sampling not implemented'
+if cfg.frac != 1: assert cfg.do_class_sampling, 'frac w/o class_sampling not implemented'
 if cfg.rst_name is not None:
     rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
-if cfg.use_aux_loss: assert cfg.use_albumentations, 'torchvision transforms not implemented in MySiimCovidDataset'
+if cfg.use_aux_loss: assert cfg.use_albumentations, 'MySiimCovidDataset requires albumentations'
 
 # Install torch.xla on kaggle TPU supported nodes
 if 'TPU_NAME' in os.environ:
-    cfg.xla = True        # pull out of cfg?
-    xla_version = '1.8.1' # only '1.8.1' works on python3.7
+    cfg.xla = True         # pull out of cfg?
+    xla_version = '1.8.1'  # only '1.8.1' works on python3.7
 
     # Auto installation
     quietly_run(
@@ -49,8 +52,10 @@ if 'TPU_NAME' in os.environ:
         #'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper, catalyst 21.8 already installed
         #debug=True
     )
-    print("[ √ ] Python:", sys.version.replace('\n',''))
+    print("[ √ ] Python:", sys.version.replace('\n', ''))
     print("[ √ ] XLA:", xla_version)
+import torch
+print("[ √ ] torch:", torch.__version__)
 
 # Install timm
 if cfg.use_timm:
@@ -64,42 +69,37 @@ if cfg.use_timm:
         import timm
     print("[ √ ] timm:", timm.__version__)
 
-import torch
-print("[ √ ] torch:", torch.__version__)
 if cfg.xla:
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.xla_multiprocessing as xmp
     #import torch_xla.debug.metrics as met
-    #import torch_xla.distributed.parallel_loader as pl
-    #from catalyst.data import DistributedSamplerWrapper
-    #from torch.utils.data.distributed import DistributedSampler
 else:
     class xm(object):
         "Pseudo class to overload torch_xla.core.xla_model"
         @staticmethod
         def master_print(*args, **kwargs):
             print(*args, **kwargs)
+
         @staticmethod
         def xla_device():
             return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
         @staticmethod
         def xrt_world_size():
             return 1
+
         @staticmethod
         def save(*args, **kwargs):
             torch.save(*args, **kwargs)
+
         @staticmethod
         def optimizer_step(optimizer, barrier=False):
             optimizer.step()
-            #print("optimizer.step() skipped")
+
         @staticmethod
         def mesh_reduce(tag, data, reduce_fn):
             return reduce_fn([data])
 
-#import warnings
-#warnings.filterwarnings('ignore')
-
-from multiprocessing import cpu_count
 print(f"[ √ ] {cpu_count()} CPUs")
 if cfg.xla:
     print(f"[ √ ] Using {cfg.num_tpu_cores} TPU cores")
@@ -115,30 +115,30 @@ if cfg.use_aux_loss:
         import segmentation_models_pytorch as smp
     print("[ √ ] segmentation_models_pytorch:", smp.__version__)
 
-from datasets import get_metadata
-metadata = get_metadata(cfg)
-metadata.to_json(f'{cfg.out_dir}/metadata.json')
-
+from metadata import get_metadata
 from models import get_pretrained_model, get_smp_model
 from xla_train import _mp_fn
+
+metadata = get_metadata(cfg)
+metadata.to_json(f'{cfg.out_dir}/metadata.json')
 
 for use_fold in cfg.use_folds:
     print(f"\nFold: {use_fold}")
     metadata['is_valid'] = metadata.fold == use_fold
     print(f"Train set: {(~ metadata.is_valid).sum():12d}")
     print(f"Valid set: {   metadata.is_valid.sum():12d}")
-    
+
     if cfg.use_aux_loss:
         pretrained_model = get_smp_model(cfg)
     else:
         pretrained_model = get_pretrained_model(cfg)
     #print(pretrained_model)
 
-    init_file = Path(cfg.out_dir) / f'{cfg.name}_init.pth'
-    if not init_file.exists():
-        print(f"Saving initial model as {init_file}")
-        torch.save(pretrained_model.state_dict(), init_file)
-    
+    fn = Path(cfg.out_dir) / f'{cfg.name}_init.pth'
+    if not fn.exists():
+        print(f"Saving initial model as {fn}")
+        torch.save(pretrained_model.state_dict(), fn)
+
     # Start distributed training on TPU cores
     if cfg.xla:
         torch.set_default_tensor_type('torch.FloatTensor')
@@ -147,13 +147,13 @@ for use_fold in cfg.use_folds:
         wrapped_model = xmp.MpModelWrapper(pretrained_model) if cfg.num_tpu_cores > 1 else pretrained_model
         serial_executor = xmp.MpSerialExecutor()
 
-        xmp.spawn(_mp_fn, nprocs=cfg.num_tpu_cores, start_method='fork', args=(cfg, metadata, wrapped_model, serial_executor, xm, use_fold))
+        xmp.spawn(_mp_fn, nprocs=cfg.num_tpu_cores, start_method='fork',
+                  args=(cfg, metadata, wrapped_model, serial_executor, xm, use_fold))
 
     # Or train on CPU/GPU if no xla
     else:
         wrapped_model = pretrained_model
         _mp_fn(None, cfg, metadata, wrapped_model, None, xm, use_fold)
-        #_mp_fn(None)
         del wrapped_model
         del pretrained_model
         gc.collect()
@@ -169,7 +169,7 @@ for use_fold in cfg.use_folds:
                 for suffix in 'pth opt sched'.split():
                     fn = f'{path_stem}.{suffix}'
                     if os.path.exists(fn): Path(fn).unlink()
-        elif len(saved_models) == 1: 
+        elif len(saved_models) == 1:
             print(print("Best saved model:", saved_models[0]))
         else:
             print(f"no checkpoints found in {cfg.out_dir}")
