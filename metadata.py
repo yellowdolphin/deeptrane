@@ -19,6 +19,8 @@ def get_metadata(cfg):
         df['image_id'] = df['Image Index'].str.split('.').str[0]
     elif 'study' in cfg.tags or 'image' in cfg.tags:
         competition_path = Path('/kaggle/input/siim-covid19-detection')
+        if 'colab' in cfg.tags:
+            competition_path = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection')
         meta_csv = 'train_image_level.csv'
         df = pd.read_csv(competition_path / meta_csv)
         df['image_id'] = df.id.str.split('_').str[0]
@@ -188,9 +190,11 @@ def add_filename(metadata, cfg):
     else:
         datasets = ['/kaggle/input/siim-covid19-resized-to-1024px-jpg/train']
         datatype = 'jpg'
+    if 'colab' in cfg.tags:
+        datasets = [d.replace('/kaggle/input', '/content') for d in datasets]
 
     # Copy data (colab) and set image_root path
-    path = Path(datasets[0]) if 'defaults' in cfg.tags or os.path.exists('/kaggle') else Path('.')
+    path = Path(datasets[0])
     assert path.exists(), f"no folder {path}"
     if cfg.xla and False:  # dataloader.show_batch() hangs
         from kaggle_datasets import KaggleDatasets
@@ -221,7 +225,7 @@ def maybe_encode_labels(metadata, cfg, class_column='category_id'):
         cfg.n_classes = metadata[class_column].nunique()
         max_label, min_label = metadata[class_column].max(), metadata[class_column].min()
 
-        if any(metadata[class_column].dtype == 'O',
+        if metadata[class_column].dtype == 'O' or any(  # `or` prevents TypeError
                max_label + 1 > cfg.n_classes,
                min_label < 0):
             from sklearn.preprocessing import LabelEncoder
