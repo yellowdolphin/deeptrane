@@ -9,7 +9,7 @@ pd.set_option('display.max_columns', 100)
 DEBUG = False
 
 
-def get_metadata(cfg):
+def get_metadata(cfg, class_column='category_id'):
     "Return a DataFrame with labels, image paths, dims, splits required by the datasets."
 
     if 'pretrain' in cfg.tags:
@@ -24,6 +24,21 @@ def get_metadata(cfg):
         meta_csv = 'train_image_level.csv'
         df = pd.read_csv(competition_path / meta_csv)
         df['image_id'] = df.id.str.split('_').str[0]
+    elif 'sartorius' in cfg.tags:
+        competition_path = Path('/kaggle/input/sartorius-cell-instance-segmentation')
+        if 'colab' in cfg.tags:
+            competition_path = Path('/content/gdrive/MyDrive/sartorius/sartorius-cell-instance-segmentation')
+        meta_csv = 'train.csv'
+        df = pd.read_csv(competition_path / meta_csv)
+        df.rename(columns={'id': 'image_id'}, inplace=True)
+
+        gb = df.groupby('image_id')
+        grouped_df = gb.head(1).set_index('image_id')
+        if 'bbox' in cfg.tags:
+            grouped_df['annotation'] = gb.annotation.apply(','.join)
+        df = grouped_df.reset_index()
+        del gb
+        class_column = 'cell_type'
     else:
         competition_path = Path('../../data')
         meta_csv = 'deeptrane_test_meta.csv'
@@ -42,14 +57,16 @@ def get_metadata(cfg):
 
     df = add_filename(df, cfg)
 
-    df = maybe_encode_labels(df, cfg)
+    df = maybe_encode_labels(df, cfg, class_column=class_column)
 
-    required_columns = ['image_id', 'image_path', 'category_id']
+    required_columns = ['image_id', 'image_path', class_column]
     if cfg.multilabel:
         required_columns.extend(cfg.classes)
         # keep 'category_id' for StratifiedKFold
     if cfg.use_aux_loss:
         required_columns.append('label')
+    if 'sartorius' in cfg.tags and 'bbox' in cfg.tags:
+        required_columns.append('annotation')
     df = df[required_columns].reset_index(drop=True)
     if DEBUG: print(df.head(3))
 
@@ -58,7 +75,10 @@ def get_metadata(cfg):
         meta_csv = os.path.join(cfg.image_root.parent, 'meta.csv')
         df = add_image_dims(df, meta_csv)
 
-    df = split_data(df, cfg)
+    df = split_data(df, cfg, class_column=class_column)
+
+    assert df.columns[0] == 'image_path'  # convention
+    assert df.columns[1] == class_column  # convention
 
     return df
 
@@ -180,6 +200,9 @@ def add_filename(metadata, cfg):
         datatype = 'png'
     elif 'pretrain' in cfg.tags:
         datasets = [f'/kaggle/input/data/images_{i:03d}/images' for i in range(1, 13)]
+        datatype = 'png'
+    elif 'sartorius' in cfg.tags:
+        datasets = ['/kaggle/input/sartorius-cell-instance-segmentation/train']
         datatype = 'png'
     elif cfg.size[0] <= 224:
         datasets = ['/kaggle/input/siim-covid19-resized-to-224px-png/train']

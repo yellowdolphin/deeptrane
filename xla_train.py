@@ -272,7 +272,7 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, metrics=None
     return avg_loss, avg_metrics
 
 
-def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, class_column='category_id'):
+def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     "Distributed training loop master function"
 
     ### Setup
@@ -284,6 +284,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
         device_prefetch_size = 1
 
     # Data samplers, class-weighted metrics
+    class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
+    xm.master_print("Using class labels from column", class_column)
     train_labels = metadata.loc[~ metadata.is_valid, class_column]
     valid_labels = metadata.loc[  metadata.is_valid, class_column]
 
@@ -296,10 +298,12 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold, cl
                                          transform=train_tfms, tensor_transform=tensor_tfms)
     else:
         ds_train = ImageDataset(metadata.loc[~ metadata.is_valid], cfg, mode='train',
-                                         transform=train_tfms, tensor_transform=tensor_tfms)
+                                         transform=train_tfms, tensor_transform=tensor_tfms,
+                                         class_column=class_column)
         
     ds_valid = ImageDataset(metadata.loc[  metadata.is_valid], cfg, mode='valid',
-                                         transform=test_tfms, tensor_transform=tensor_tfms)
+                                         transform=test_tfms, tensor_transform=tensor_tfms,
+                                         class_column=class_column)
 
     #xm.master_print("train_tfms:")
     #xm.master_print(ds_train.transform)
