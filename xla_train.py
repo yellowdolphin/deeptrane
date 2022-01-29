@@ -19,7 +19,7 @@ import torchvision.transforms.functional as TF
 from torch.optim import lr_scheduler
 import torch.optim as optim
 from augmentation import get_tfms
-from utils import listify
+from utils.general import listify
 from models import is_bn
 
 torch.set_default_tensor_type('torch.FloatTensor')

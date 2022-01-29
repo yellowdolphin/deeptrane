@@ -9,7 +9,7 @@ from multiprocessing import cpu_count
 
 from config import Config, parser
 from future import removesuffix
-from utils import quietly_run, listify, sizify, autotype
+from utils.general import quietly_run, listify, sizify, autotype
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
