@@ -2,15 +2,15 @@ from subprocess import run
 from typing import Iterable
 
 
-def quietly_run(*commands, debug=False):
+def quietly_run(*commands, debug=False, cwd=None):
     "Run `commands` in subprocess, only report on errors, unless debug is True"
     for cmd in commands:
         if debug:
             print(f'$ {cmd}')
-            run(cmd.split())
+            run(cmd.split(), cwd=cwd)
             continue
 
-        res = run(cmd.split(), capture_output=True)
+        res = run(cmd.split(), capture_output=True, cwd=cwd)
         if res.returncode:
             print(f'$ {cmd}')
             print(res.stdout.decode())
