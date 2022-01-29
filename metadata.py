@@ -32,12 +32,14 @@ def get_metadata(cfg, class_column='category_id'):
         df = pd.read_csv(competition_path / meta_csv)
         df.rename(columns={'id': 'image_id'}, inplace=True)
 
-        gb = df.groupby('image_id')
-        grouped_df = gb.head(1).set_index('image_id')
-        if 'bbox' in cfg.tags:
-            grouped_df['annotation'] = gb.annotation.apply(','.join)
-        df = grouped_df.reset_index()
-        del gb
+        if 'celltype' in cfg.tags:
+            gb = df.groupby('image_id')
+            grouped_df = gb.head(1).set_index('image_id')
+            df = grouped_df.reset_index()
+            del gb, grouped_df
+        elif 'bbox' in cfg.tags:
+            df['annotation'] = gb.annotation.apply(','.join)
+            
         class_column = 'cell_type'
     else:
         competition_path = Path('../../data')
@@ -66,7 +68,7 @@ def get_metadata(cfg, class_column='category_id'):
     if cfg.use_aux_loss:
         required_columns.append('label')
     if 'sartorius' in cfg.tags and 'bbox' in cfg.tags:
-        required_columns.append('annotation')
+        required_columns.append('bbox')
     df = df[required_columns].reset_index(drop=True)
     if DEBUG: print(df.head(3))
 

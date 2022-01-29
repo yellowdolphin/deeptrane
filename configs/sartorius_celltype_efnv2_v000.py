@@ -38,4 +38,3 @@ elif 'efnv2' in cfg["tags"]:
     cfg["arch_name"] = 'tf_efficientnetv2_s_in21ft1k'
 cfg["lr_bn"] = cfg["lr_head"]
 cfg["lr_body"] = cfg["lr_head"]
-if cfg["epochs"] == 1: cfg["batch_verbose"] = 10
