@@ -268,10 +268,15 @@ def maybe_encode_labels(metadata, cfg, class_column='category_id'):
     return metadata
 
 
-def add_image_dims(metadata, meta_csv):
-    dims = pd.read_csv(meta_csv).rename(columns={'dim0': 'height', 'dim1': 'width'})
-    dims.drop(columns='split', inplace=True)
+def add_image_dims(metadata, meta_csv, id_col='image_id', height_col='dim0', width_col='dim1'):
+    "Add original image dimensions from `meta_csv` (`height_col`, `width_col`) to metadata"
+    dims = pd.read_csv(meta_csv)
+    dims.rename(columns={id_col: 'image_id', height_col: 'height', width_col: 'width'}, inplace=True)
+    dims = dims.loc[:, ['image_id', 'height', 'width']]
+    n_images = len(metadata)
     metadata = metadata.merge(dims, on='image_id')
+    if len(metadata) < n_images:
+        print(f"WARNING: dropped {n_images - len(metadata)} images with unknown original dims")
     if DEBUG: print(metadata.head(3))
     return metadata
 
