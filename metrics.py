@@ -271,20 +271,314 @@ def val_map(gt_labels, pred_scores, score_thresh=1e-5, classwise=False, xm=None)
     bbox = "0 0 1 1"
     det_data = {}
     gt_data = {}
+
     for cc, (gt_label, pred_score) in enumerate(zip(gt_labels, pred_scores)):
-        gt_data[cc] = ([{"class_name": str(i), "bbox": bbox, "used": False}
-                            for i, s in enumerate(gt_label) if s > 0] if multilabel else
-                       [{"class_name": str(gt_label), "bbox": bbox, "used": False}])
+        gt_data[cc] = ([{"class_name": str(gt_label), "bbox": bbox, "used": False}] if not multilabel else
+                       [{"class_name": str(i),        "bbox": bbox, "used": False}
+                            for i, s in enumerate(gt_label) if s > 0])
+
         det_data[cc] = [{"class_name": str(i),        "bbox": bbox, "confidence": str(s)}
                             for i, s in enumerate(pred_score) if s > score_thresh]
+
     map, ap_list = map_calc(det_data, gt_data, xm)
 
     return ap_list if classwise else map
 
 
-# More metrics
 def multiclass_average_precision_score(y_true, y_score):
     "Return class-mean of single-class AP scores"
     n_classes = y_true.shape[1]
     class_aps = [average_precision_score(y_true[:, i], y_score[:, i]) for i in range(n_classes)]
     return np.mean(class_aps)
+
+
+# mAP metric implementations --------------------------------------------------
+
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+
+
+def vin_summarize(self):
+    # From detectron2 notebook (https://www.kaggle.com/corochann/vinbigdata-detectron2-train)
+    '''
+    Compute and display summary metrics for evaluation results.
+    Note this functin can *only* be applied on the default parameter setting
+    '''
+
+    def _summarize(ap=1, iouThr=None, areaRng='all', maxDets=100):
+        p = self.params
+        iStr = ' {:<18} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} ] = {:0.5f}'
+        titleStr = 'Average Precision' if ap == 1 else 'Average Recall'
+        typeStr = '(AP)' if ap == 1 else '(AR)'
+        iouStr = '{:0.2f}:{:0.2f}'.format(p.iouThrs[0], p.iouThrs[-1]) \
+            if iouThr is None else '{:0.2f}'.format(iouThr)
+
+        aind = [i for i, aRng in enumerate(p.areaRngLbl) if aRng == areaRng]
+        mind = [i for i, mDet in enumerate(p.maxDets) if mDet == maxDets]
+        if ap == 1:
+            # dimension of precision: [TxRxKxAxM]
+            s = self.eval['precision']
+            # IoU
+            if iouThr is not None:
+                t = np.where(iouThr == p.iouThrs)[0]
+                s = s[t]
+            s = s[:, :, :, aind, mind]
+        else:
+            # dimension of recall: [TxKxAxM]
+            s = self.eval['recall']
+            if iouThr is not None:
+                t = np.where(iouThr == p.iouThrs)[0]
+                s = s[t]
+            s = s[:, :, aind, mind]
+        if len(s[s > -1]) == 0:
+            mean_s = -1
+        else:
+            mean_s = np.mean(s[s > -1])
+        print(iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s))
+        return mean_s
+
+    def _summarizeDets():
+        stats = np.zeros((12,))
+        stats[0] = _summarize(1)
+        stats[1] = _summarize(1, iouThr=.5, maxDets=self.params.maxDets[2])
+        stats[2] = _summarize(1, iouThr=.75, maxDets=self.params.maxDets[2])  # orig
+        #stats[2] = _summarize(1, iouThr=.4, maxDets=self.params.maxDets[2])  # mAP@0.40
+        stats[3] = _summarize(1, areaRng='small', maxDets=self.params.maxDets[2])
+        stats[4] = _summarize(1, areaRng='medium', maxDets=self.params.maxDets[2])
+        stats[5] = _summarize(1, areaRng='large', maxDets=self.params.maxDets[2])
+        stats[6] = _summarize(0, maxDets=self.params.maxDets[0])
+        stats[7] = _summarize(0, maxDets=self.params.maxDets[1])
+        stats[8] = _summarize(0, maxDets=self.params.maxDets[2])
+        stats[9] = _summarize(0, areaRng='small', maxDets=self.params.maxDets[2])
+        stats[10] = _summarize(0, areaRng='medium', maxDets=self.params.maxDets[2])
+        stats[11] = _summarize(0, areaRng='large', maxDets=self.params.maxDets[2])
+        return stats
+
+    def _summarizeKps():
+        stats = np.zeros((10,))
+        stats[0] = _summarize(1, maxDets=20)
+        stats[1] = _summarize(1, maxDets=20, iouThr=.5)
+        stats[2] = _summarize(1, maxDets=20, iouThr=.75)
+        stats[3] = _summarize(1, maxDets=20, areaRng='medium')
+        stats[4] = _summarize(1, maxDets=20, areaRng='large')
+        stats[5] = _summarize(0, maxDets=20)
+        stats[6] = _summarize(0, maxDets=20, iouThr=.5)
+        stats[7] = _summarize(0, maxDets=20, iouThr=.75)
+        stats[8] = _summarize(0, maxDets=20, areaRng='medium')
+        stats[9] = _summarize(0, maxDets=20, areaRng='large')
+        return stats
+
+    if not self.eval:
+        raise Exception('Please run accumulate() first')
+    iouType = self.params.iouType
+    if iouType == 'segm' or iouType == 'bbox':
+        summarize = _summarizeDets
+    elif iouType == 'keypoints':
+        summarize = _summarizeKps
+    self.stats = summarize()
+
+
+# Monkey patch: print mAP's with more digits and custom IoU ranges
+print("HACKING: overriding COCOeval.summarize = vin_summarize...")
+COCOeval.summarize = vin_summarize
+
+
+class VinBigDataEval:
+    """Helper class for calculating the competition metric.
+
+    You should remove the duplicated annoatations from the `true_df` dataframe
+    before using this script. Otherwise it may give incorrect results.
+
+        >>> vineval = VinBigDataEval(valid_df)
+        >>> cocoEvalResults = vineval.evaluate(pred_df)
+
+    Arguments:
+        true_df: pd.DataFrame Clean (no duplication) Training/Validating dataframe.
+
+    Authors:
+        Peter (https://kaggle.com/pestipeti)
+
+    See:
+        https://www.kaggle.com/pestipeti/competition-metric-map-0-4
+
+    Returns: None
+    """
+    def __init__(self, true_df):
+
+        self.true_df = true_df
+
+        self.image_ids = true_df["image_id"].unique()
+        self.annotations = {
+            "type": "instances",
+            "images": self.__gen_images(self.image_ids),
+            "categories": self.__gen_categories(self.true_df),
+            "annotations": self.__gen_annotations(self.true_df, self.image_ids)
+        }
+
+        self.predictions = {
+            "images": self.annotations["images"].copy(),
+            "categories": self.annotations["categories"].copy(),
+            "annotations": None
+        }
+
+    def __gen_categories(self, df):
+        print("Generating category data...")
+
+        if "class_name" not in df.columns:
+            df["class_name"] = df["class_id"]
+
+        cats = df[["class_name", "class_id"]]
+        cats = cats.drop_duplicates().sort_values(by='class_id').values
+
+        results = []
+
+        for cat in cats:
+            results.append({
+                "id": cat[1],
+                "name": cat[0],
+                "supercategory": "none",
+            })
+
+        return results
+
+    def __gen_images(self, image_ids):
+        print("Generating image data...")
+        results = []
+
+        for idx, image_id in enumerate(image_ids):
+
+            # Add image identification.
+            results.append({
+                "id": idx,
+            })
+
+        return results
+
+    def __gen_annotations(self, df, image_ids):
+        print("Generating annotation data...")
+        k = 0
+        results = []
+
+        for idx, image_id in enumerate(image_ids):
+
+            # Add image annotations
+            for i, row in df[df["image_id"] == image_id].iterrows():
+
+                results.append({
+                    "id": k,
+                    "image_id": idx,
+                    "category_id": row["class_id"],
+                    # COCO bbox has xywh format
+                    "bbox": np.array([
+                        row["x_min"],
+                        row["y_min"],
+                        row["x_max"] - row["x_min"],
+                        row["y_max"] - row["y_min"]]
+                    ),
+                    "segmentation": [],
+                    "ignore": 0,
+                    "area": (row["x_max"] - row["x_min"]) * (row["y_max"] - row["y_min"]),
+                    "iscrowd": 0,
+                })
+
+                k += 1
+
+        return results
+
+    def __decode_prediction_string(self, pred_str):
+        data = list(map(float, pred_str.split(" ")))
+        data = np.array(data)
+
+        return data.reshape(-1, 6)
+
+    def __gen_predictions(self, df, image_ids):
+        print("Generating prediction data...")
+        k = 0
+        results = []
+
+        for i, row in df.iterrows():
+
+            image_id = row["image_id"]
+            preds = self.__decode_prediction_string(row["PredictionString"])
+
+            for j, pred in enumerate(preds):
+
+                results.append({
+                    "id": k,
+                    "image_id": int(np.where(image_ids == image_id)[0]),
+                    "category_id": int(pred[0]),
+                    # COCO bbox has xywh format
+                    "bbox": np.array([
+                        pred[2], pred[3], pred[4] - pred[2], pred[5] - pred[3]
+                    ]),
+                    "segmentation": [],
+                    "ignore": 0,
+                    "area": (pred[4] - pred[2]) * (pred[5] - pred[3]),
+                    "iscrowd": 0,
+                    "score": pred[1]
+                })
+
+                k += 1
+
+        return results
+
+    def evaluate(self, pred_df, n_imgs=-1):
+        """Evaluating your results
+
+        Arguments:
+            pred_df: pd.DataFrame your predicted results in the
+                     competition output format.
+
+            n_imgs:  int Number of images use for calculating the
+                     result.All of the images if `n_imgs` <= 0
+
+        Returns:
+            COCOEval object
+        """
+
+        if pred_df is not None:
+            self.predictions["annotations"] = self.__gen_predictions(pred_df, self.image_ids)
+
+        coco_ds = COCO()
+        coco_ds.dataset = self.annotations
+        coco_ds.createIndex()
+
+        coco_dt = COCO()
+        coco_dt.dataset = self.predictions
+        coco_dt.createIndex()
+
+        imgIds = sorted(coco_ds.getImgIds())
+
+        if n_imgs > 0:
+            imgIds = np.random.choice(imgIds, n_imgs)
+
+        cocoEval = COCOeval(coco_ds, coco_dt, 'bbox')
+        cocoEval.params.imgIds  = imgIds
+        cocoEval.params.useCats = True
+        cocoEval.params.iouType = "bbox"
+        cocoEval.params.iouThrs = np.arange(0.5, 1, 0.05)
+        # VinChestXray competition metric
+        #cocoEval.params.iouThrs = np.array([0.4])  # only saves 4 seconds
+        #cocoEval.params.iouThrs = np.arange(0.4, 1, 0.05)
+
+        cocoEval.evaluate()
+        cocoEval.accumulate()
+        cocoEval.summarize()
+
+        # Compute per-category AP (multiclass only)
+        # from https://github.com/facebookresearch/Detectron/blob/a6a835f5b8208c45d0dce217ce9bbda915f44df7/detectron/datasets/json_dataset_evaluator.py#L222-L252 # noqa
+        precisions = cocoEval.eval["precision"]
+        # precision has dims (iou, recall, cls, area range, max dets)
+        #                    (1,   101,    14,  4,          3)
+        if precisions.shape[2] > 1:
+            print(f"AP@0.40 for classes 0...{precisions.shape[2]}")
+            for class_id in range(precisions.shape[2]):
+                # is recall the AUC integration variable?
+                # area range index 0: all area ranges
+                # max dets index -1: typically 100 per image
+                precision = precisions[0, :, class_id, 0, -1]
+                precision = precision[precision > -1]
+                ap = np.mean(precision) if precision.size else float("nan")
+                print(f"{ap:.5f}")
+
+        return cocoEval

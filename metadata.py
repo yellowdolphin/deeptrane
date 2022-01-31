@@ -3,9 +3,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from projects.siimcovid import filter_bg_image_ids
+from utils.detection import get_bg_image_ids
+
 pd.set_option('display.width', 200)
 pd.set_option('display.max_columns', 100)
-
 DEBUG = False
 
 
@@ -39,7 +42,7 @@ def get_metadata(cfg, class_column='category_id'):
             del gb, grouped_df
         elif 'bbox' in cfg.tags:
             df['annotation'] = gb.annotation.apply(','.join)
-            
+
         class_column = 'cell_type'
     else:
         competition_path = Path('../../data')
@@ -49,7 +52,7 @@ def get_metadata(cfg, class_column='category_id'):
     if DEBUG: print(df.head(3))
 
     if 'image' in cfg.tags or ('add_5th_class' in cfg and cfg.add_5th_class):
-        df = add_2class_label(df)
+        df = add_2class_label(df, class_column=class_column)
 
     if 'study' in cfg.tags or 'defaults' in cfg.tags:
         # study labels stored in oh_columns and/or 'category_id'
@@ -61,14 +64,25 @@ def get_metadata(cfg, class_column='category_id'):
 
     df = maybe_encode_labels(df, cfg, class_column=class_column)
 
+    if 'yolov5' in cfg.tags:
+        # A random sample of `n_bg_images` BG images is added to train set, independent of fold.
+        # No BG images in validation. `n_bg_images` is hyperparameter (recommendation: 0...10%)
+        bg_image_ids = get_bg_image_ids(df, bbox_col=cfg.bbox_col)
+        if 'image' in cfg.tags: filtered_bg_image_ids = filter_bg_image_ids(bg_image_ids, df)
+        df = df.set_index('image_id').drop(bg_image_ids, inplace=True).reset_index()
+        if 'image' in cfg.tags: bg_image_ids = filtered_bg_image_ids
+        cfg.bg_image_ids = bg_image_ids
+
     required_columns = ['image_id', 'image_path', class_column]
     if cfg.multilabel:
         required_columns.extend(cfg.classes)
         # keep 'category_id' for StratifiedKFold
     if cfg.use_aux_loss:
         required_columns.append('label')
-    if 'sartorius' in cfg.tags and 'bbox' in cfg.tags:
-        required_columns.append('bbox')
+
+    if 'yolov5' in cfg.tags:
+        required_columns.append(cfg.bbox_col)
+
     df = df[required_columns].reset_index(drop=True)
     if DEBUG: print(df.head(3))
 
@@ -98,7 +112,7 @@ def get_single_label_class_ids(s):
 
 
 def add_2class_label(metadata, class_column='category_id'):
-    # Image labels are all singlelabels!
+    "Asserts identical class_ids in each prediction_string in metadata.labels"
     metadata[class_column] = metadata.label.apply(get_single_label_class_ids)
     print(f"{len(metadata)} examples")
     if 'image_id'         in metadata: print(f"{metadata.image_id.nunique()} unique image ids")
@@ -250,9 +264,8 @@ def maybe_encode_labels(metadata, cfg, class_column='category_id'):
         cfg.n_classes = metadata[class_column].nunique()
         max_label, min_label = metadata[class_column].max(), metadata[class_column].min()
 
-        if metadata[class_column].dtype == 'O' or any(  # `or` prevents TypeError
-               max_label + 1 > cfg.n_classes,
-               min_label < 0):
+        if metadata[class_column].dtype == 'O' or any(max_label + 1 > cfg.n_classes,
+                                                      min_label < 0):  # `or` prevents TypeError
             from sklearn.preprocessing import LabelEncoder
             vocab = LabelEncoder()
             vocab.fit(metadata[class_column].values)
@@ -290,7 +303,7 @@ def split_data(metadata, cfg, class_column='category_id', seed=42):
             assert os.path.exists(cfg.folds), f'no file {cfg.folds}'
             folds = pd.read_json(cfg.folds)['image_id', 'fold']
             metadata = metadata.merge(folds, on='image_id')
-        else:
+        elif cfg.n_classes > 1 and not cfg.multilabel:
             from sklearn.model_selection import StratifiedKFold
 
             labels = metadata[class_column].values
@@ -300,6 +313,21 @@ def split_data(metadata, cfg, class_column='category_id', seed=42):
             for fold, subsets in enumerate(skf.split(metadata.index, labels)):
                 metadata.loc[subsets[1], 'fold'] = fold
 
+        else:
+            from sklearn.model_selection import KFold
+
+            kf = KFold(n_splits=cfg.num_folds, shuffle=True, random_state=seed)
+
+            metadata['fold'] = -1
+            for fold, subsets in enumerate(kf.split(metadata.index)):
+                metadata.loc[subsets[1], 'fold'] = fold
+
     metadata.set_index('image_id', inplace=True)
     if DEBUG: print(metadata.head(5))
     return metadata
+
+
+def get_image_ids(df, split='train'):
+    if split == 'valid':
+        return df.loc[df.is_valid, 'image_id'].unique()
+    return df.loc[~ df.is_valid, 'image_id'].unique()
