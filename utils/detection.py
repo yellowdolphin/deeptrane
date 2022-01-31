@@ -316,7 +316,7 @@ def write_dataset_yaml(cfg, path):
     "Write YOLOv5 dataset yaml"
     path = Path(path)
     yaml_file = path / 'dataset.yaml'
-    class
+
     with open(yaml_file, 'w') as fp:
         yaml.dump(dict(
             train = str(path / 'images' / 'train'),
