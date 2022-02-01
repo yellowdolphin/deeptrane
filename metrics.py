@@ -294,10 +294,6 @@ def multiclass_average_precision_score(y_true, y_score):
 
 # mAP metric implementations --------------------------------------------------
 
-from pycocotools.coco import COCO
-from pycocotools.cocoeval import COCOeval
-
-
 def vin_summarize(self):
     # From detectron2 notebook (https://www.kaggle.com/corochann/vinbigdata-detectron2-train)
     '''
@@ -378,11 +374,6 @@ def vin_summarize(self):
     self.stats = summarize()
 
 
-# Monkey patch: print mAP's with more digits and custom IoU ranges
-print("HACKING: overriding COCOeval.summarize = vin_summarize...")
-COCOeval.summarize = vin_summarize
-
-
 class VinBigDataEval:
     """Helper class for calculating the competition metric.
 
@@ -404,9 +395,14 @@ class VinBigDataEval:
     Returns: None
     """
     def __init__(self, true_df):
+        from pycocotools.coco import COCO
+        from pycocotools.cocoeval import COCOeval
+        
+        # Monkey patch: print mAP's with more digits and custom IoU ranges
+        print("HACKING: overriding COCOeval.summarize = vin_summarize...")
+        COCOeval.summarize = vin_summarize
 
         self.true_df = true_df
-
         self.image_ids = true_df["image_id"].unique()
         self.annotations = {
             "type": "instances",
@@ -420,6 +416,7 @@ class VinBigDataEval:
             "categories": self.annotations["categories"].copy(),
             "annotations": None
         }
+
 
     def __gen_categories(self, df):
         print("Generating category data...")

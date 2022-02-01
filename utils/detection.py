@@ -5,13 +5,24 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from metadata import get_image_ids
+
+def get_image_ids(df, split='train'):
+    # Once packaged, this can go to deeptrane.metadata
+    if split == 'valid':
+        return df.loc[df.is_valid, 'image_id'].unique()
+    return df.loc[~ df.is_valid, 'image_id'].unique()
 
 
-def get_bg_image_ids(df, bbox_col='boxes', id_col='image_id'):
+def get_bg_image_ids(df, bbox_col='bbox', id_col='image_id'):
     "Return array of image_ids with no bboxes"
-    is_bg = df[bbox_col].isna() | df[bbox_col].apply(bool)
+    is_bg = df[bbox_col].isna() | ~ df[bbox_col].apply(bool)
     return df.loc[is_bg, id_col].values
+
+
+def get_bg_images(df, bbox_col='bbox', image_col='image_path'):
+    "Return array of images with no bboxes"
+    is_bg = df[bbox_col].isna() | ~ df[bbox_col].apply(bool)
+    return df.loc[is_bg, image_col].values
 
 
 def get_bbox_xywh(df):
@@ -280,13 +291,17 @@ class BBoxes(list):
 
 def split_siimcovid_boxes(df, cfg):
     "Split bboxes (dict, no class_ids), one row per bbox"
+    assert cfg.bbox_col, f'bbox_col is {cfg.bbox_col}'
+    assert cfg.bbox_col in df.columns, f'{cfg.bbox_col} in {df.columns}'
+    if 'image_id' not in df.columns:
+        df = df.reset_index()
 
     labels = []
     for i, row in enumerate(df.itertuples()):
-        for box in eval(row[cfg.bbox_col]):
+        for box in eval(getattr(row, cfg.bbox_col)):
             labels.append({
                 'image_id': row.image_id,
-                #'class_id': 0,
+                'class_id': 0,
                 'fold': row.fold,
                 'image_path': row.image_path,
                 'x_min': max(0, box['x'] / row.width),
@@ -319,6 +334,7 @@ def split_siimcovid_boxes(df, cfg):
 def write_dataset_yaml(cfg, path):
     "Write YOLOv5 dataset yaml"
     path = Path(path)
+    assert path.exists(), f'no {path}'
     yaml_file = path / 'dataset.yaml'
 
     with open(yaml_file, 'w') as fp:

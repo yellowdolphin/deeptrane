@@ -49,6 +49,12 @@ class Config(DotDict):
             filename = Path(self.out_dir) / "cfg.yaml"
         save_yaml(filename, dict(self), width=width)
 
+    def __repr__(self):
+        s = [f"{self.__class__.__name__}(\n"]
+        for k, v in self.items():
+            s.append(f"    {k} = '{v}',\n" if isinstance(v, str) else f"    {k} = {v},\n")
+        return "".join(s) + ")"
+
 
 parser = argparse.ArgumentParser(description="Command line arguments supersede config file")
 

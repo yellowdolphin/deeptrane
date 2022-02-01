@@ -4,8 +4,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from projects.siimcovid import filter_bg_image_ids
-from utils.detection import get_bg_image_ids
+from projects.siimcovid import filter_bg_images
+from utils.detection import get_bg_images
+from utils.general import sizify
 
 pd.set_option('display.width', 200)
 pd.set_option('display.max_columns', 100)
@@ -15,24 +16,40 @@ DEBUG = False
 def get_metadata(cfg, class_column='category_id'):
     "Return a DataFrame with labels, image paths, dims, splits required by the datasets."
 
+    # Defaults
+    ### TODO: allow image_root, subdirs, filetype to be set in cfg file or parser, check "where needed?"
+    competition_path = Path('../../data')
+    image_root = '../../data/images'
+    subdirs = ['.']
+    filetype = 'png'
+    meta_csv = 'deeptrane_test_meta.csv'
+    dims_csv = None
     if 'pretrain' in cfg.tags:
         competition_path = Path('/kaggle/input/data')
-        meta_csv = 'Data_Entry_2017.csv'
-        df = pd.read_csv(competition_path / meta_csv)
+        image_root = competition_path
+        subdirs = [f'images_{i:03d}/images' for i in range(1, 13)]
+        meta_csv = competition_path / 'Data_Entry_2017.csv'
+        df = pd.read_csv(meta_csv)
         df['image_id'] = df['Image Index'].str.split('.').str[0]
     elif 'study' in cfg.tags or 'image' in cfg.tags:
         competition_path = Path('/kaggle/input/siim-covid19-detection')
         if 'colab' in cfg.tags:
             competition_path = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection')
-        meta_csv = 'train_image_level.csv'
-        df = pd.read_csv(competition_path / meta_csv)
+        filetype = 'jpg' if cfg.size[0] > 512 else 'png'
+        scaled_size = 224 if cfg.size[0] <= 224 else 512 if cfg.size[0] <= 512 else 1024
+        image_root = Path(f'/kaggle/input/siim-covid19-resized-to-{scaled_size}px-{filetype}/train')
+        meta_csv = competition_path / 'train_image_level.csv'
+        dims_csv = image_root.parent / 'meta.csv'
+        df = pd.read_csv(meta_csv)
         df['image_id'] = df.id.str.split('_').str[0]
     elif 'sartorius' in cfg.tags:
         competition_path = Path('/kaggle/input/sartorius-cell-instance-segmentation')
         if 'colab' in cfg.tags:
             competition_path = Path('/content/gdrive/MyDrive/sartorius/sartorius-cell-instance-segmentation')
-        meta_csv = 'train.csv'
-        df = pd.read_csv(competition_path / meta_csv)
+        image_root = competition_path / 'train'
+        meta_csv = competition_path / 'train.csv'
+        dims_csv = meta_csv
+        df = pd.read_csv(meta_csv)
         df.rename(columns={'id': 'image_id'}, inplace=True)
 
         if 'celltype' in cfg.tags:
@@ -45,14 +62,28 @@ def get_metadata(cfg, class_column='category_id'):
 
         class_column = 'cell_type'
     else:
-        competition_path = Path('../../data')
-        meta_csv = 'deeptrane_test_meta.csv'
         df = pd.read_csv(competition_path / meta_csv)
         df['image_id'] = df.id.str.split('_').str[0]
+
+    if 'colab' in cfg.tags:
+        image_root = image_root.replace('/kaggle/input', '/content')
+    image_root = Path(image_root)
+
+    # where needed?
+    cfg.image_root = image_root  # -> datasets, setup_yolov5
+    #cfg.subdirs = subdirs       # not used
+    #cfg.filetype = filetype     # not used
+    assert cfg.image_root.exists(), f"no folder {cfg.image_root}"
+    print("[ √ ] image_root path:", image_root)
+    print("[ √ ] subdirs:", subdirs)
+    print("[ √ ] type:", filetype)
     if DEBUG: print(df.head(3))
 
     if 'image' in cfg.tags or ('add_5th_class' in cfg and cfg.add_5th_class):
         df = add_2class_label(df, class_column=class_column)
+        print(f"{len(df)} examples")
+        if 'image_id'         in df: print(f"{df.image_id.nunique()} unique image ids")
+        if 'StudyInstanceUID' in df: print(f"{df.StudyInstanceUID.nunique()} unique study ids")
 
     if 'study' in cfg.tags or 'defaults' in cfg.tags:
         # study labels stored in oh_columns and/or 'category_id'
@@ -60,21 +91,26 @@ def get_metadata(cfg, class_column='category_id'):
     elif 'pretrain' in cfg.tags:
         df = add_chest14_labels(df, cfg)
 
-    df = add_filename(df, cfg)
+    df = add_filename(df, image_root, subdirs, filetype)
+
+    if 'yolov5' in cfg.tags:
+        # Drop BG images, but keep a list of them.
+        # Add a random sample of `n_bg_images` BG images to train set, independent of fold.
+        # No BG images in validation. `n_bg_images` is hyperparameter (recommendation: 0...10%)
+        bg_images = get_bg_images(df, bbox_col=cfg.bbox_col)
+        if 'image' in cfg.tags: filtered_bg_images = filter_bg_images(bg_images, df)
+        df = df.set_index('image_path').drop(bg_images).reset_index()
+        if 'image' in cfg.tags: bg_images = filtered_bg_images
+        cfg.bg_images = bg_images
+
+        # Save classes (w/o BG/None) before they are encoded
+        cfg.classes = df[class_column].unique().tolist()
+        print(f"classes: {cfg.classes}")
 
     df = maybe_encode_labels(df, cfg, class_column=class_column)
 
-    if 'yolov5' in cfg.tags:
-        # A random sample of `n_bg_images` BG images is added to train set, independent of fold.
-        # No BG images in validation. `n_bg_images` is hyperparameter (recommendation: 0...10%)
-        bg_image_ids = get_bg_image_ids(df, bbox_col=cfg.bbox_col)
-        if 'image' in cfg.tags: filtered_bg_image_ids = filter_bg_image_ids(bg_image_ids, df)
-        df = df.set_index('image_id').drop(bg_image_ids, inplace=True).reset_index()
-        if 'image' in cfg.tags: bg_image_ids = filtered_bg_image_ids
-        cfg.bg_image_ids = bg_image_ids
-
     required_columns = ['image_id', 'image_path', class_column]
-    if cfg.multilabel:
+    if cfg.multilabel and not 'yolov5' in cfg.tags:
         required_columns.extend(cfg.classes)
         # keep 'category_id' for StratifiedKFold
     if cfg.use_aux_loss:
@@ -86,10 +122,9 @@ def get_metadata(cfg, class_column='category_id'):
     df = df[required_columns].reset_index(drop=True)
     if DEBUG: print(df.head(3))
 
-    if cfg.use_aux_loss:
-        # To properly scale segmentation masks, add original image dims
-        meta_csv = os.path.join(cfg.image_root.parent, 'meta.csv')
-        df = add_image_dims(df, meta_csv)
+    if cfg.use_aux_loss or 'yolov5' in cfg.tags:
+        # To properly scale segmentation masks and bboxes, add original image dims
+        df = maybe_add_image_dims(df, dims_csv, meta_csv, cfg)
 
     df = split_data(df, cfg, class_column=class_column)
 
@@ -111,17 +146,13 @@ def get_single_label_class_ids(s):
     return s.pop()
 
 
-def add_2class_label(metadata, class_column='category_id'):
-    "Asserts identical class_ids in each prediction_string in metadata.labels"
-    metadata[class_column] = metadata.label.apply(get_single_label_class_ids)
-    print(f"{len(metadata)} examples")
-    if 'image_id'         in metadata: print(f"{metadata.image_id.nunique()} unique image ids")
-    if 'StudyInstanceUID' in metadata: print(f"{metadata.StudyInstanceUID.nunique()} unique study ids")
-    if DEBUG: print(metadata.head(3))
-    return metadata
+def add_2class_label(df, class_column='category_id'):
+    "Asserts identical class_ids in each prediction_string in df.labels"
+    df[class_column] = df.label.apply(get_single_label_class_ids)
+    return df
 
 
-def add_study_label(metadata, cfg, competition_path, singlelabel_column='category_id'):
+def add_study_label(df, cfg, competition_path, singlelabel_column='category_id'):
     meta_csv = 'train_study_level.csv'
     train_labels_study = pd.read_csv(competition_path / meta_csv)
     train_labels_study['StudyInstanceUID'] = train_labels_study.id.str.split('_').str[0]
@@ -131,29 +162,29 @@ def add_study_label(metadata, cfg, competition_path, singlelabel_column='categor
     train_labels_study['study_label'] = train_labels_study[oh_columns].to_numpy().argmax(axis=1)
 
     # Add study_label to images associated with study.
-    metadata = metadata.merge(train_labels_study[['StudyInstanceUID', 'study_label'] + oh_columns],
+    df = df.merge(train_labels_study[['StudyInstanceUID', 'study_label'] + oh_columns],
                               on='StudyInstanceUID').drop(columns='boxes')
     if not cfg.use_aux_loss:
-        metadata.drop(columns='label', inplace=True)
+        df.drop(columns='label', inplace=True)
 
     # 5-class multilabel classifier: study-labels + image-level "opacity" as 5th class
     if 'add_5th_class' in cfg and cfg.add_5th_class:
         assert cfg.multilabel, '5th study class makes only sense with multilabel=True'
-        metadata['Opacity'] = (metadata[singlelabel_column] == 'opacity').astype(int)
+        df['Opacity'] = (df[singlelabel_column] == 'opacity').astype(int)
         oh_columns.append('Opacity')
 
     if not cfg.multilabel:
-        metadata.drop(columns=oh_columns, inplace=True)
+        df.drop(columns=oh_columns, inplace=True)
 
-    metadata[singlelabel_column] = metadata.study_label
-    metadata.drop(columns='study_label', inplace=True)
+    df[singlelabel_column] = df.study_label
+    df.drop(columns='study_label', inplace=True)
 
     # Filter images to be included in multi-image studies
     if 'exclude_multiimage_studies' in cfg and cfg.exclude_multiimage_studies:
         # Round 1: Only single-image studies
-        images_per_study = metadata.groupby('StudyInstanceUID').image_id.count()
+        images_per_study = df.groupby('StudyInstanceUID').image_id.count()
         single_image_studies = images_per_study[images_per_study == 1].index
-        metadata = metadata.set_index('StudyInstanceUID').loc[single_image_studies]
+        df = df.set_index('StudyInstanceUID').loc[single_image_studies]
     else:
         # Filter out badly labeled image_ids
         # Unlabelled duplicates from https://www.kaggle.com/kwk100/siim-covid-19-duplicate-training-images
@@ -168,24 +199,24 @@ def add_study_label(metadata, cfg, competition_path, singlelabel_column='categor
         608d574388ba 6728e11290af 866e3622cb24 df4f1240317e 267a250932bc 49664f078f0e 869476b0763a a39667fe9a81 b97c6b32105e
         ddb051c1233b ef6e312ca719 8093df07a5d0 779f0040d1b2 76c66ee8e58d 66dabc6f972d df2bb22fa871 6e5946091b8a 75b52bec817f
         3577ee4f26c4 a94171e98807 a5bbd30ed109'''.split())
-        mask = metadata.image_id.isin(bad_image_ids)
+        mask = df.image_id.isin(bad_image_ids)
         if DEBUG: print(f"Filtering out {mask.sum()} unlabelled images")
-        metadata = metadata.loc[~mask].copy()
+        df = df.loc[~mask].copy()
         # In multi-image studies, take only one example (rest are duplicates)
-        metadata.drop_duplicates(subset='StudyInstanceUID', keep='last', inplace=True)
+        df.drop_duplicates(subset='StudyInstanceUID', keep='last', inplace=True)
         # same result with subset=['StudyInstanceUID'] + oh_columns[:4]
 
     cfg['classes'] = oh_columns
 
     if DEBUG:
-        print(f"{len(metadata)} examples")
-        print(metadata.head(3))
+        print(f"{len(df)} examples")
+        print(df.head(3))
 
-    return metadata
+    return df
 
 
-def add_chest14_labels(metadata, cfg, singlelabel_column='category_id'):
-    labels = metadata['Finding Labels'].str.split('|').apply(set)
+def add_chest14_labels(df, cfg, singlelabel_column='category_id'):
+    labels = df['Finding Labels'].str.split('|').apply(set)
     # Skip some irrelevant classes
     #labels = labels.apply(lambda x: x.difference(['No Finding', 'Cardiomegaly']))
     #labels = labels.apply(lambda x: x.difference(['Cardiomegaly']))
@@ -194,82 +225,61 @@ def add_chest14_labels(metadata, cfg, singlelabel_column='category_id'):
                       'Infiltration', 'Mass', 'Nodule', 'Atelectasis', 'Pneumothorax',
                       'Pleural_Thickening', 'Pneumonia', 'Fibrosis', 'Edema', 'Consolidation']
         for c in oh_columns:
-            metadata[c] = labels.apply(set([c]).issubset).astype(int)
+            df[c] = labels.apply(set([c]).issubset).astype(int)
         # Add singlelabel column for StratifiedKFold splitting
-        metadata[singlelabel_column] = metadata[oh_columns].to_numpy().argmax(axis=1)
+        df[singlelabel_column] = df[oh_columns].to_numpy().argmax(axis=1)
         assert 'classes' not in cfg, 'cannot overwrite class names in cfg'
         cfg.classes = oh_columns
     else:
         # Extract single-label instances from multilabel Chest14 dataset
         singlelabel = labels.apply(len) < 2
         labels = labels.apply(lambda x: 'none' if len(x) == 0 else x.pop())
-        metadata[singlelabel_column] = labels
-        metadata = metadata[singlelabel]
+        df[singlelabel_column] = labels
+        df = df[singlelabel]
 
-    if DEBUG: print(metadata.head(5))
-    return metadata
+    if DEBUG: print(df.head(5))
+    return df
 
 
-def add_filename(metadata, cfg):
-    if 'defaults' in cfg.tags:
-        datasets = ['../../data/images']
-        datatype = 'png'
-    elif 'pretrain' in cfg.tags:
-        datasets = [f'/kaggle/input/data/images_{i:03d}/images' for i in range(1, 13)]
-        datatype = 'png'
-    elif 'sartorius' in cfg.tags:
-        datasets = ['/kaggle/input/sartorius-cell-instance-segmentation/train']
-        datatype = 'png'
-    elif cfg.size[0] <= 224:
-        datasets = ['/kaggle/input/siim-covid19-resized-to-224px-png/train']
-        datatype = 'png'
-    elif cfg.size[0] <= 512:
-        datasets = ['/kaggle/input/siim-covid19-resized-to-512px-png/train']
-        datatype = 'png'
-    else:
-        datasets = ['/kaggle/input/siim-covid19-resized-to-1024px-jpg/train']
-        datatype = 'jpg'
-    if 'colab' in cfg.tags:
-        datasets = [d.replace('/kaggle/input', '/content') for d in datasets]
-
+def add_filename(df, image_root, subdirs, filetype='png', xla=False):
     # Copy data (colab) and set image_root path
-    path = Path(datasets[0])
-    assert path.exists(), f"no folder {path}"
-    if cfg.xla and False:  # dataloader.show_batch() hangs
+    if xla and False:  # dataloader.show_batch() hangs
         from kaggle_datasets import KaggleDatasets
-        gcs_path = KaggleDatasets().get_gcs_path(path.parent.name)
-        path = f'{gcs_path}/train'
-    cfg.image_root = path
-    print("[ √ ] image_root path:", cfg.image_root)
+        gcs_path = KaggleDatasets().get_gcs_path(image_root.parent.name)
+        image_root = f'{gcs_path}/{image_root.name}'
 
-    # Add image_path above image_root to metadata
-    if 'pretrain' in cfg.tags:
-        file_names = {}
-        for dataset in datasets:
-            for fn in os.scandir(dataset):
-                image_id = fn.name[:-4]
-                file_names[image_id] = os.path.join(dataset, fn)
-        metadata['image_path'] = metadata.image_id.apply(lambda i: file_names[i])
+    # Add image_path above image_root to df
+    if len(subdirs) == 1 and subdirs[0] == '.':
+        df['image_path'] = df.image_id + f'.{filetype}'
+    elif len(subdirs) == 1:
+        df['image_path'] = f'{subdirs[0]}/' + df.image_id + f'.{filetype}'
     else:
-        metadata['image_path'] = metadata.image_id + f'.{datatype}'
+        # Scan subdirs for images, map image_ids to subdirs
+        fns = {}
+        for subdir in subdirs:
+            for fn in os.scandir(image_root / subdir):
+                if not fn.name.endswith(filetype): continue
+                image_id = Path(fn.name).stem
+                fns[image_id] = os.path.join(subdir, fn)
+        df['image_path'] = df.image_id.apply(lambda i: fns[i])
 
-    return metadata
+    return df
 
 
-def maybe_encode_labels(metadata, cfg, class_column='category_id'):
+def maybe_encode_labels(df, cfg, class_column='category_id'):
     if cfg.multilabel:
         assert 'classes' in cfg, 'no multilabel class names found in cfg'
         cfg.n_classes = len(cfg.classes)
     else:
-        cfg.n_classes = metadata[class_column].nunique()
-        max_label, min_label = metadata[class_column].max(), metadata[class_column].min()
+        cfg.n_classes = df[class_column].nunique()
+        max_label, min_label = df[class_column].max(), df[class_column].min()
 
-        if metadata[class_column].dtype == 'O' or any(max_label + 1 > cfg.n_classes,
-                                                      min_label < 0):  # `or` prevents TypeError
+        if df[class_column].dtype == 'O' or any(max_label + 1 > cfg.n_classes, min_label < 0):
+            #                            ^-- prevents TypeError
             from sklearn.preprocessing import LabelEncoder
             vocab = LabelEncoder()
-            vocab.fit(metadata[class_column].values)
-            metadata[class_column] = vocab.transform(metadata[class_column].values)
+            vocab.fit(df[class_column].values)
+            df[class_column] = vocab.transform(df[class_column].values)
             import pickle
             pickle.dump(vocab, open(f'{cfg.out_dir}/vocab.pkl', 'wb'))
             print(f"[ √ ] Label encoder saved to '{cfg.out_dir}/vocab.pkl'")
@@ -278,56 +288,65 @@ def maybe_encode_labels(metadata, cfg, class_column='category_id'):
         else:
             print("[ √ ] No label encoding required.")
     print("[ √ ] n_classes:", cfg.n_classes)
-    return metadata
+    return df
 
 
-def add_image_dims(metadata, meta_csv, id_col='image_id', height_col='dim0', width_col='dim1'):
-    "Add original image dimensions from `meta_csv` (`height_col`, `width_col`) to metadata"
+def maybe_add_image_dims(df, dims_csv, meta_csv, cfg):
+    "If missing, add original image dimensions to df: height, width"
+    if 'height' in df.columns and 'width' in df.columns:
+        return df
+    if dims_csv and (dims_csv != meta_csv):
+        return add_image_dims(df, dims_csv)
+    elif 'height_col' in cfg and 'width_col' in cfg and cfg.height_col and cfg.width_col:
+        return add_image_dims(df, dims_csv, height_col=cfg.height_col, width_col=cfg.width_col)
+    elif 'original_size' in cfg and cfg.original_size:
+        original_size = sizify(cfg.original_size)  # all labels refer to same original image size
+        df['height'] = original_size[0]
+        df['width'] = original_size[1]
+        return df
+
+
+def add_image_dims(df, meta_csv, id_col='image_id', height_col='dim0', width_col='dim1'):
+    "Add original image dimensions from `meta_csv` (`height_col`, `width_col`) to `df`"
     dims = pd.read_csv(meta_csv)
     dims.rename(columns={id_col: 'image_id', height_col: 'height', width_col: 'width'}, inplace=True)
     dims = dims.loc[:, ['image_id', 'height', 'width']]
-    n_images = len(metadata)
-    metadata = metadata.merge(dims, on='image_id', how='inner')
-    if len(metadata) < n_images:
-        print(f"WARNING: dropped {n_images - len(metadata)} images with unknown original dims")
-    if DEBUG: print(metadata.head(3))
-    return metadata
+    n_images = len(df)
+    df = df.merge(dims, on='image_id', how='inner')
+    if len(df) < n_images:
+        print(f"WARNING: dropped {n_images - len(df)} images with unknown original dims")
+    if DEBUG: print(df.head(3))
+    return df
 
 
-def split_data(metadata, cfg, class_column='category_id', seed=42):
+def split_data(df, cfg, class_column='category_id', seed=42):
     if cfg.train_on_all:
-        metadata['fold'] = 0
+        df['fold'] = 0
     else:
         if 'folds' in cfg and cfg.folds:
             # Get splitting from existing folds.json
             assert os.path.exists(cfg.folds), f'no file {cfg.folds}'
             folds = pd.read_json(cfg.folds)['image_id', 'fold']
-            metadata = metadata.merge(folds, on='image_id')
+            df = df.merge(folds, on='image_id')
         elif cfg.n_classes > 1 and not cfg.multilabel:
             from sklearn.model_selection import StratifiedKFold
 
-            labels = metadata[class_column].values
+            labels = df[class_column].values
             skf = StratifiedKFold(n_splits=cfg.num_folds, shuffle=True, random_state=seed)
 
-            metadata['fold'] = -1
-            for fold, subsets in enumerate(skf.split(metadata.index, labels)):
-                metadata.loc[subsets[1], 'fold'] = fold
+            df['fold'] = -1
+            for fold, subsets in enumerate(skf.split(df.index, labels)):
+                df.loc[subsets[1], 'fold'] = fold
 
         else:
             from sklearn.model_selection import KFold
 
             kf = KFold(n_splits=cfg.num_folds, shuffle=True, random_state=seed)
 
-            metadata['fold'] = -1
-            for fold, subsets in enumerate(kf.split(metadata.index)):
-                metadata.loc[subsets[1], 'fold'] = fold
+            df['fold'] = -1
+            for fold, subsets in enumerate(kf.split(df.index)):
+                df.loc[subsets[1], 'fold'] = fold
 
-    metadata.set_index('image_id', inplace=True)
-    if DEBUG: print(metadata.head(5))
-    return metadata
-
-
-def get_image_ids(df, split='train'):
-    if split == 'valid':
-        return df.loc[df.is_valid, 'image_id'].unique()
-    return df.loc[~ df.is_valid, 'image_id'].unique()
+    df.set_index('image_id', inplace=True)
+    if DEBUG: print(df.head(5))
+    return df
