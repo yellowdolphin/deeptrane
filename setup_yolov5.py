@@ -69,6 +69,8 @@ else:
     raise NotImplementedError('Implement bbox splitter first!')
 if DEBUG: print(metadata.head(5))
 
+# Dump labels for external validation
+metadata.to_json(Path(cfg.out_dir) / 'labels.json')
 
 # Create file structure required by YOLOv5 datasets:
 #   - Separate folders for train/valid/test images
