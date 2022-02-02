@@ -2,6 +2,12 @@ from pathlib import Path
 
 cfg = {
     "name": Path(__file__).stem,
+
+# Setup
+    "project": 'sartorius',
+    "out_dir": '..',
+
+# Training
     "use_folds": [0,1,2,3,4],
     "size": (384, 384),
     "multilabel": True,
@@ -24,7 +30,6 @@ cfg = {
     "rst_path": '/kaggle/input/siimcovid-classifiers-pretrained',
     "rst_name": 'chest14_efnv2_ep8',
     "optimizer": "AdamW",  # Adam, AdamW, SGD
-    "out_dir": '..',
 }
 
 cfg["tags"] = cfg["name"].split("_")

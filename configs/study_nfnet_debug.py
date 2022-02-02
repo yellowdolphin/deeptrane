@@ -2,6 +2,12 @@ from pathlib import Path
 
 cfg = {
     "name": Path(__file__).stem,
+
+# Setup
+    "project": 'siimcovid',
+    "out_dir": '/kaggle/working',
+
+# Training
     "use_folds": [0],
     "size": (384, 384),
     "multilabel": True,
@@ -22,7 +28,6 @@ cfg = {
     "one_cycle": False,
     "step_lr_after": [1, 2],
     "step_lr_factor": 0.1,
-    "out_dir": '..',
 }
 
 cfg["tags"] = cfg["name"].split("_")

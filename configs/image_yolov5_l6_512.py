@@ -9,7 +9,6 @@ cfg = dict(
 
 # Training
     n_bg_images = 440,
-    aux_loss = None,
     num_folds = 5,
     train_on_all = False,
     use_folds = [0, 1, 2, 3, 4],
