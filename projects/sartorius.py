@@ -9,7 +9,7 @@ def init(cfg):
     cfg.meta_csv = cfg.competition_path / 'train.csv'
 
 
-def add_image_id(cfg, df):
+def add_image_id(df, cfg):
     df.rename(columns={'id': 'image_id'}, inplace=True)
 
     # Move to extra func?
@@ -24,7 +24,7 @@ def add_image_id(cfg, df):
     return df
 
 
-def add_category_id(cfg, df):
+def add_category_id(df, cfg):
     if 'celltype' in cfg.tags:
         return df.rename(columns={'cell_type': 'category_id'})
     return df
