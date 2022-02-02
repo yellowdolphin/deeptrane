@@ -122,7 +122,7 @@ from models import get_pretrained_model, get_smp_model
 from xla_train import _mp_fn
 
 # Import project (code, constant settings)
-project = importlib.import_module(f'projects.{cfg.project}') if hasattr(cfg, 'project') else None
+project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
 if project: project.init(cfg)
 
 metadata = get_metadata(cfg, project)

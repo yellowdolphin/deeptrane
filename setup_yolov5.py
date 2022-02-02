@@ -60,7 +60,7 @@ data_path = Path(os.getcwd()) / Path('data' if cd_yolov5 else 'yolov5/data')
 assert data_path.exists()
 
 # Import project (code, constant settings)
-project = importlib.import_module(f'projects.{cfg.project}') if hasattr(cfg, 'project') else None
+project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
 if project: project.init(cfg)
 
 # Metadata, labels
