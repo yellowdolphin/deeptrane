@@ -61,7 +61,9 @@ assert data_path.exists()
 
 # Import project (code, constant settings)
 project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
-if project: project.init(cfg)
+if project:
+    print("[ √ ] Project:", cfg.project)
+    project.init(cfg)
 
 # Metadata, labels
 metadata = get_metadata(cfg, project)

@@ -123,7 +123,9 @@ from xla_train import _mp_fn
 
 # Import project (code, constant settings)
 project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
-if project: project.init(cfg)
+if project:
+    print("[ √ ] Project:", cfg.project)
+    project.init(cfg)
 
 metadata = get_metadata(cfg, project)
 metadata.to_json(f'{cfg.out_dir}/metadata.json')
