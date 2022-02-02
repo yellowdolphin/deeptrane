@@ -5,6 +5,7 @@ from shutil import rmtree
 from glob import glob
 import argparse
 import pkg_resources
+import importlib
 
 import yaml
 import numpy as np
@@ -13,7 +14,7 @@ from utils.general import quietly_run, listify, sizify, autotype
 from utils.detection import split_siimcovid_boxes, write_yolov5_labels, write_dataset_yaml
 from metadata import get_metadata
 
-DEBUG = True
+DEBUG = False
 cd_yolov5 = False
 
 parser.add_argument("--repo")
@@ -58,13 +59,17 @@ if cd_yolov5: os.chdir(yolov5)
 data_path = Path(os.getcwd()) / Path('data' if cd_yolov5 else 'yolov5/data')
 assert data_path.exists()
 
+# Import project (code, constant settings)
+project = importlib.import_module(f'projects.{cfg.project}') if hasattr(cfg, 'project') else None
+if project: project.init(cfg)
+
 # Metadata, labels
-metadata = get_metadata(cfg)
+metadata = get_metadata(cfg, project)
 if DEBUG: 
     print("First row in metadata:")
     print(metadata.iloc[0])
 if 'image' in cfg.tags:
-    metadata = split_siimcovid_boxes(metadata, cfg)
+    metadata = split_siimcovid_boxes(metadata, cfg)  ### move to projects.siimcovid
 else:
     raise NotImplementedError('Implement bbox splitter first!')
 if DEBUG: print(metadata.head(5))
@@ -99,7 +104,7 @@ for fold in set(cfg.use_folds):
         os.symlink(cfg.image_root / image_path, path / 'images' / 'valid' / Path(image_path).name)
 
     if cfg.n_bg_images:
-        print(f"Adding {cfg.n_bg_images} background images without labels to train.")
+        print(f"Adding {cfg.n_bg_images} unlabelled background images to train.")
         for image_path in np.random.choice(cfg.bg_images, size=cfg.n_bg_images, replace=False):
             os.symlink(cfg.image_root / image_path, path / 'images' / 'train' / Path(image_path).name)
 

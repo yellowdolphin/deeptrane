@@ -2,7 +2,9 @@ from pathlib import Path
 
 cfg = dict(
     name = Path(__file__).stem,
+
 # Setup
+    project = 'siimcovid',
     out_dir = '/kaggle/working',
 
 # Training
@@ -20,4 +22,3 @@ cfg = dict(
 # Examples for dependent (inferred) settings
 cfg["tags"] = cfg["name"].split("_")
 cfg["size"] = (512, 512) if "512" in cfg["tags"] else (1024, 1024)
-cfg["bbox_col"] = 'boxes' if 'image' in cfg["tags"] else 'bbox'

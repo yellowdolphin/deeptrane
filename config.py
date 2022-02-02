@@ -13,7 +13,7 @@ class DotDict(dict):
     Reference:
     https://stackoverflow.com/questions/2352181/how-to-use-a-dot-to-access-members-of-dictionary/23689767#23689767
     """
-    __getattr__ = dict.get
+    __getattr__ = dict.get  # returns None if missing key, don't use getattr() with default!
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 

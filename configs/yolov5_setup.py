@@ -8,6 +8,8 @@ cfg = dict(
     branch = 'siim_aux',
     wheels = '/kaggle/input/pycocotools',
     out_dir = '../..',
+    project = None,
+    bbox_col = 'bbox',
 
 # Training
     size = (32, 32),

@@ -3,12 +3,14 @@ import gc
 import sys
 from glob import glob
 from pathlib import Path
+import importlib
 from multiprocessing import cpu_count
 #import warnings
 #warnings.filterwarnings('ignore')
 
-from config import Config, parser
 from future import removesuffix
+from config import Config, parser
+from metadata import get_metadata
 from utils.general import quietly_run, listify, sizify, autotype
 
 # Read config file and parser_args
@@ -119,7 +121,11 @@ from metadata import get_metadata
 from models import get_pretrained_model, get_smp_model
 from xla_train import _mp_fn
 
-metadata = get_metadata(cfg)
+# Import project (code, constant settings)
+project = importlib.import_module(f'projects.{cfg.project}') if hasattr(cfg, 'project') else None
+if project: project.init(cfg)
+
+metadata = get_metadata(cfg, project)
 metadata.to_json(f'{cfg.out_dir}/metadata.json')
 
 for use_fold in cfg.use_folds:
