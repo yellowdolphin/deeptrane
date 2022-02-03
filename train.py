@@ -10,7 +10,6 @@ from multiprocessing import cpu_count
 
 from future import removesuffix
 from config import Config, parser
-from metadata import get_metadata
 from utils.general import quietly_run, listify, sizify, autotype
 
 # Read config file and parser_args
