@@ -289,44 +289,73 @@ class BBoxes(list):
         return cls([BBox(xyxy.astype(float)) for i, xyxy in zip(class_ids, xyxys)])
 
 
-def split_siimcovid_boxes(df, cfg):
-    "Split bboxes (dict, no class_ids), one row per bbox"
-    assert cfg.bbox_col, f'bbox_col is {cfg.bbox_col}'
-    assert cfg.bbox_col in df.columns, f'{cfg.bbox_col} in {df.columns}'
+def get_yolov5_labels(df, cfg):
+    """Split bboxes, one row per bbox, as required by YOLOv5.
+
+    Supported column formats:
+        bbox: [{'x': x_min, 'y': y_min, 'width': box_width, 'height': box_height}, ...]
+                                                        # pixel coordinates (original image)
+        x_min, y_min, x_max, y_max                      # pixel coordinates (original image)
+        height, width                                   # original image dims
+        category_id                                     # class_ids for singlelabel images
+    """
+    xx_cols, yy_cols = ['x_min', 'x_max'], ['y_min', 'y_max']
+
     if 'image_id' not in df.columns:
         df = df.reset_index()
 
-    labels = []
-    for i, row in enumerate(df.itertuples()):
-        for box in eval(getattr(row, cfg.bbox_col)):
-            labels.append({
-                'image_id': row.image_id,
-                'class_id': 0,
-                'fold': row.fold,
-                'image_path': row.image_path,
-                'x_min': max(0, box['x'] / row.width),
-                'y_min': box['y'] / row.height,
-                'x_max': (box['x'] + box['width']) / row.width,
-                'y_max': (box['y'] + box['height']) / row.height,
-            })
-    labels = pd.DataFrame(labels)
+    if all(c in df.columns for c in xx_cols + yy_cols):
+        # df already has one bbox per row
+        for c in xx_cols + yy_cols:
+            assert not df[c].isna().any(), f'df column {c} has NaN'
+        assert (df.width > 0).all(), f'zero image width found'
+        assert (df.height > 0).all(), f'zero image height found'
+        xx, yy = df[xx_cols].values, df[yy_cols].values
 
-    # Check dims
-    assert labels.x_min.min() >= 0
-    assert labels.y_min.min() >= 0
-    assert labels.x_max.max() <= 1
-    assert labels.y_max.max() <= 1
+        labels = pd.DataFrame({
+            'image_id': df.image_id,
+            'class_id': df.category_id if 'category_id' in df.columns else 0,
+            'fold': df.fold,
+            'image_path': df.image_path,
+            'x': xx.mean(axis=1) / df.width,
+            'y': yy.mean(axis=1) / df.height,
+            'w': (xx[:, 1] - xx[:, 0]) / df.width,
+            'h': (yy[:, 1] - yy[:, 0]) / df.height
+        })
 
-    print("Annotations after dropping background class:", labels.shape[0])
+    else:
+        assert 'bbox' in df.columns, f'"bbox" not in {df.columns}'
 
-    # Get normalized coords
-    xxyy_cols = ['x_min', 'x_max', 'y_min', 'y_max']
-    xxyy = labels[xxyy_cols].values
-    labels['x'] = xxyy[:, :2].mean(axis=1)
-    labels['y'] = xxyy[:, 2:].mean(axis=1)
-    labels['w'] = xxyy[:, 1] - xxyy[:, 0]
-    labels['h'] = xxyy[:, 3] - xxyy[:, 2]
-    labels.drop(columns=xxyy_cols, inplace=True)
+        labels = []
+        for i, row in enumerate(df.itertuples()):
+            class_id = row.category_id if 'category_id' in df.columns else 0
+
+            for box in eval(row.bbox):
+                if cfg.multilabel:
+                    print('WARNING: dict key "class" in bbox column may change in future.')
+                    class_id = box['class']
+
+                labels.append({
+                    'image_id': row.image_id,
+                    'class_id': class_id,
+                    'fold': row.fold,
+                    'image_path': row.image_path,
+                    'x': (box['x'] + 0.5 * box['width']) / row.width,
+                    'y': (box['y'] + 0.5 * box['height']) / row.height,
+                    'w': box['width'] / row.width,
+                    'h': box['height'] / row.height
+                })
+        labels = pd.DataFrame(labels)
+
+    # Check NaNs
+    for c in labels.columns:
+        assert not labels[c].isna().any(), f'labels.{c} has NaN'
+
+    # Check limits
+    assert (labels.x <= 1).all(), f'x not normalized: {labels.x.max()}'
+    assert (labels.y <= 1).all(), f'y not normalized: {labels.y.max()}'
+    assert (0 < labels.w).all() and (labels.w <= 1).all()
+    assert (0 < labels.h).all() and (labels.h <= 1).all()
 
     return labels
 
@@ -337,13 +366,17 @@ def write_dataset_yaml(cfg, path):
     assert path.exists(), f'no {path}'
     yaml_file = path / 'dataset.yaml'
 
+    print("DEBUG: cfg.test_images_path in write_dataset_yaml:", type(cfg.test_images_path))
+    print("DEBUG: cfg.n_classes in write_dataset_yaml:", type(cfg.n_classes))
+    print("DEBUG: cfg.classes in write_dataset_yaml:", type(cfg.classes))
+
     with open(yaml_file, 'w') as fp:
         yaml.dump(dict(
             train = str(path / 'images' / 'train'),
             val   = str(path / 'images' / 'valid'),
-            test  = cfg.test_images_path,
-            nc    = cfg.n_classes,
-            names = cfg.classes,
+            test  = str(cfg.test_images_path),
+            nc    = int(cfg.n_classes),
+            names = [str(c) for c in cfg.classes],
         ), fp, default_flow_style=False)
 
 

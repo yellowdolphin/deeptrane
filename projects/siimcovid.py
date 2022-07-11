@@ -30,8 +30,6 @@ def init(cfg):
         cfg.dims_csv = cfg.image_root.parent / 'meta.csv'
         cfg.dims_height = 'dim0'
         cfg.dims_width = 'dim1'
-    if 'yolov5' in cfg.tags:
-        cfg.bbox_col = 'boxes'
 
 
 def extra_columns(cfg):
@@ -46,6 +44,9 @@ def add_image_id(df, cfg):
         df['image_id'] = df['Image Index'].str.split('.').str[0]
     elif 'study' in cfg.tags or 'image' in cfg.tags:
         df['image_id'] = df.id.str.split('_').str[0]
+    if 'yolov5' in cfg.tags:
+        df.rename(columns={'boxes': 'bbox'}, inplace=True)
+
     return df
 
 
