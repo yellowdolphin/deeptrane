@@ -20,6 +20,7 @@ if parser_args.config_file: cfg.update(parser_args.config_file)
 
 cfg.mode = parser_args.mode
 cfg.use_folds = parser_args.use_folds or cfg.use_folds
+cfg.epochs = parser_args.epochs or cfg.epochs
 cfg.batch_verbose = parser_args.batch_verbose or cfg.batch_verbose
 cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
 cfg.betas = parser_args.betas or cfg.betas
@@ -27,6 +28,7 @@ cfg.dropout_ps = cfg.dropout_ps if parser_args.dropout_ps is None else listify(p
 cfg.lin_ftrs = cfg.lin_ftrs if parser_args.lin_ftrs is None else listify(parser_args.lin_ftrs)
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
+print(cfg)
 
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
@@ -40,6 +42,7 @@ if cfg.rst_name is not None:
     rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
 if cfg.use_aux_loss: assert cfg.use_albumentations, 'MySiimCovidDataset requires albumentations'
+cfg.out_dir = Path(cfg.out_dir)
 
 # Install torch.xla on kaggle TPU supported nodes
 if 'TPU_NAME' in os.environ:
@@ -127,7 +130,7 @@ if project:
     project.init(cfg)
 
 metadata = get_metadata(cfg, project)
-metadata.to_json(f'{cfg.out_dir}/metadata.json')
+metadata.to_json(cfg.out_dir / 'metadata.json')
 
 for use_fold in cfg.use_folds:
     print(f"\nFold: {use_fold}")
@@ -135,13 +138,24 @@ for use_fold in cfg.use_folds:
     print(f"Train set: {(~ metadata.is_valid).sum():12d}")
     print(f"Valid set: {   metadata.is_valid.sum():12d}")
 
+    if hasattr(project, 'pooling'):
+        cfg.pooling = project.pooling
+    if hasattr(project, 'bottleneck'):
+        cfg.bottleneck = project.bottleneck
+
     if cfg.use_aux_loss:
         pretrained_model = get_smp_model(cfg)
     else:
         pretrained_model = get_pretrained_model(cfg)
-    #print(pretrained_model)
+    pretrained_model.requires_labels = getattr(pretrained_model, 'requires_labels', False)
+    if hasattr(pretrained_model, 'head'): 
+        print(pretrained_model.head)
+    if hasattr(pretrained_model, 'model') and hasattr(pretrained_model.model, 'head'): 
+        print(pretrained_model.model.head)
+    if hasattr(pretrained_model, 'arc'): 
+        print(pretrained_model.arc)
 
-    fn = Path(cfg.out_dir) / f'{cfg.name}_init.pth'
+    fn = cfg.out_dir / f'{cfg.name}_init.pth'
     if not fn.exists():
         print(f"Saving initial model as {fn}")
         torch.save(pretrained_model.state_dict(), fn)
@@ -167,7 +181,7 @@ for use_fold in cfg.use_folds:
         torch.cuda.empty_cache()
 
     if cfg.save_best:
-        saved_models = sorted(glob(f'{Path(cfg.out_dir)/cfg.name}_fold{use_fold}_ep*.pth'))
+        saved_models = sorted(glob(f'{cfg.out_dir / cfg.name}_fold{use_fold}_ep*.pth'))
         if len(saved_models) > 1:
             last_saved = removesuffix(saved_models[-1], '.pth')
             print("Best saved model:", last_saved)
