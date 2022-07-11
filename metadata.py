@@ -53,6 +53,9 @@ def get_metadata(cfg, project):
     df = add_image_path(df, cfg.image_root, cfg.subdirs, cfg.filetype)
     print("[ √ ] image_path:", *df.image_path.iloc[:2], "...")
 
+    if hasattr(project, 'add_bboxes'):
+        df = project.add_bboxes(df, cfg)
+
     df, cfg.bg_images = maybe_drop_bg_images(df, cfg, project)
 
     df, cfg.n_classes, cfg.classes = maybe_encode_labels(df, cfg)
@@ -65,7 +68,12 @@ def get_metadata(cfg, project):
         required_columns.extend(cfg.classes)
         # keep 'category_id' for StratifiedKFold
     if detection:
-        required_columns.append(cfg.bbox_col)
+        if 'bbox' in df.columns:
+            required_columns.append('bbox')
+        else:
+            required_columns.extend('x_min y_min x_max y_max'.split())
+        if 'height' in df.columns:
+            required_columns.extend('height width'.split())
     if hasattr(project, 'extra_columns'):
         required_columns.extend(project.extra_columns(cfg))
     df = df[required_columns].reset_index(drop=True)
@@ -78,7 +86,12 @@ def get_metadata(cfg, project):
     if DEBUG:
         print("metadata after maybe_add_image_dims:\n", df.head(3))
 
+    df = maybe_filter_ar(df, cfg)
+
     df = split_data(df, cfg)
+
+    if hasattr(project, 'after_split'):
+        df = project.after_split(df, cfg)
 
     assert df.columns[0] == 'image_path'  # dataset convention
     assert df.columns[1] == 'category_id'  # dataset convention
@@ -94,9 +107,11 @@ def add_image_path(df, image_root, subdirs, filetype='png', xla=False):
         image_root = f'{gcs_path}/{image_root.name}'
 
     # Add image_path above image_root to df
+    assert image_root.exists(), f'image_root not found: {image_root}'
     if len(subdirs) == 1 and subdirs[0] == '.':
         df['image_path'] = df.image_id + f'.{filetype}'
     elif len(subdirs) == 1:
+        assert (image_root / subdirs[0]).exists(), f'subdir not found: {image_root / subdirs[0]}'
         df['image_path'] = f'{subdirs[0]}/' + df.image_id + f'.{filetype}'
     else:
         # Scan subdirs for images, map image_ids to subdirs
@@ -116,7 +131,7 @@ def maybe_drop_bg_images(df, cfg, project):
         # Drop BG images, but keep a list of them.
         # Add a random sample of `n_bg_images` BG images to train set, independent of fold.
         # No BG images in validation. `n_bg_images` is hyperparameter (recommendation: 0...10%)
-        bg_images = get_bg_images(df, bbox_col=cfg.bbox_col)
+        bg_images = get_bg_images(df, bbox_col='bbox' if 'bbox' in df.columns else 'x_max')
         if hasattr(project, 'filter_bg_images'):
             filtered_bg_images = project.filter_bg_images(bg_images, df, cfg)
         df = df.set_index('image_path').drop(bg_images).reset_index()
@@ -131,14 +146,15 @@ def maybe_drop_bg_images(df, cfg, project):
 
 def maybe_encode_labels(df, cfg):
     if cfg.multilabel:
-        assert 'classes' in cfg, 'no multilabel class names found in cfg'
+        assert cfg.classes, 'no multilabel class names found in cfg'
         return df, len(cfg.classes), cfg.classes
 
-    classes = df.category_id.unique().tolist()
     max_label, min_label = df.category_id.max(), df.category_id.min()
 
     if df.category_id.dtype == 'O' or any(max_label + 1 > cfg.n_classes, min_label < 0):
         #                           ^-- prevents TypeError
+        import sklearn
+        print("[ √ ] sklearn:", sklearn.__version__)
         from sklearn.preprocessing import LabelEncoder
         import pickle
         vocab = LabelEncoder()
@@ -146,10 +162,15 @@ def maybe_encode_labels(df, cfg):
         df["category_id"] = vocab.transform(df.category_id.values)
         pickle.dump(vocab, open(f'{cfg.out_dir}/vocab.pkl', 'wb'))
         print(f"[ √ ] Label encoder saved to '{cfg.out_dir}/vocab.pkl'")
+        cfg.vocab = vocab
         # backtrafo: vocab.inverse_transform(x) or vocab.classes_[x]
-        # classes:   vocab.classes_
+        classes = vocab.classes_
     else:
         print("[ √ ] No label encoding required.")
+        classes = df.category_id.unique().tolist()
+
+    cfg.classes = list(classes)
+    
     return df, len(classes), classes
 
 
@@ -161,7 +182,8 @@ def maybe_add_image_dims(df, cfg):
     Column names from cfg attrs `dims_id`, `dims_height`, `dims_width`.
     """
     if 'original_size' in cfg and cfg.original_size:
-        original_size = sizify(cfg.original_size)  # all labels refer to same original image size
+        original_size = sizify(cfg.original_size)
+        print(f"[ √ ] All labels refer to original size {original_size}")
         df['height'] = original_size[0]
         df['width'] = original_size[1]
         return df
@@ -187,6 +209,10 @@ def add_image_dims(df, csv, id_col, height_col, width_col):
     if not all(c in dims.columns for c in required_columns):
         print(f"WARNING: missing columns in {csv},\n    need {required_columns}, got {dims.columns}")
         return df  # hope, no orig dims needed
+    assert 'image_id' in df, 'df has no "image_id"'
+    if ('height' in df) or ('width' in df):
+        print(f"WARNING: reading height, width from {csv}, existing cols will be dropped.")
+        df.drop(columns=['width', 'height'], inplace=True)
 
     dims.rename(columns={id_col: 'image_id', height_col: 'height',
                          width_col: 'width'}, inplace=True)
@@ -200,35 +226,49 @@ def add_image_dims(df, csv, id_col, height_col, width_col):
     return df
 
 
+def maybe_filter_ar(df, cfg):
+    if cfg.ar_lowpass or cfg.ar_highpass:
+        ar = df.width / df.height
+    else:
+        return df
+    if cfg.ar_lowpass:
+        df = df.loc[ar < cfg.ar_lowpass].copy().reset_index(drop=True)
+    if cfg.ar_highpass:
+        df = df.loc[ar >= cfg.ar_highpass].copy().reset_index(drop=True)
+    print(f"[ √ ] {len(df)} examples after aspect ratio filters")
+    return df
+
+
 def split_data(df, cfg, seed=42):
     if cfg.train_on_all:
-        df['fold'] = 0
+        df['fold'] = -1  # fold marks the valid images of the corresponding CV fold
+        return df.set_index('image_id')
+
+    if cfg.folds_json:
+        # Get splitting from existing folds.json
+        assert os.path.exists(cfg.folds_json), f'no file {cfg.folds_json}'
+        folds = pd.read_json(cfg.folds_json)[['image_id', 'fold']]
+        df = df.merge(folds, on='image_id')
+        return df.set_index('image_id')
+
+    df['fold'] = -1  # fold marks the valid images of the corresponding CV fold
+    if cfg.train_on_all:
+        return df.set_index('image_id')
+
+    if cfg.n_classes > 1 and not cfg.multilabel:
+        from sklearn.model_selection import StratifiedKFold
+
+        labels = df.category_id.values
+        skf = StratifiedKFold(n_splits=cfg.num_folds, shuffle=True, random_state=seed)
+
+        for fold, subsets in enumerate(skf.split(df.index, labels)):
+            df.loc[subsets[1], 'fold'] = fold
     else:
-        if 'folds' in cfg and cfg.folds:
-            # Get splitting from existing folds.json
-            assert os.path.exists(cfg.folds), f'no file {cfg.folds}'
-            folds = pd.read_json(cfg.folds)['image_id', 'fold']
-            df = df.merge(folds, on='image_id')
-        elif cfg.n_classes > 1 and not cfg.multilabel:
-            from sklearn.model_selection import StratifiedKFold
+        from sklearn.model_selection import KFold
 
-            labels = df.category_id.values
-            skf = StratifiedKFold(n_splits=cfg.num_folds, shuffle=True, random_state=seed)
+        kf = KFold(n_splits=cfg.num_folds, shuffle=True, random_state=seed)
 
-            df['fold'] = -1
-            for fold, subsets in enumerate(skf.split(df.index, labels)):
-                df.loc[subsets[1], 'fold'] = fold
+        for fold, subsets in enumerate(kf.split(df.index)):
+            df.loc[subsets[1], 'fold'] = fold
 
-        else:
-            from sklearn.model_selection import KFold
-
-            kf = KFold(n_splits=cfg.num_folds, shuffle=True, random_state=seed)
-
-            df['fold'] = -1
-            for fold, subsets in enumerate(kf.split(df.index)):
-                df.loc[subsets[1], 'fold'] = fold
-
-    df.set_index('image_id', inplace=True)
-    if DEBUG: print(df.head(5))
-
-    return df
+    return df.set_index('image_id')
