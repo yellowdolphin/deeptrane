@@ -79,6 +79,7 @@ class ImageDataset(Dataset):
             # Benchmark (JPEGs): io 23:57, cv2 22:14, PIL 22:57
             # cv2 is slightly faster but does not exactly reproduce PIL/fastai's pixel values.
             #image = io.imread(fn)    # array
+            assert os.path.exists(fn), f'{fn} not found'
             image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
             #image = PIL.Image.fromarray(image)  # optional, not required
             #image = torch.from_numpy(cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)).permute(2,0,1).contiguous()/255.
@@ -100,7 +101,8 @@ class ImageDataset(Dataset):
             label = self.labels[index]
             return (image, label)
         else:
-            return (image,)
+            return image
+
 
 
 class MySiimCovidAuxDataset(Dataset):
