@@ -115,6 +115,7 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
 
     # training loop
     for batch_idx, batch in enumerate(para_loader, start=1):
+        #if batch_idx > 3: break  ########### DEBUG
 
         # extract inputs and labels (multi-core: data already on device)
         if cfg.use_aux_loss:
@@ -211,7 +212,8 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
 
     # initialize
     model.eval()
-    loss_meter = AverageMeter(xm)
+    if not cfg.pudae_valid:
+        loss_meter = AverageMeter(xm)
     metrics = metrics or []
     any_macro = metrics and any(getattr(m, 'needs_scores', False) for m in metrics)
     if any_macro:
@@ -235,6 +237,14 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
                 seg_preds, preds = model(inputs)
             else:
                 preds = model(inputs, labels) if model.requires_labels else model(inputs)
+
+        # pudae's ArcFace validation
+        if cfg.pudae_valid:
+            assert preds.size()[1] == 512, f'preds have wrong shape {preds.detach().size()}'
+            all_scores.append(preds.detach().to(torch.float16))  # default: float32
+            all_preds.append(torch.zeros_like(labels, dtype=torch.int8))
+            all_labels.append(labels.to(torch.int16))  # default: int64
+            continue  # skip loss
 
         # compute local loss
         assert preds.detach().dim() == 2, f'preds have wrong dim {preds.detach().dim()}'
@@ -266,7 +276,10 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
                 meter.update(inputs.size(0) * m(labels.cpu().numpy(), top))
 
     # mesh_reduce loss
-    avg_loss = loss_meter.average
+    if cfg.pudae_valid:
+        avg_loss = 0
+    else:
+        avg_loss = loss_meter.average
 
     # mesh_reduce metrics
     avg_metrics = []
