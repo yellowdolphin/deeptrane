@@ -21,6 +21,7 @@ import torch.optim as optim
 from augmentation import get_tfms
 from utils.general import listify
 from models import is_bn
+from metrics import NegativeRate, MAP
 
 torch.set_default_tensor_type('torch.FloatTensor')
 
@@ -43,10 +44,10 @@ class AverageMeter(object):
         self.count += n
 
     @property
-    def average(self):
+    def average(self, eps=1e-14):
         reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
         reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
-        return reduced_sum / reduced_count
+        return reduced_sum / (reduced_count + eps)
 
     @property
     def current(self):
@@ -159,7 +160,8 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
                 inputs = TF.crop(inputs, top, left, height, width)
 
         # forward and backward pass
-        preds = model(inputs)
+        preds = model(inputs, labels) if model.requires_labels else model(inputs)
+
         if cfg.use_aux_loss:
             seg_logits, preds = preds
             seg_loss = seg_crit(seg_logits, masks)
@@ -167,6 +169,7 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
             loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
         else:
             loss = criterion(preds, labels)
+
         loss = loss / cfg.n_acc
         loss.backward()
         if batch_idx % cfg.n_acc == 0:
@@ -204,17 +207,20 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
     return loss_meter.average
 
 
-def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, metrics=None):
+def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, metrics=None):
 
     # initialize
     model.eval()
     loss_meter = AverageMeter(xm)
     metrics = metrics or []
-    if metrics:
+    any_macro = metrics and any(getattr(m, 'needs_scores', False) for m in metrics)
+    if any_macro:
         # macro metrics need all predictions and labels
         all_scores = []
         all_preds = []
         all_labels = []
+    else:
+        metric_meters = [AverageMeter(xm) for m in metrics]
 
     # validation loop
     for batch_idx, (inputs, labels) in enumerate(para_loader, start=1):
@@ -228,28 +234,43 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, metrics=None
             if cfg.use_aux_loss:
                 seg_preds, preds = model(inputs)
             else:
-                preds = model(inputs)
+                preds = model(inputs, labels) if model.requires_labels else model(inputs)
 
         # compute local loss
+        assert preds.detach().dim() == 2, f'preds have wrong dim {preds.detach().dim()}'
+        assert preds.detach().size()[1] == cfg.n_classes, f'preds have wrong shape {preds.detach().size()}'
+        assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
         loss = criterion(preds, labels)
         loss_meter.update(loss.item(), inputs.size(0))
 
         # locally keep preds, labels for metrics (needs only device memory)
-        if metrics and cfg.multilabel:
+        if any_macro and cfg.multilabel:
             all_scores.append(preds.detach().sigmoid())
             all_preds.append((all_scores[-1] > 0.5).to(int))
             all_labels.append(labels)
-        elif metrics:
+        elif any_macro:
             all_scores.append(preds.detach().softmax(dim=1))  # for mAP
             all_preds.append(preds.detach().argmax(dim=1))
             all_labels.append(labels)
+        else:
+            top5_scores, top5 = torch.topk(preds.detach(), 5)
+            if cfg.negative_thres:
+                # prepend negative_class if top prediction is below negative_thres
+                negatives = top5_scores[:, 0] < cfg.negative_thres
+                top5[negatives, 1:] = top5[negatives, :-1]
+                top5[negatives, 0] = cfg.vocab.transform([cfg.negative_class])[0]
+            top5 = top5.cpu().numpy()
+
+            for m, meter in zip(metrics, metric_meters):
+                top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
+                meter.update(inputs.size(0) * m(labels.cpu().numpy(), top))
 
     # mesh_reduce loss
     avg_loss = loss_meter.average
 
     # mesh_reduce metrics
     avg_metrics = []
-    if metrics:
+    if metrics and any_macro:
         #metrics_start = time.perf_counter()
         local_scores = torch.cat(all_scores)
         local_preds = torch.cat(all_preds)
@@ -263,11 +284,13 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, metrics=None
         #xm.master_print("preds: ",  preds.cpu().numpy()[0])
         for m in metrics:
             avg_metrics.append(
-                m(labels.cpu().numpy(), scores.cpu().numpy()) if hasattr(m, 'needs_scores') else
+                m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
         #wall_metrics = time.perf_counter() - metrics_start
         #xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
+    elif metrics:
+        avg_metrics = [meter.average / n_examples for meter in metric_meters]
 
     return avg_loss, avg_metrics
 
@@ -286,25 +309,31 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     # Data samplers, class-weighted metrics
     class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
     xm.master_print("Using class labels from column", class_column)
-    train_labels = metadata.loc[~ metadata.is_valid, class_column]
-    valid_labels = metadata.loc[  metadata.is_valid, class_column]
+
+    is_valid = metadata.is_valid
+    is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
+
+    train_labels = metadata.loc[~ is_valid, class_column]
+    valid_labels = metadata.loc[is_valid | is_shared, class_column]
 
     train_tfms = get_tfms(cfg, mode='train')
     test_tfms = get_tfms(cfg, mode='test')
     tensor_tfms = None
 
     if cfg.use_aux_loss:
-        ds_train = MySiimCovidAuxDataset(metadata.loc[~ metadata.is_valid], cfg, mode='train',
+        ds_train = MySiimCovidAuxDataset(metadata.loc[~ is_valid], cfg, mode='train',
                                          transform=train_tfms, tensor_transform=tensor_tfms)
     else:
-        ds_train = ImageDataset(metadata.loc[~ metadata.is_valid], cfg, mode='train',
+        ds_train = ImageDataset(metadata.loc[~ is_valid], cfg, mode='train',
                                          transform=train_tfms, tensor_transform=tensor_tfms,
                                          class_column=class_column)
         
-    ds_valid = ImageDataset(metadata.loc[  metadata.is_valid], cfg, mode='valid',
+    ds_valid = ImageDataset(metadata.loc[is_valid | is_shared], cfg, mode='valid',
                                          transform=test_tfms, tensor_transform=tensor_tfms,
                                          class_column=class_column)
 
+    xm.master_print("ds_train:", len(ds_train))
+    xm.master_print("ds_valid:", len(ds_valid))
     #xm.master_print("train_tfms:")
     #xm.master_print(ds_train.transform)
     #xm.master_print("test_tfms:")
@@ -386,11 +415,21 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map = partial(val_map, xm=xm)
     map.__name__ = 'mAP'
     map.needs_scores = True
+    if cfg.negative_class and cfg.vocab:
+        pct_negatives = NegativeRate(negative_class=cfg.vocab.transform([cfg.negative_class])[0])
+    map5 = MAP(xm, k=5, name='mAP5')
+
     metrics = (
         []                     if len(ds_valid) == 0 else
         [ap,  micro_f1, map]   if cfg.multilabel else
         [acc, macro_f1, map]
     )
+
+    if cfg.no_macro_metrics:
+        metrics = [m for m in metrics if not getattr(m, 'needs_scores', False)]
+
+    if cfg.pudae_valid: metrics = [map5]
+    if cfg.negative_thres: metrics.append(pct_negatives)
 
     # Scale LRs
     lr_head, lr_bn, lr_body = cfg.lr_head, cfg.lr_bn, cfg.lr_body
@@ -521,8 +560,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                                  para_loader = para_loader,
                                                  criterion   = criterion,
                                                  device      = device,
+                                                 n_examples  = len(valid_labels),
                                                  metrics     = metrics)
-        metrics_dict = {m.__name__: val for m, val in zip(metrics, valid_metrics)}
+        metrics_dict = {'train_loss': train_loss, 'valid_loss': valid_loss}
+        metrics_dict.update({m.__name__: val for m, val in zip(metrics, valid_metrics)})
         last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else scaled_lr
         avg_lr = 0.5 * (scaled_lr + last_lr) / xm.xrt_world_size()
 
@@ -544,44 +585,45 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         if cfg.save_best:
             assert cfg.save_best in metrics_dict, f'{cfg.save_best} not in {list(metrics_dict)}'
         model_score = metrics_dict[cfg.save_best] if cfg.save_best else -valid_loss
+        if cfg.save_best and 'loss' in cfg.save_best: model_score = -model_score
         if model_score > best_model_score or not cfg.save_best:
             if cfg.save_best:
                 best_model_score = model_score
                 #xm.master_print(f'{cfg.save_best or "valid_loss"} improved.')
+                fn = cfg.out_dir / f'{model_name}_best_{cfg.save_best}'
+            else:
+                fn = cfg.out_dir / f'{model_name}_ep{epoch+1}'
 
             #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
-            xm.save(model.state_dict(), f'{cfg.out_dir}/{model_name}_ep{epoch+1}.pth')
+            xm.save(model.state_dict(), f'{fn}.pth')
 
             #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
             xm.save({'optimizer_state_dict': optimizer.state_dict(),
-                     'epoch': epoch}, f'{cfg.out_dir}/{model_name}_ep{epoch+1}.opt')
+                     'epoch': epoch}, f'{fn}.opt')
 
             if hasattr(scheduler, 'state_dict'):
                 #xm.master_print(f'saving {model_name}_ep{epoch+1}.sched ...')
                 xm.save({'scheduler_state_dict': {
                     k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
-                    f'{cfg.out_dir}/{model_name}_ep{epoch+1}.sched')
+                    f'{fn}.sched')
 
         # Save losses, metrics
-        train_losses.append(train_loss)
-        valid_losses.append(valid_loss)
+        #train_losses.append(train_loss)
+        #valid_losses.append(valid_loss)
         metrics_dicts.append(metrics_dict)
         lrs.append(avg_lr)
         minutes.append((time.perf_counter() - epoch_start) / 60)
 
     if xm.xrt_world_size() > 1:
-        serial_executor.run(lambda: save_metrics(train_losses, valid_losses, metrics_dicts,
-                                                 lrs, minutes, rst_epoch, use_fold, cfg.out_dir))
+        serial_executor.run(lambda: save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir))
     else:
-        save_metrics(train_losses, valid_losses, metrics_dicts, lrs, minutes, 
-                     rst_epoch, use_fold, cfg.out_dir)
+        save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir)
 
 
-def save_metrics(train_losses, valid_losses, metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
-    df = pd.DataFrame({"train_loss": train_losses, "valid_loss": valid_losses})
-    df = pd.concat([df, pd.DataFrame(metrics_dicts)], axis=1)
+def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
+    df = pd.DataFrame(metrics_dicts)
     df['lr'] = lrs
     df['Wall'] = minutes
     df['epoch'] = df.index + rst_epoch + 1
     df.set_index('epoch', inplace=True)
-    df.to_json(f'{out_dir}/metrics_fold{fold}.json')
+    df.to_json(Path(out_dir) / f'metrics_fold{fold}.json')
