@@ -1,11 +1,13 @@
 from collections import OrderedDict
 from subprocess import run
 from pathlib import Path
+import math
 
 import timm
 import torch
 from torch import nn
 from torch.nn.parameter import Parameter
+import torch.nn.functional as F
 from future import removesuffix
 
 DEBUG = False
@@ -29,18 +31,227 @@ class GeM(nn.Module):
             ', ' + 'eps=' + str(self.eps) + ')'
 
 
+class ArcModule(nn.Module):
+    # from https://github.com/pudae/kaggle-humpback/blob/master/tasks/identifier.py
+    def __init__(self, in_features, out_features, s=65, m=0.5):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.s = s
+        self.m = m
+        self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        nn.init.xavier_normal_(self.weight)
+
+        self.cos_m = math.cos(m)
+        self.sin_m = math.sin(m)
+        self.th = math.cos(math.pi - m)
+        self.mm = math.sin(math.pi - m) * m
+
+    def forward(self, inputs, labels):
+        cos_th = F.linear(inputs, F.normalize(self.weight))
+        cos_th = cos_th.clamp(-1, 1)
+        sin_th = torch.sqrt(1.0 - torch.pow(cos_th, 2))
+        cos_th_m = cos_th * self.cos_m - sin_th * self.sin_m
+        cos_th_m = torch.where(cos_th > self.th, cos_th_m, cos_th - self.mm)
+
+        cond_v = cos_th - self.th
+        cond = cond_v <= 0
+        cos_th_m[cond] = (cos_th - self.mm)[cond]
+
+        if labels.dim() == 1:
+            labels = labels.unsqueeze(-1)
+        onehot = torch.zeros(cos_th.size()).to(labels.device)
+        onehot.scatter_(1, labels, 1)
+        outputs = onehot * cos_th_m + (1.0 - onehot) * cos_th
+        outputs = outputs * self.s
+        return outputs
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}('\
+               f'in_features={self.in_features}, out_features={self.out_features}, '\
+               f's={self.s}, m={self.m})'
+
+
+class ArcMarginProduct(nn.Module):
+    """
+    https://github.com/lyakaap/Landmark2019-1st-and-3rd-Place-Solution/blob/master/src/modeling/metric_learning.py
+    Implement of large margin arc distance: :
+        Args:
+            in_features: size of each input sample
+            out_features: size of each output sample
+            s: norm of input feature
+            m: margin
+            cos(theta + m)
+    """
+    def __init__(self, in_features, out_features, s=30.0,
+                 m=0.30, easy_margin=False, ls_eps=0.0):
+        super(ArcMarginProduct, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.s = s
+        self.m = m
+        self.ls_eps = ls_eps  # label smoothing
+        self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        nn.init.xavier_uniform_(self.weight)
+
+        self.easy_margin = easy_margin
+        self.cos_m = math.cos(m)
+        self.sin_m = math.sin(m)
+        self.th = math.cos(math.pi - m)
+        self.mm = math.sin(math.pi - m) * m
+
+    def forward(self, input, label):
+        # --------------------------- cos(theta) & phi(theta) ---------------------
+        cosine = F.linear(input, F.normalize(self.weight))
+        sine = torch.sqrt(1.0 - torch.pow(cosine, 2))
+        phi = cosine * self.cos_m - sine * self.sin_m
+        if self.easy_margin:
+            phi = torch.where(cosine > 0, phi, cosine)
+        else:
+            phi = torch.where(cosine > self.th, phi, cosine - self.mm)
+        # --------------------------- convert label to one-hot ---------------------
+        # one_hot = torch.zeros(cosine.size(), requires_grad=True, device='cuda')
+        one_hot = torch.zeros(cosine.size(), device=label.device)
+        one_hot.scatter_(1, label.view(-1, 1).long(), 1)
+        if self.ls_eps > 0:
+            one_hot = (1 - self.ls_eps) * one_hot + self.ls_eps / self.out_features
+        # -------------torch.where(out_i = {x_i if condition_i else y_i) ------------
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+        output *= self.s
+
+        return output
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}('\
+               f'in_features={self.in_features}, out_features={self.out_features}, '\
+               f's={self.s}, m={self.m}, easy_margin={self.easy_margin}, ls_eps={self.ls_eps})'
+
+
+class AddMarginProduct(nn.Module):
+    """
+    https://github.com/lyakaap/Landmark2019-1st-and-3rd-Place-Solution/blob/master/src/modeling/metric_learning.py
+    Implement of large margin cosine distance: :
+    Args:
+        in_features: size of each input sample
+        out_features: size of each output sample
+        s: norm of input feature
+        m: margin
+        cos(theta) - m
+    """
+
+    def __init__(self, in_features, out_features, s=30.0, m=0.40):
+        super(AddMarginProduct, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.s = s
+        self.m = m
+        self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        nn.init.xavier_uniform_(self.weight)
+
+    def forward(self, input, label):
+        # --------------------------- cos(theta) & phi(theta) ---------------------------
+        cosine = F.linear(input, F.normalize(self.weight))
+        phi = cosine - self.m
+        # --------------------------- convert label to one-hot ---------------------------
+        one_hot = torch.zeros(cosine.size(), device=label.device)
+        # one_hot = one_hot.cuda() if cosine.is_cuda else one_hot
+        one_hot.scatter_(1, label.view(-1, 1).long(), 1)
+        # -------------torch.where(out_i = {x_i if condition_i else y_i) -------------
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)  # you can use torch.where if your torch.__version__ is 0.4
+        output *= self.s
+        # print(output)
+
+        return output
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}('\
+               f'in_features={self.in_features}, out_features={self.out_features}, '\
+               f's={self.s}, m={self.m})'
+
+
+class ArcNet(nn.Module):
+    "Wraps a pretrained model with ArcFace head, forward requires labels."
+    def __init__(self, cfg, model):
+        super().__init__()
+
+        self.model = model
+        in_features = cfg.channel_size or 512
+        out_features = cfg.n_classes
+        s, m = cfg.arcface_s, cfg.arcface_m
+        self.arc = (
+            ArcModule(in_features, out_features, s=s, m=m) if cfg.arcface == 'ArcModule' else
+            ArcMarginProduct(in_features, out_features, s=s, m=m) if cfg.arcface == 'ArcMarginProduct' else
+            AddMarginProduct(in_features, out_features, s=s, m=m) if cfg.arcface == 'AddMarginProduct' else
+            nn.Identity())
+        self.requires_labels = True
+
+        if hasattr(self.model, 'mean') and hasattr(self.model, 'std'):
+            print(f"ArcNet: pretrained model has mean {self.model.mean:.5f}, std {self.model.std:.5f}")
+        if hasattr(self.model, 'input_range') and hasattr(self.model, 'input_space'):
+            print(f"ArcNet: pretrained model has input_range {self.model.input_range}, input_space {self.model.input_space}")
+        self.mean = self.model.mean if hasattr(self.model, 'mean') else [0.5, 0.5, 0.5]
+        self.std = self.model.std if hasattr(self.model, 'std') else [0.5, 0.5, 0.5]
+        self.input_range = self.model.input_range if hasattr(self.model, 'input_range') else [0, 1]
+        self.input_space = self.model.input_space if hasattr(self.model, 'input_space') else 'RGB'
+
+    def forward(self, images, labels=None):
+        # In validation, forward is called w/o labels. Hence, output features have shape [N, 512] rather than [N, n_classes].
+        # But task.loss(features, labels) is called the same way! As task.loss is same in train/valid, dataloader is pytorch one,
+        # the dataset must provide some labels in the 0...511 range that represent ...what?
+        # Both task.forward() and task.inference() are called w (train) or w/o (valid) labels!
+        # If inference is called with outputs, the latter are just returned, otherwise same as forward.
+        # When called w/o labels, the features are normalized but not passed through ArcModule, hence have size [N, 512]!
+        if not self.training: return self.model(images)  # skip normlize, like in Vlad Vaduva's notebook
+        features = F.normalize(self.model(images))
+        #if labels is not None:
+        if self.training:  # toggle arc here rather than in xla_train
+            #assert self.training  # only for intra-valid metrics
+            return self.arc(features, labels)
+        return features
+
+    def logits(self, features, labels):
+        # Allows extra step between feature normalization and ArcModule. What used for???
+        # After cosine-similarity, the predtion would be argmax, but to predict "new_individual",
+        # argmax(scores) should be replaced by n_classes if max_score < threshold!
+        # NO: 'new_individual' is an ordinary class and its embedding should be trained to be an
+        # image-adaptive threshold for the other classes' scores! Hence, 'new_individual' images should
+        # be part of SKF splitting!
+        return self.arc(features, labels)
+
+
+
 def is_bn(name):
     return any((name.startswith('bn1.'), name.startswith('bn2.'), name.startswith('bn3.'),
                 '.bn1.' in name, '.bn2.' in name, '.bn3.' in name))
 
 
-def get_n_features(m):
+def get_n_features(m, default='raise'):
     if hasattr(m, 'num_features'): return m.num_features
     if hasattr(m, 'final_conv'  ): return m.final_conv.out_channels
     if hasattr(m, 'head'        ): return m.head.in_features
     if hasattr(m, 'classifier'  ): return m.classifier.in_features
     if hasattr(m, 'fc'          ): return m.fc.in_features
-    raise NotImplementedError(f"unkown model type:\n{m}")
+    if default == 'raise':
+        raise NotImplementedError(f"unkown model type:\n{m}")
+    return default
+
+
+def get_out_features(m, default='raise'):
+    if hasattr(m, 'out_features'): return m.out_features
+    if hasattr(m, 'out_channels'): return m.out_channels
+    if default == 'raise':
+        raise NotImplementedError(f"unkown model type:\n{m}")
+    return default
+
+
+def get_last_out_features(m, default='raise'):
+    if not hasattr(m, 'children'): return get_out_features(m, default)
+    out_features = [get_out_features(c, None) for c in m.children()]
+    out_features = [n for n in out_features if n]
+    if out_features: return out_features[-1]
+    if default == 'raise':
+        raise NotImplementedError(f"unkown model type:\n{m}")
+    return default
 
 
 def skip_head(m):
@@ -65,31 +276,55 @@ def compare_state_dicts(a, b, check_shapes=False):
 def get_pretrained_model(cfg):
     """Initialize pretrained_model for a new fold based on global variables
 
-    Only fold-dependent variables must be passed in."""
+    Only fold-dependent variables must be passed in.
+    bottleneck: callable that returns an nn.Sequential instance"""
     # AdaptiveMaxPool2d does not work with xla, use pmp = concat_pool = False
     pretrained = (cfg.rst_name is None) and 'defaults' not in cfg.tags
-    pooling_layer = GeM() if cfg.use_gem else nn.AdaptiveAvgPool2d(output_size=1)
     body = timm.create_model(cfg.arch_name, pretrained=pretrained)
     n_features = get_n_features(body)
     body = skip_head(body)
+    print(n_features, "features after last Conv")
+    pooling_layer = GeM() if cfg.use_gem else cfg.pooling(cfg, n_features) if cfg.pooling else None
+    n_features = get_last_out_features(pooling_layer, None) or n_features
+    print(n_features, "features after pooling")
+    pooling_layer = pooling_layer or nn.AdaptiveAvgPool2d(output_size=1)
+    bottleneck = cfg.bottleneck(cfg, n_features) or [] if cfg.bottleneck else []
+    n_features = get_last_out_features(bottleneck, None) or n_features
+    print(n_features, "features after bottleneck")
 
-    # Try vanilla head w/o bottleneck, BN, and dropout (like efnb7 models)
-    if cfg.arch_name.startswith('cait'):
+    if cfg.feature_size:
+        # Model used by pudae (Humpback-whale-identification) with FC instead of AvgPool
+        head = nn.Sequential(nn.BatchNorm2d(n_features),
+                             nn.Dropout2d(p=cfg.dropout_ps[0]),
+                             nn.Flatten(),
+                             nn.Linear(n_features * cfg.feature_size, cfg.channel_size),
+                             nn.BatchNorm1d(cfg.channel_size))
+    elif cfg.arch_name.startswith('cait'):
         head = nn.Sequential(nn.Dropout(p=cfg.dropout_ps[0]),
-                             nn.Linear(n_features, cfg.n_classes))
+                             *bottleneck,
+                             nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
     else:
+        print(f"building output layer {n_features, cfg.channel_size or cfg.n_classes}")
         head = nn.Sequential(pooling_layer,
                              nn.Flatten(),
                              nn.Dropout(p=cfg.dropout_ps[0]),
-                             nn.Linear(n_features, cfg.n_classes))
+                             *bottleneck,
+                             nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
 
     pretrained_model = nn.Sequential(OrderedDict([('body', body), ('head', head)]))
+
+    if cfg.arcface:
+        pretrained_model = ArcNet(cfg, pretrained_model)
+        if DEBUG:
+            keys = list(pretrained_model.state_dict().keys())
+            print("keys of ArcNet.state_dict:", keys[:2], '...', keys[-2:])
 
     if cfg.rst_name:
         # Dont ever use xser: stores each tensor in a separate file!
         rst_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.pth'
         state_dict = torch.load(rst_file, map_location=torch.device('cpu'))
         keys = list(state_dict.keys())
+        if DEBUG: print("keys of loaded state_dict:", keys[:2], '...', keys[-2:])
         if keys[0].startswith('0.') and keys[-1].startswith('1.'):
             # Fastai model: rename body keys, skip head if head != 'head'
             head = 'skip_head'
@@ -97,7 +332,7 @@ def get_pretrained_model(cfg):
             for k in keys:
                 k_new = 'body' + k[1:] if k[0] == '0' else head
                 state_dict[k_new] = state_dict.pop(k)
-        if keys[0].startswith('model'):
+        if keys[0].startswith('model') and list(pretrained_model.state_dict().keys())[0].startswith('body'):
             # Chest14-pretrained model from siimnihpretrained
             for key in keys:
                 if key.startswith('model.'):
