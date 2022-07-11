@@ -174,7 +174,7 @@ if cfg.rst_path and cfg.rst_name:
 
 # Compose YOLOv5 command-line options
 weights_or_resume = (f'--resume {checkpoint_file}' if cfg.rst_path and cfg.rst_name else
-                     f'--weights {cfg.pretrained}' if cfg.pretrained else 
+                     f'--weights {cfg.pretrained}' if cfg.pretrained else
                      f'--weights "" --cfg {cfg.arch_name}.yaml')
 size = f'--img {max(cfg.size)}'
 rect = '--rect' if cfg.rectangular else ''
@@ -190,7 +190,7 @@ project = f'--project {cfg.out_dir}'
 name = f'--name {fold}'
 workers = f'--workers {cpu_count()}'
 exist_ok = '--exist-ok'
-val = ('--noval' if cfg.train_on_all else 
+val = ('--noval' if cfg.train_on_all else
        f'--val_iou_thres {cfg.val_iou_thres} --val_conf_thres {cfg.val_conf_thres} --val_max_det {cfg.val_max_det}')
 cache = '--cache' if cfg.cache_images else ''
 aux_loss = f'--aux_loss {cfg.aux_loss} --noautoanchor' if cfg.aux_loss else ''
