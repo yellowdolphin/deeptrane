@@ -148,11 +148,11 @@ for use_fold in cfg.use_folds:
     else:
         pretrained_model = get_pretrained_model(cfg)
     pretrained_model.requires_labels = getattr(pretrained_model, 'requires_labels', False)
-    if hasattr(pretrained_model, 'head'): 
+    if hasattr(pretrained_model, 'head'):
         print(pretrained_model.head)
-    if hasattr(pretrained_model, 'model') and hasattr(pretrained_model.model, 'head'): 
+    if hasattr(pretrained_model, 'model') and hasattr(pretrained_model.model, 'head'):
         print(pretrained_model.model.head)
-    if hasattr(pretrained_model, 'arc'): 
+    if hasattr(pretrained_model, 'arc'):
         print(pretrained_model.arc)
 
     fn = cfg.out_dir / f'{cfg.name}_init.pth'
