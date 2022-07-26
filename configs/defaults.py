@@ -2,6 +2,7 @@ from pathlib import Path
 
 cfg = dict(
     name = Path(__file__).stem,
+    DEBUG = False,
 
 # Data Partitioning
     train_on_all = False,
@@ -14,7 +15,7 @@ cfg = dict(
 # Dataloader
     multilabel = False,
     use_albumentations = True,
-    num_tpu_cores = 1,
+    n_replicas = 1,
     bs = 8,
     epochs = 1,
     batch_verbose = None,

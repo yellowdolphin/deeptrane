@@ -14,7 +14,7 @@ cfg = {
     "exclude_multiimage_studies": True,
     "use_albumentations": False,
     "augmentation": 'aug_torchvision_example',
-    "num_tpu_cores": 1,
+    "n_replicas": 1,
     "bs": 32,
     "n_acc": 2,
     "epochs": 10,

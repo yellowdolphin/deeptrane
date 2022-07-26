@@ -1,4 +1,7 @@
-from torchvision.transforms.functional import InterpolationMode
+try:
+    from torchvision.transforms.functional import InterpolationMode
+except ImportError:
+    from configs.torchvision import InterpolationMode
 
 cfg = dict(
     shift_scale_rotate = 0.75,

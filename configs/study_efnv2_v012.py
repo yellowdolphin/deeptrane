@@ -13,7 +13,7 @@ cfg = {
     "multilabel": True,
     "exclude_multiimage_studies": True,
     "use_albumentations": True,
-    "num_tpu_cores": 1,
+    "n_replicas": 1,
     "bs": 32,
     "n_acc": 2,
     "epochs": 10,

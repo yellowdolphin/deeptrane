@@ -14,7 +14,7 @@ cfg = {
     "exclude_multiimage_studies": True,   # as in v257...261
     "use_albumentations": True,
     "augmentation": "tfms_faster",
-    "num_tpu_cores": 8,
+    "n_replicas": 8,
     "bs": 8,
     "epochs": 4,
     "batch_verbose": 10,

@@ -5,7 +5,43 @@ import shutil
 import math
 import numpy as np
 from sklearn.metrics import average_precision_score
+import torch
 import torch.nn as nn
+
+
+def reduce(values):
+    if isinstance(values, torch.Tensor):
+        return torch.mean(values)
+    return sum(values) / len(values)
+
+
+class AverageMeter(object):
+    '''Computes and stores the average and current value'''
+
+    def __init__(self, xm):
+        self.xm = xm  # allow overload at runtime
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+
+    @property
+    def average(self, eps=1e-14):
+        reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
+        reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
+        return reduced_sum / (reduced_count + eps)
+
+    @property
+    def current(self):
+        # current value, averaged over devices (and minibatch)
+        return self.xm.mesh_reduce('meter_val', self.val, reduce)
 
 
 def log_average_miss_rate(prec, rec, num_images):

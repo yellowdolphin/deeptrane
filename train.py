@@ -30,22 +30,24 @@ for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
 print(cfg)
 
+cfg.cloud = 'kaggle' if os.path.exists('/kaggle') else 'drive' if os.path.exists('/content') else 'gcp'
+print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
 print("[ √ ] Folds:", cfg.use_folds)
 print("[ √ ] Architecture:", cfg.arch_name)
+
 cfg.save_yaml()
 
 # Config consistency checks
-if cfg.frac != 1: assert cfg.do_class_sampling, 'frac w/o class_sampling not implemented'
+if cfg.frac != 1: assert cfg.do_class_sampling or (cfg.filetype == 'tfrec'), 'frac w/o class_sampling not implemented'
 if cfg.rst_name is not None:
     rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
-if cfg.use_aux_loss: assert cfg.use_albumentations, 'MySiimCovidDataset requires albumentations'
 cfg.out_dir = Path(cfg.out_dir)
 
 # Install torch.xla on kaggle TPU supported nodes
-if 'TPU_NAME' in os.environ:
+if (cfg.cloud == 'kaggle') and ('TPU_NAME' in os.environ):
     cfg.xla = True         # pull out of cfg?
     xla_version = '1.8.1'  # only '1.8.1' works on python3.7
 
@@ -57,7 +59,7 @@ if 'TPU_NAME' in os.environ:
         #debug=True
     )
     print("[ √ ] Python:", sys.version.replace('\n', ''))
-    print("[ √ ] XLA:", xla_version)
+    print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ['XLA_USE_BF16']})")
 import torch
 print("[ √ ] torch:", torch.__version__)
 
@@ -69,9 +71,15 @@ if cfg.use_timm:
         if os.path.exists('/kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl'):
             quietly_run('pip install /kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl')
         else:
-            quietly_run('pip install timm', debug=True)
+            quietly_run('pip install timm', debug=False)
         import timm
     print("[ √ ] timm:", timm.__version__)
+
+# Install keras if preprocess_inputs is needed
+if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
+    quietly_run(f'pip install keras=={tf.keras.__version__}', debug=False)
+if cfg.filetype == 'tfrec':
+    quietly_run('pip install webdataset', debug=False)
 
 if cfg.xla:
     import torch_xla.core.xla_model as xm
@@ -105,11 +113,11 @@ else:
             return reduce_fn([data])
 
 print(f"[ √ ] {cpu_count()} CPUs")
-if cfg.xla:
-    print(f"[ √ ] Using {cfg.num_tpu_cores} TPU cores")
-elif not torch.cuda.is_available():
-    cfg.bs = min(cfg.bs, 3 * cpu_count())
-    print(f"[ √ ] No GPU found, reducing bs to {cfg.bs}")
+cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size() if cfg.xla else 1
+print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
+if not cfg.xla and not torch.cuda.is_available():
+    cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
+    print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
 
 if cfg.use_aux_loss:
     try:
@@ -135,8 +143,10 @@ metadata.to_json(cfg.out_dir / 'metadata.json')
 for use_fold in cfg.use_folds:
     print(f"\nFold: {use_fold}")
     metadata['is_valid'] = metadata.fold == use_fold
-    print(f"Train set: {(~ metadata.is_valid).sum():12d}")
-    print(f"Valid set: {   metadata.is_valid.sum():12d}")
+    cfg.NUM_TRAINING_IMAGES = (~ metadata.is_valid).sum()
+    cfg.NUM_VALIDATION_IMAGES = metadata.is_valid.sum()
+    print(f"Train set: {cfg.NUM_TRAINING_IMAGES:12d}")
+    print(f"Valid set: {cfg.NUM_VALIDATION_IMAGES:12d}")
 
     if hasattr(project, 'pooling'):
         cfg.pooling = project.pooling
@@ -155,8 +165,9 @@ for use_fold in cfg.use_folds:
     if hasattr(pretrained_model, 'arc'):
         print(pretrained_model.arc)
 
+
     fn = cfg.out_dir / f'{cfg.name}_init.pth'
-    if not fn.exists():
+    if False and not fn.exists():
         print(f"Saving initial model as {fn}")
         torch.save(pretrained_model.state_dict(), fn)
 
@@ -165,32 +176,32 @@ for use_fold in cfg.use_folds:
         torch.set_default_tensor_type('torch.FloatTensor')
 
         # MpModelWrapper wraps a model to minimize host memory usage (fork only)
-        wrapped_model = xmp.MpModelWrapper(pretrained_model) if cfg.num_tpu_cores > 1 else pretrained_model
+        pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
         serial_executor = xmp.MpSerialExecutor()
 
-        xmp.spawn(_mp_fn, nprocs=cfg.num_tpu_cores, start_method='fork',
-                  args=(cfg, metadata, wrapped_model, serial_executor, xm, use_fold))
+        xmp.spawn(_mp_fn, nprocs=cfg.n_replicas, start_method='fork',
+                  args=(cfg, metadata, pretrained_model, serial_executor, xm, use_fold))
 
     # Or train on CPU/GPU if no xla
     else:
-        wrapped_model = pretrained_model
-        _mp_fn(None, cfg, metadata, wrapped_model, None, xm, use_fold)
-        del wrapped_model
+        pretrained_model = pretrained_model
+        _mp_fn(None, cfg, metadata, pretrained_model, None, xm, use_fold)
         del pretrained_model
         gc.collect()
         torch.cuda.empty_cache()
 
-    if cfg.save_best:
-        saved_models = sorted(glob(f'{cfg.out_dir / cfg.name}_fold{use_fold}_ep*.pth'))
-        if len(saved_models) > 1:
-            last_saved = removesuffix(saved_models[-1], '.pth')
-            print("Best saved model:", last_saved)
-            for saved_model in saved_models[:-1]:
-                path_stem = removesuffix(saved_model, '.pth')
-                for suffix in 'pth opt sched'.split():
-                    fn = f'{path_stem}.{suffix}'
-                    if os.path.exists(fn): Path(fn).unlink()
-        elif len(saved_models) == 1:
-            print(print("Best saved model:", saved_models[0]))
-        else:
-            print(f"no checkpoints found in {cfg.out_dir}")
+    # implemented in xla_train
+    #if cfg.save_best:
+    #    saved_models = sorted(glob(f'{cfg.out_dir / cfg.name}_fold{use_fold}_ep*.pth'))
+    #    if len(saved_models) > 1:
+    #        last_saved = removesuffix(saved_models[-1], '.pth')
+    #        print("Best saved model:", last_saved)
+    #        for saved_model in saved_models[:-1]:
+    #            path_stem = removesuffix(saved_model, '.pth')
+    #            for suffix in 'pth opt sched'.split():
+    #                fn = f'{path_stem}.{suffix}'
+    #                if os.path.exists(fn): Path(fn).unlink()
+    #    elif len(saved_models) == 1:
+    #        print(print("Best saved model:", saved_models[0]))
+    #    else:
+    #        print(f"no checkpoints found in {cfg.out_dir}")

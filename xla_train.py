@@ -16,80 +16,22 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 import torchvision.transforms.functional as TF
-from torch.optim import lr_scheduler
+import torchvision.transforms as TT
 import torch.optim as optim
+from torch.optim import lr_scheduler
+from utils.schedulers import get_one_cycle_scheduler, maybe_step
 from augmentation import get_tfms
 from utils.general import listify
 from models import is_bn
-from metrics import NegativeRate, MAP
+from metrics import NegativeRate, MAP, AverageMeter
+from tf_datasets import get_tf_datasets, TFDataLoader
+from torch import FloatTensor, LongTensor
 
 torch.set_default_tensor_type('torch.FloatTensor')
+use_tfds = False
 
 
-class AverageMeter(object):
-    '''Computes and stores the average and current value'''
-
-    def __init__(self, xm):
-        self.xm = xm  # allow overload at runtime
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-
-    @property
-    def average(self, eps=1e-14):
-        reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
-        reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
-        return reduced_sum / (reduced_count + eps)
-
-    @property
-    def current(self):
-        # current value, averaged over devices (and minibatch)
-        return self.xm.mesh_reduce('meter_val', self.val, reduce)
-
-
-def reduce(values):
-    if isinstance(values, torch.Tensor):
-        return torch.mean(values)
-    return sum(values) / len(values)
-
-
-def get_one_cycle_scheduler(optimizer, dataset, max_lr, cfg, xm, rst_epoch=1, dataloader=None):
-    # ToDo: Rid dataloader if its attributes prove useless
-    if hasattr(dataloader, 'drop_last'): assert dataloader.drop_last is True
-    frac = cfg.frac if cfg.do_class_sampling else 1
-    n_acc = cfg.n_acc
-    num_cores = cfg.num_tpu_cores if cfg.xla else 1
-    steps_per_epoch = int(len(dataset) * frac) // (cfg.bs * num_cores * n_acc)
-    total_steps = (rst_epoch + cfg.epochs) * steps_per_epoch
-    last_step = rst_epoch * steps_per_epoch - 1 if rst_epoch else -1
-    xm.master_print(f"Total steps: {total_steps} (my guess)")
-    if rst_epoch != 0:
-        xm.master_print(f"Restart epoch: {rst_epoch}")
-    if hasattr(dataloader, '__len__'):
-        xm.master_print(f"Total steps: {(rst_epoch + cfg.epochs) * (len(dataloader) // n_acc)} (dataloader)")
-    if last_step != -1:
-        xm.master_print(f"Last step: {last_step}")
-    scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=total_steps,
-                                        last_epoch=last_step,
-                                        div_factor=cfg.div_factor, pct_start=cfg.pct_start)
-    fn = Path(cfg.rst_path or '.') / f'{removesuffix(cfg.rst_name or "", ".pth")}.sched'
-    if fn.exists() and not cfg.reset_opt:
-        checkpoint = torch.load(fn, map_location='cpu')
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        xm.master_print("Restarting from previous scheduler state")
-    scheduler.batchwise = True
-    return scheduler
-
-
-def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer, scheduler, device):
+def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, scheduler, device):
 
     # initialize
     batch_start = time.perf_counter()
@@ -100,7 +42,26 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
 
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
+        try:
+            from torchvision.transforms.functional import InterpolationMode
+        except ImportError:
+            from configs.torchvision import InterpolationMode
+
+        #pre_size = TT.Resize(cfg.size)
+        #batch_tfms = torch.nn.Sequential(
+            #TT.RandomRotation(degrees=5),
+            #TT.GaussianBlur(kernel_size=5),
+            #TT.RandomHorizontalFlip(),
+            #TT.RandomGrayscale(0.2),
+        #    TT.RandomResizedCrop(cfg.size, scale=(0.4, 1.0)),
+        #    )
+        #batch_tfms.to(device)
+
+    if False and cfg.use_batch_tfms:
         raise NotImplementedError('get aug_flags first!')
+        xm.master_print("aug_flags:")
+        for k, v in aug_flags.items():
+            xm.master_print(f'{k:<30} {v}')
         horizontal_flip = aug_flags['horizontal_flip']
         vertical_flip = aug_flags['vertical_flip']
         p_grayscale = aug_flags['p_grayscale']
@@ -114,51 +75,85 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
         height, width = cfg.size
 
     # training loop
-    for batch_idx, batch in enumerate(para_loader, start=1):
-        #if batch_idx > 3: break  ########### DEBUG
+    n_iter = len(dataloader)
+    iterable = range(n_iter) if cfg.use_batch_tfms else dataloader
+    sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
+
+    for batch_idx, batch in enumerate(iterable, start=1):
 
         # extract inputs and labels (multi-core: data already on device)
-        if cfg.use_aux_loss:
+        if cfg.use_batch_tfms:
+            # resize and collate images, labels
+            #samples = [next(sample_iterator) for _ in range(cfg.bs)]
+            #for s in samples:
+            #    assert s[0].device == device
+            #    assert s[1].device == device
+            #inputs = torch.stack([pre_size(s[0]) for s in samples])
+            #labels = torch.stack([s[1] for s in samples])
+            #del samples
+
+            inputs, labels = [], []
+            for _ in range(cfg.bs):
+                s = next(sample_iterator)
+                inputs.append(TF.resize(s[0], cfg.size, InterpolationMode('nearest')))
+                labels.append(s[1])
+            inputs = torch.stack(inputs)
+            labels = torch.stack(labels)
+
+            #assert inputs.shape == (cfg.bs, 3, *cfg.size)
+            #assert labels.shape == (cfg.bs,)
+            #xm.master_print(inputs.device, labels.device)
+
+        elif cfg.filetype == 'tfrec' and use_tfds:
+            inputs, labels = FloatTensor(batch[0]['inp1']), LongTensor(batch[0]['inp2'])
+            inputs = inputs.permute((0, 3, 1, 2))  #.contiguous()  # mem? speed?
+        elif cfg.use_aux_loss:
             inputs, masks, labels = batch
             masks = masks.to(device)
         else:
             inputs, labels = batch
         del batch
-        inputs = inputs.to(device)
-        labels = labels.to(device)
+        #xm.master_print("inputs:", type(inputs), inputs.shape, inputs.dtype, inputs.device)
+        #assert inputs.shape == (cfg.bs, 3, *cfg.size), f'wrong inputs shape: {inputs.shape}'
+        #assert labels.shape == (cfg.bs,), f'wrong labels shape: {labels.shape}'
+
+        if 'Device' not in dataloader.__class__.__name__:  # ParallelLoader, MpDeviceLoader already do this
+            inputs = inputs.to(device)
+            labels = labels.to(device)
 
         # image batch_tfms
-        if cfg.use_batch_tfms:
+        #if cfg.use_batch_tfms:
+        #    inputs = batch_tfms(inputs)
             #if cfg.size[1] > cfg.size[0]:
             #    # train on 90-deg rotated nybg2021 images
             #    inputs = inputs.transpose(-2,-1)
-            if horizontal_flip and random.random() > 0.5:
-                inputs = TF.hflip(inputs)
-            if vertical_flip and random.random() > 0.5:
-                inputs = TF.vflip(inputs)
-            if p_grayscale and random.random() > p_grayscale:
-                inputs = TF.rgb_to_grayscale(inputs, num_output_channels=3)
-                # try w/o num_output_channels
-            if jitter_brightness:
-                if isinstance(jitter_brightness, int):
-                    mu, sigma = 1.0, jitter_brightness
-                else:
-                    mu = np.mean(jitter_brightness)
-                    sigma = (max(jitter_brightness) - min(jitter_brightness)) * 0.28868
-                brightness_factor = random.normalvariate(mu, sigma)
-                inputs = TF.adjust_brightness(inputs, brightness_factor)
-            if jitter_saturation:
-                if isinstance(jitter_saturation, int):
-                    mu, sigma = 1.0, jitter_saturation
-                    saturation_factor = random.normalvariate(mu, sigma)
-                else:
-                    saturation_factor = random.uniform(*jitter_saturation)
-                inputs = TF.adjust_saturation(inputs, saturation_factor)
-            if p_rotation and random.random() > p_rotation:
-                angle = random.randint(-max_rotate, max_rotate)
-                inputs = TF.pad(inputs, padding, padding_mode='reflect')
-                inputs = TF.rotate(inputs, angle, resample=0)
-                inputs = TF.crop(inputs, top, left, height, width)
+            #if horizontal_flip and random.random() > 0.5:
+            #    inputs = TF.hflip(inputs)
+            #if vertical_flip and random.random() > 0.5:
+            #    inputs = TF.vflip(inputs)
+            #if p_grayscale and random.random() > p_grayscale:
+            #    inputs = TF.rgb_to_grayscale(inputs, num_output_channels=3)
+            #    # try w/o num_output_channels
+            #if jitter_brightness:
+            #    if isinstance(jitter_brightness, int):
+            #        mu, sigma = 1.0, jitter_brightness
+            #    else:
+            #        mu = np.mean(jitter_brightness)
+            #        sigma = (max(jitter_brightness) - min(jitter_brightness)) * 0.28868
+            #    brightness_factor = random.normalvariate(mu, sigma)
+            #    inputs = TF.adjust_brightness(inputs, brightness_factor)
+            #if jitter_saturation:
+            #    if isinstance(jitter_saturation, int):
+            #        mu, sigma = 1.0, jitter_saturation
+            #        saturation_factor = random.normalvariate(mu, sigma)
+            #    else:
+            #        saturation_factor = random.uniform(*jitter_saturation)
+            #    inputs = TF.adjust_saturation(inputs, saturation_factor)
+            #if p_rotation and random.random() > p_rotation:
+            #    angle = random.randint(-max_rotate, max_rotate)
+            #    inputs = TF.pad(inputs, padding, padding_mode='reflect')
+            #    inputs = TF.rotate(inputs, angle, resample=0)
+            #    inputs = TF.crop(inputs, top, left, height, width)
 
         # forward and backward pass
         preds = model(inputs, labels) if model.requires_labels else model(inputs)
@@ -171,44 +166,49 @@ def train_fn(model, cfg, xm, epoch, para_loader, criterion, seg_crit, optimizer,
         else:
             loss = criterion(preds, labels)
 
-        loss = loss / cfg.n_acc
+        loss = loss / cfg.n_acc  # grads accumulate as 'sum' but loss reduction is 'mean'
         loss.backward()
         if batch_idx % cfg.n_acc == 0:
             xm.optimizer_step(optimizer, barrier=True)  # rendevouz, required for proper xmp shutdown
             optimizer.zero_grad()
-            if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'): scheduler.step()
+            if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'): 
+                maybe_step(scheduler, xm)
 
         # aggregate loss locally
         if cfg.use_aux_loss:
-            # In grad accumulation, loss is scaled, but not cls_loss and seg_loss.
+            # loss components cls_loss, seg_loss were not divided by n_acc.
             loss_meter.update(cls_loss.item(), inputs.size(0))
             seg_loss_meter.update(seg_loss.item(), inputs.size(0))
         else:
+            # undo "loss /= n_acc" because loss_meter reduction is 'mean'
             loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
             info_strings = [
-                f'        batch {batch_idx}',
+                f'        batch {batch_idx} / {n_iter}',
                 f'current_loss {loss_meter.current:.5f}']
             if cfg.use_aux_loss:
                 info_strings.append(f'seg_loss {seg_loss_meter.current:.5f}')
             info_strings.append(f'avg_loss {loss_meter.average:.5f}')
-            info_strings.append(f'lr {optimizer.param_groups[-1]["lr"] / xm.xrt_world_size():7.1e}')
+            info_strings.append(f'lr {optimizer.param_groups[-1]["lr"] / cfg.n_replicas:7.1e}')
             info_strings.append(f'mom {optimizer.param_groups[-1]["betas"][0]:.3f}')
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
             xm.master_print(', '.join(info_strings))
             if hasattr(scheduler, 'get_last_lr'):
                 assert scheduler.get_last_lr()[-1] == optimizer.param_groups[-1]['lr']
             batch_start = time.perf_counter()
+        if cfg.DEBUG and batch_idx == 1:
+            xm.master_print(f"train inputs: {inputs.shape}, value range: {inputs.min():.2f} ... {inputs.max():.2f}")
 
     # scheduler step after epoch
-    if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'): scheduler.step()
+    if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'): 
+        maybe_step(scheduler, xm)
 
     return loss_meter.average
 
 
-def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, metrics=None):
+def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None):
 
     # initialize
     model.eval()
@@ -225,7 +225,13 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
         metric_meters = [AverageMeter(xm) for m in metrics]
 
     # validation loop
-    for batch_idx, (inputs, labels) in enumerate(para_loader, start=1):
+    for batch_idx, batch in enumerate(dataloader, start=1):
+
+        if cfg.filetype == 'tfrec' and use_tfds:
+            inputs, labels = FloatTensor(batch[0]['inp1']), LongTensor(batch[0]['inp2'])
+            inputs = inputs.permute((0, 3, 1, 2))  #.contiguous()  # mem? speed?
+        else:
+            inputs, labels = batch
 
         # extract inputs and labels (multi-core: ParallelLoader does this already)
         inputs = inputs.to(device)
@@ -237,6 +243,8 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
                 seg_preds, preds = model(inputs)
             else:
                 preds = model(inputs, labels) if model.requires_labels else model(inputs)
+        if cfg.DEBUG and batch_idx == 1:
+            xm.master_print(f"valid inputs: {inputs.shape}, value range {inputs.min():.2f} ... {inputs.max():.2f}")
 
         # pudae's ArcFace validation
         if cfg.pudae_valid:
@@ -273,7 +281,7 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
 
             for m, meter in zip(metrics, metric_meters):
                 top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
-                meter.update(inputs.size(0) * m(labels.cpu().numpy(), top))
+                meter.update(m(labels.cpu().numpy(), top), inputs.size(0))
 
     # mesh_reduce loss
     if cfg.pudae_valid:
@@ -292,9 +300,7 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
         preds = xm.mesh_reduce('reduce_preds', local_preds, torch.cat)
         labels = xm.mesh_reduce('reduce_labels', local_labels, torch.cat)
         ## todo: try avoid lowering by using torch metrics instead of sklearn
-        #xm.master_print("labels:", labels.cpu().numpy()[0])
-        #xm.master_print("scores:", scores.cpu().numpy()[0])
-        #xm.master_print("preds: ",  preds.cpu().numpy()[0])
+        ## Or try put all metrics calc in a closure function?
         for m in metrics:
             avg_metrics.append(
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
@@ -303,7 +309,7 @@ def valid_fn(model, cfg, xm, epoch, para_loader, criterion, device, n_examples, 
         #wall_metrics = time.perf_counter() - metrics_start
         #xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
     elif metrics:
-        avg_metrics = [meter.average / n_examples for meter in metric_meters]
+        avg_metrics = [meter.average for meter in metric_meters]
 
     return avg_loss, avg_metrics
 
@@ -312,12 +318,15 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     "Distributed training loop master function"
 
     ### Setup
+    device = xm.xla_device()
+    deviceloader = None
     if cfg.xla:
         import torch_xla.distributed.parallel_loader as pl
         from catalyst.data import DistributedSamplerWrapper
         from torch.utils.data.distributed import DistributedSampler
         loader_prefetch_size = 1
         device_prefetch_size = 1
+        deviceloader = 'mp'  # 'mp' performs better than 'pl' on kaggle
 
     # Data samplers, class-weighted metrics
     class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
@@ -329,30 +338,38 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     train_labels = metadata.loc[~ is_valid, class_column]
     valid_labels = metadata.loc[is_valid | is_shared, class_column]
 
-    train_tfms = get_tfms(cfg, mode='train')
-    test_tfms = get_tfms(cfg, mode='test')
-    tensor_tfms = None
 
-    if cfg.use_aux_loss:
-        ds_train = MySiimCovidAuxDataset(metadata.loc[~ is_valid], cfg, mode='train',
-                                         transform=train_tfms, tensor_transform=tensor_tfms)
+
+    if cfg.filetype == 'tfrec' and use_tfds:
+        ds_train, ds_valid = get_tf_datasets(cfg, use_fold)
+    elif cfg.filetype == 'tfrec':
+        pass
+
     else:
+        train_tfms = get_tfms(cfg, mode='train')
+        test_tfms = get_tfms(cfg, mode='test')
+        tensor_tfms = None
+
         ds_train = ImageDataset(metadata.loc[~ is_valid], cfg, mode='train',
-                                         transform=train_tfms, tensor_transform=tensor_tfms,
-                                         class_column=class_column)
+                                transform=train_tfms, tensor_transform=tensor_tfms,
+                                class_column=class_column)
         
-    ds_valid = ImageDataset(metadata.loc[is_valid | is_shared], cfg, mode='valid',
-                                         transform=test_tfms, tensor_transform=tensor_tfms,
-                                         class_column=class_column)
+        ds_valid = ImageDataset(metadata.loc[is_valid | is_shared], cfg, mode='valid',
+                                transform=test_tfms, tensor_transform=tensor_tfms,
+                                class_column=class_column)
 
-    xm.master_print("ds_train:", len(ds_train))
-    xm.master_print("ds_valid:", len(ds_valid))
-    #xm.master_print("train_tfms:")
-    #xm.master_print(ds_train.transform)
-    #xm.master_print("test_tfms:")
-    #xm.master_print(ds_valid.transform)
+        xm.master_print("ds_train:", len(ds_train))
+        xm.master_print("ds_valid:", len(ds_valid))
+        if cfg.DEBUG:
+            xm.master_print("train_tfms:")
+            xm.master_print(ds_train.transform)
+            xm.master_print("test_tfms:")
+            xm.master_print(ds_valid.transform)
 
-    if cfg.do_class_sampling:
+    if cfg.filetype == 'tfrec':
+        train_sampler = None
+
+    elif cfg.do_class_sampling:
         # Use torch's WeightedRandomSampler with custom class weights
         class_counts = train_labels.value_counts().sort_index().values
         n_examples = len(train_labels)
@@ -370,45 +387,88 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         # Wrap it in a DistributedSamplerWrapper
         train_sampler = (DistributedSamplerWrapper(weighted_train_sampler,
-                                                   num_replicas = xm.xrt_world_size(),
+                                                   num_replicas = cfg.n_replicas,
                                                    rank         = xm.get_ordinal(),
                                                    shuffle      = False) if cfg.xla else
                          weighted_train_sampler)
 
-    elif xm.xrt_world_size() > 1:
+    elif cfg.n_replicas > 1:
         train_sampler = DistributedSampler(ds_train,
-                                           num_replicas = xm.xrt_world_size(),
+                                           num_replicas = cfg.n_replicas,
                                            rank         = xm.get_ordinal(),
                                            shuffle      = True)
 
     else:
         train_sampler = None
 
-    valid_sampler = (DistributedSampler(ds_valid,
-                                        num_replicas = xm.xrt_world_size(),
-                                        rank         = xm.get_ordinal(),
-                                        shuffle      = False) if xm.xrt_world_size() > 1 else
-                     None)
+    if (cfg.filetype == 'tfrec') or (cfg.n_replicas == 1):
+        valid_sampler = None
+
+    else:
+        valid_sampler = DistributedSampler(ds_valid,
+                                           num_replicas = cfg.n_replicas,
+                                           rank         = xm.get_ordinal(),
+                                           shuffle      = False)
 
     # Dataloaders
-    train_loader = DataLoader(ds_train,
-                              batch_size  = cfg.bs,
-                              sampler     = train_sampler,
-                              num_workers = 0 if xm.xrt_world_size() > 1 else cpu_count(),
-                              pin_memory  = True,
-                              drop_last   = True,
-                              shuffle     = False if train_sampler else True)
-    valid_loader = DataLoader(ds_valid,
-                              batch_size  = cfg.bs,
-                              sampler     = valid_sampler,
-                              num_workers = 0 if xm.xrt_world_size() > 1 else cpu_count(),
-                              pin_memory  = True)
+    if cfg.filetype == 'tfrec' and use_tfds:
+        train_loader = TFDataLoader(
+            ds_train,
+            n_examples = cfg.NUM_TRAINING_IMAGES,
+            n_replica = cfg.n_replicas,
+            dataset = None, #train_dl._ds if hasattr(train_dl, '_ds') else train_dl,
+            batch_size  = cfg.bs,
+            #num_workers = 0 if cfg.n_replicas > 1 else cpu_count(),
+            #pin_memory  = True,
+            drop_last   = True,
+            shuffle     = False)
+        valid_loader = TFDataLoader(
+            ds_valid,
+            n_examples = cfg.NUM_VALIDATION_IMAGES,
+            n_replica = cfg.n_replicas,
+            dataset = None, #valid_dl._ds if hasattr(valid_dl, '_ds') else valid_dl,
+            batch_size  = cfg.bs,
+            #num_workers = 0 if cfg.n_replicas > 1 else cpu_count(),
+            #pin_memory  = True,
+            drop_last   = False,
+            shuffle     = False)
+
+    elif cfg.filetype == 'tfrec':
+        from web_datasets import get_dataloader
+
+        train_loader = get_dataloader(cfg, use_fold, xm, mode='train',
+                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
+                                      pin_memory=True)
+        valid_loader = get_dataloader(cfg, use_fold, xm, mode='valid',
+                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
+                                      pin_memory=True)
+        xm.master_print("train:", cfg.NUM_TRAINING_IMAGES)
+        xm.master_print("valid:", cfg.NUM_VALIDATION_IMAGES)
+        xm.master_print("test:", cfg.NUM_TEST_IMAGES)
+
+    else:
+        train_loader = DataLoader(ds_train,
+                                  batch_size  = cfg.bs,
+                                  sampler     = train_sampler,
+                                  num_workers = 2 if cfg.n_replicas > 1 else cpu_count(),
+                                  #pin_memory  = True,
+                                  drop_last   = True,
+                                  shuffle     = False if train_sampler else True)
+        valid_loader = DataLoader(ds_valid,
+                                  batch_size  = cfg.bs,
+                                  sampler     = valid_sampler,
+                                  num_workers = 2 if cfg.n_replicas > 1 else cpu_count(),
+                                  #pin_memory  = True,
+                                  )
+
+    if cfg.xla and deviceloader == 'mp':
+        train_loader = pl.MpDeviceLoader(train_loader, device)
+        valid_loader = pl.MpDeviceLoader(valid_loader, device)
 
     # Send model to device
-    device = xm.xla_device()
     model = wrapped_model.to(device)
 
-    # Criterion, Metrics
+    # Criterion (default reduction: 'mean'), Metrics
     criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()
     if cfg.use_aux_loss:
         from segmentation_models_pytorch.losses.dice import DiceLoss
@@ -433,22 +493,26 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=5, name='mAP5')
 
     metrics = (
-        []                     if len(ds_valid) == 0 else
+        []                     if cfg.NUM_VALIDATION_IMAGES == 0 else  # fix for sequential loaders!
         [ap,  micro_f1, map]   if cfg.multilabel else
         [acc, macro_f1, map]
     )
 
-    if cfg.no_macro_metrics:
-        metrics = [m for m in metrics if not getattr(m, 'needs_scores', False)]
-
-    if cfg.pudae_valid: metrics = [map5]
+    if 'happywhale' in cfg.tags: 
+        metrics = [acc, map5]  # map5 is macro, TPU issue
+    elif 'cassava' in cfg.tags:
+        metrics = [acc]
     if cfg.negative_thres: metrics.append(pct_negatives)
 
-    # Scale LRs
+    if cfg.no_macro_metrics:
+        skipped_metrics = [m.__name__ for m in metrics if getattr(m, 'needs_scores', False)]
+        if skipped_metrics: xm.master_print("skippinging macro metrics:", *skipped_metrics)
+        metrics = [m for m in metrics if not getattr(m, 'needs_scores', False)]
+
+    xm.master_print('Metrics:', *[m.__name__ for m in metrics])
+
+    # Don't Scale LRs (optimal lrs don't scale linearly with step size)
     lr_head, lr_bn, lr_body = cfg.lr_head, cfg.lr_bn, cfg.lr_body
-    scaled_lr_bn = lr_bn * xm.xrt_world_size()
-    scaled_lr_body = lr_body * xm.xrt_world_size()
-    scaled_lr_head = lr_head * xm.xrt_world_size()
 
     # Parameter Groups
     use_parameter_groups = False if lr_head == lr_bn == lr_body else True
@@ -459,19 +523,19 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             'head': model.head.parameters(),
             'bn':   (p for name, p in model.body.named_parameters() if is_bn(name)),
         }
-        max_lrs = {'body': scaled_lr_body, 'head': scaled_lr_head, 'bn': scaled_lr_bn}
+        max_lrs = {'body': lr_body, 'head': lr_head, 'bn': lr_bn}
         params = [{'params': parameter_groups[g], 'lr': max_lrs[g]}
                   for g in parameter_groups.keys()]
         max_lrs = list(max_lrs.values())
     else:
-        max_lrs = scaled_lr_head
+        max_lrs = lr_head
         params = model.parameters()
 
     # Optimizer
     optimizer = (
-        optim.AdamW(params, lr=scaled_lr_head, betas=cfg.betas, weight_decay=cfg.wd) if cfg.optimizer == 'AdamW' else
-        optim.Adam(params, lr=scaled_lr_head, betas=cfg.betas)                       if cfg.optimizer == 'Adam' else
-        optim.SGD(params, lr=scaled_lr_head, momentum=cfg.betas[0], dampening=1 - cfg.betas[1]))
+        optim.AdamW(params, lr=lr_head, betas=cfg.betas, weight_decay=cfg.wd) if cfg.optimizer == 'AdamW' else
+        optim.Adam(params, lr=lr_head, betas=cfg.betas)                       if cfg.optimizer == 'Adam' else
+        optim.SGD(params, lr=lr_head, momentum=cfg.betas[0], dampening=1 - cfg.betas[1]))
     rst_epoch = 0
     if cfg.rst_name:
         fn = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.opt'
@@ -483,7 +547,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     # Scheduler
     if cfg.one_cycle:
-        scheduler = get_one_cycle_scheduler(optimizer, ds_train, max_lrs, cfg,
+        scheduler = get_one_cycle_scheduler(optimizer, max_lrs, cfg,
                                             xm, rst_epoch, train_loader)
     elif cfg.reduce_on_plateau:
         # ReduceLROnPlateau must be called after validation
@@ -499,9 +563,11 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         scheduler = None
     if scheduler:
         xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
-        _lrs = [p["lr"] / xm.xrt_world_size() for p in optimizer.param_groups]
+        #_lrs = [p["lr"] / cfg.n_replicas for p in optimizer.param_groups]
+        _lrs = [p["lr"] for p in optimizer.param_groups]
         xm.master_print(f"""Initial lrs: {', '.join(f'{lr:7.2e}' for lr in _lrs)}""")
-        _lrs = [lr / xm.xrt_world_size() for lr in listify(max_lrs)]
+        #_lrs = [lr / cfg.n_replicas for lr in listify(max_lrs)]
+        _lrs = [lr for lr in listify(max_lrs)]
         xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in _lrs)}")
 
     # Maybe freeze body
@@ -513,6 +579,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     model_name = f'{cfg.name}_fold{use_fold}'
     xm.master_print(f'Checkpoints will be saved as {cfg.out_dir}/{model_name}_ep*')
+    step_size = cfg.bs * cfg.n_replicas * cfg.n_acc
+    xm.master_print(f'Training {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
+                    f'step_size={step_size}, lr={cfg.lr_head} on fold {use_fold}')
 
     #
     #
@@ -534,23 +603,28 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         # Data for verbose info
         epoch_start = time.perf_counter()
-        scaled_lr = optimizer.param_groups[-1]["lr"]
+        current_lr = optimizer.param_groups[-1]["lr"]
         if hasattr(scheduler, 'get_last_lr'):
-            assert scheduler.get_last_lr()[-1] == optimizer.param_groups[-1]["lr"]
+            assert scheduler.get_last_lr()[-1] == current_lr
 
         # Update train_loader shuffling
-        if hasattr(train_loader.sampler, 'set_epoch'): train_loader.sampler.set_epoch(epoch)
+        if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'): 
+            train_loader.sampler.set_epoch(epoch)
 
         # Training
-        para_loader = (pl.ParallelLoader(train_loader, [device],
-                                         loader_prefetch_size=loader_prefetch_size,
-                                         device_prefetch_size=device_prefetch_size
-                                         ).per_device_loader(device) if cfg.xla else
-                       train_loader)
+
+        if cfg.xla and deviceloader == 'pl':
+            # ParallelLoader requires instantiation per epoch
+            dataloader = pl.ParallelLoader(train_loader, [device], 
+                                           loader_prefetch_size=loader_prefetch_size,
+                                           device_prefetch_size=device_prefetch_size
+                                           ).per_device_loader(device)
+        else:
+            dataloader = train_loader
 
         train_loss = train_fn(model, cfg, xm,
                               epoch       = epoch + 1, 
-                              para_loader = para_loader,
+                              dataloader  = dataloader,
                               criterion   = criterion,
                               seg_crit    = seg_crit,
                               optimizer   = optimizer, 
@@ -559,26 +633,31 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         # Validation
         valid_start = time.perf_counter()
+
         if cfg.train_on_all:
             valid_loss, valid_metrics = 0, []
         else:
-            para_loader = (pl.ParallelLoader(valid_loader, [device],
-                                             loader_prefetch_size=loader_prefetch_size,
-                                             device_prefetch_size=device_prefetch_size
-                                             ).per_device_loader(device) if cfg.xla else
-                           valid_loader)
+            if cfg.xla and deviceloader == 'pl':
+                # ParallelLoader requires instantiation per epoch
+                dataloader = pl.ParallelLoader(valid_loader, [device],
+                                               loader_prefetch_size=loader_prefetch_size,
+                                               device_prefetch_size=device_prefetch_size
+                                               ).per_device_loader(device)
+            else:
+                dataloader = valid_loader
 
             valid_loss, valid_metrics = valid_fn(model, cfg, xm,
                                                  epoch       = epoch + 1,
-                                                 para_loader = para_loader,
+                                                 dataloader  = dataloader,
                                                  criterion   = criterion,
                                                  device      = device,
-                                                 n_examples  = len(valid_labels),
                                                  metrics     = metrics)
+
         metrics_dict = {'train_loss': train_loss, 'valid_loss': valid_loss}
         metrics_dict.update({m.__name__: val for m, val in zip(metrics, valid_metrics)})
-        last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else scaled_lr
-        avg_lr = 0.5 * (scaled_lr + last_lr) / xm.xrt_world_size()
+        last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else current_lr
+        #avg_lr = 0.5 * (current_lr + last_lr) / cfg.n_replicas
+        avg_lr = 0.5 * (current_lr + last_lr)
 
         # Print epoch summary
         epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
@@ -627,7 +706,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         lrs.append(avg_lr)
         minutes.append((time.perf_counter() - epoch_start) / 60)
 
-    if xm.xrt_world_size() > 1:
+    if cfg.n_replicas > 1:
         serial_executor.run(lambda: save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir))
     else:
         save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir)

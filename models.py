@@ -193,6 +193,7 @@ class ArcNet(nn.Module):
         self.std = self.model.std if hasattr(self.model, 'std') else [0.5, 0.5, 0.5]
         self.input_range = self.model.input_range if hasattr(self.model, 'input_range') else [0, 1]
         self.input_space = self.model.input_space if hasattr(self.model, 'input_space') else 'RGB'
+        self.valid_mode = 'normal' if cfg.deotte else 'embedding'
 
     def forward(self, images, labels=None):
         # In validation, forward is called w/o labels. Hence, output features have shape [N, 512] rather than [N, n_classes].
@@ -201,22 +202,23 @@ class ArcNet(nn.Module):
         # Both task.forward() and task.inference() are called w (train) or w/o (valid) labels!
         # If inference is called with outputs, the latter are just returned, otherwise same as forward.
         # When called w/o labels, the features are normalized but not passed through ArcModule, hence have size [N, 512]!
-        if not self.training: return self.model(images)  # skip normlize, like in Vlad Vaduva's notebook
+        if (self.valid_mode == 'embedding' and not self.training) or (labels is None):
+            return self.model(images)  # skip normalize, return embeddings like in Vlad Vaduva's and TF notebooks
         features = F.normalize(self.model(images))
-        #if labels is not None:
-        if self.training:  # toggle arc here rather than in xla_train
-            #assert self.training  # only for intra-valid metrics
-            return self.arc(features, labels)
-        return features
+        return self.arc(features, labels)
 
-    def logits(self, features, labels):
+    #def get_embeddings(self, images):
+    #    assert not self.training
+    #    return self.model(images)  # skip normalize, return embeddings like in Vlad Vaduva's and TF notebooks
+
+    #def logits(self, features, labels):
         # Allows extra step between feature normalization and ArcModule. What used for???
         # After cosine-similarity, the predtion would be argmax, but to predict "new_individual",
         # argmax(scores) should be replaced by n_classes if max_score < threshold!
         # NO: 'new_individual' is an ordinary class and its embedding should be trained to be an
         # image-adaptive threshold for the other classes' scores! Hence, 'new_individual' images should
         # be part of SKF splitting!
-        return self.arc(features, labels)
+    #    return self.arc(features, labels)
 
 
 
@@ -292,7 +294,14 @@ def get_pretrained_model(cfg):
     n_features = get_last_out_features(bottleneck, None) or n_features
     print(n_features, "features after bottleneck")
 
-    if cfg.feature_size:
+    if cfg.deotte:
+        # Happywhale model used in my final TF notebooks
+        head = nn.Sequential(nn.AdaptiveAvgPool2d(output_size=1),
+                             nn.BatchNorm2d(n_features),   # also try BN1d after Flatten
+                             nn.Flatten(),
+                             )
+        cfg.channel_size = n_features
+    elif cfg.feature_size:
         # Model used by pudae (Humpback-whale-identification) with FC instead of AvgPool
         head = nn.Sequential(nn.BatchNorm2d(n_features),
                              nn.Dropout2d(p=cfg.dropout_ps[0]),
@@ -300,14 +309,16 @@ def get_pretrained_model(cfg):
                              nn.Linear(n_features * cfg.feature_size, cfg.channel_size),
                              nn.BatchNorm1d(cfg.channel_size))
     elif cfg.arch_name.startswith('cait'):
-        head = nn.Sequential(nn.Dropout(p=cfg.dropout_ps[0]),
+        dropout = nn.Dropout(p=cfg.dropout_ps[0]) if cfg.dropout_ps else []
+        head = nn.Sequential(*dropout,
                              *bottleneck,
                              nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
     else:
         print(f"building output layer {n_features, cfg.channel_size or cfg.n_classes}")
+        dropout = nn.Dropout(p=cfg.dropout_ps[0]) if cfg.dropout_ps else []
         head = nn.Sequential(pooling_layer,
                              nn.Flatten(),
-                             nn.Dropout(p=cfg.dropout_ps[0]),
+                             *dropout,
                              *bottleneck,
                              nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
 

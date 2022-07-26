@@ -9,6 +9,9 @@ from PIL import Image
 from torch import nn
 
 
+use_tfds = False
+
+
 def init(cfg):
     "Update cfg with project- or context-specific logic."
     if 'yolov5' in cfg.tags:
@@ -27,7 +30,6 @@ def init(cfg):
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         #cfg.dims_csv = None
     else:
-        # support 2-class image, 4-class study classifier, aux_loss, yolov5
         cfg.competition_path = Path('/kaggle/input/happy-whale-and-dolphin')
         if 'colab' in cfg.tags:
             cfg.competition_path = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection')
@@ -44,14 +46,58 @@ def init(cfg):
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
 
+    if cfg.filetype == 'tfrec':
+        import tensorflow as tf
+        from tf_datasets import get_gcs_path, count_data_items
 
-def extra_columns(cfg):
-    if 'yolov5' in cfg.tags:
-        return []
-    elif 'species' in cfg.tags:
-        return ['individual_id']
-    else:
-        return ['species']
+        private_datasets = {}
+        crop_methods = {
+            'happywhale-tfrecords-unsubmerged': 'unsubmerged', 
+            'happywhale-wds-unsubmerged': None,
+            }
+        gcs_paths = {
+            'happywhale-tfrecords-bb': 'gs://kds-78e0d66e23ba96609ed1a523cf56ec15ec84f29f27b87552a60f16f6',
+            'happywhale-tfrecords-backfin': 'gs://kds-13f1a788145b3009a82fa0fef6e890470e153bb00dd2488e5191173b',
+            'backfintfrecords': 'gs://kds-c953863165740d37e881cc034deeb733e92fa4e567c5d920ca2dd678',
+            'happywhale-tfrecords-private2': 'gs://kds-9bd7ea7f4535a67c5ae349b0c8cec3f223d9bb4e80e77283e89eda88',
+            'happywhale-tfrecords-unsubmerged': 'gs://kds-1496d45e5836d50e2cef05444e618de382680ba556a56b94a2b474e4',
+            'happywhale-wds-unsubmerged': 'gs://kds-651ab29172b09817da278473d6c028824ff60078e89b80ccc8fbf62a',
+            }
+        cfg.gcs_path = get_gcs_path(cfg, gcs_paths)
+        assert cfg.dataset, 'filetype is tfrec but no dataset in config'
+        cfg.dataset_is_private = cfg.dataset in private_datasets
+        assert cfg.dataset in crop_methods, f'{cfg.dataset} not in {list(crop_methods.keys())}'
+        cfg.crop_method = crop_methods[cfg.dataset]
+        cfg.BGR = False
+
+        # tfrec augmentations (0: min, 1: max effect)
+        cfg.use_albumentations = False
+        cfg.hflip            = True
+        cfg.random_grayscale = 0.2
+        cfg.random_crop      = 0.4
+        cfg.mean_filter      = 0.5
+        cfg.rotate           = 5
+
+        if cfg.dataset_is_private and cfg.cloud == 'kaggle':
+            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/train*.tfrec')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/test*.tfrec')).tolist()
+            cfg.crop_method = None  # cannot have private dataset with 62 GB uncropped images
+        elif use_tfds:
+            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*train*.tfrec')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*test*.tfrec')).tolist()
+        else:
+            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-[tv][ra][al]*.tarball')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
+        if cfg.dataset == 'whale-tfrecords-512': cfg.crop_method = None
+        if cfg.dataset == 'happywhale-tfrecords-backfin': cfg.BGR = True
+        splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
+               '/kaggle/input/lextoumbourou' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-private2') else
+               f'/kaggle/input/happy-whale-and-dolphin/lextoumbourou' if (cfg.dataset == 'happywhale-tfrecords-private2') else
+               '/kaggle/input/happy-whale-and-dolphin')
+        print(f'{len(cfg.train_files)} train tfrec files, {len(cfg.test_files)} test tfrec files')
+        print(f'{count_data_items(cfg.train_files)} train images, {count_data_items(cfg.test_files)} test images')
+        print(f'Using individual_id and species encoding from {splits_path}')
+        assert len(cfg.train_files) > 0, f'no tfrec files found, check GCS_DS_PATH: {cfg.gcs_path}'
 
 
 def add_image_id(df, cfg):
@@ -83,7 +129,14 @@ def add_category_id(df, cfg):
     elif 'yolov5' in cfg.tags:
         return df.rename(columns={'species': 'category_id'})
 
-    if cfg.pudae_valid:
+    if cfg.deotte:
+        # Standard validation, treat all individuals equally.
+        # Does not matter that individuals are missing in train set,
+        # with ArcFace, embeddings can be learned on a subset.
+        # Embeddings are then compared for all individuals during inference.
+        pass
+
+    elif cfg.pudae_valid:
         # Keep individual_id unchanged, sample unpaired, prepare folds.json
         id_counts = df.individual_id.value_counts(sort=False)
         singlets = [i for i, count in id_counts.items() if count == 1]
@@ -124,34 +177,33 @@ def add_category_id(df, cfg):
         cfg.folds_json = Path(cfg.out_dir) / 'folds.json'
         folds.reset_index().to_json(cfg.folds_json)
 
-        return df.rename(columns={'individual_id': 'category_id'})
+    else:
+        # Merge all unpaired individuals as "new_individual"
+        cfg.negative_class = 'new_individual'
+        if cfg.negative_thres is not None:
+            print(f'[ √ ] Predict "{cfg.negative_class}" if top score is below negative_thres {cfg.negative_thres}')
+        if not cfg.train_on_all:
+            print(f"{df.individual_id.nunique()} individuals")
+            id_counts = df.individual_id.value_counts(sort=False)
+            new = set([i for i, count in id_counts.items() if count == 1])
+            n_new = len(new)
+            print(f"{n_new} unpaired -> {cfg.negative_class}")
 
-    # Merge all unpaired individuals as "new_individual"
-    cfg.negative_class = 'new_individual'
-    if cfg.negative_thres is not None:
-        print(f'[ √ ] Predict "{cfg.negative_class}" if top score is below negative_thres {cfg.negative_thres}')
-    if not cfg.train_on_all:
-        print(f"{df.individual_id.nunique()} individuals")
-        id_counts = df.individual_id.value_counts(sort=False)
-        new = set([i for i, count in id_counts.items() if count == 1])
-        n_new = len(new)
-        print(f"{n_new} unpaired -> {cfg.negative_class}")
+            # Add random identities to reach 0.112 in valid set
+            if cfg.add_new_valid:
+                rng = default_rng(seed=42)
+                paired_individuals = [i for i, count in id_counts.items() if count > 1]
+                add_individuals = rng.choice(paired_individuals, size=cfg.add_new_valid, replace=False)
+                new.update(add_individuals)
+                print(f'      Declaring all {n_new} unpaired images as "{cfg.negative_class}"')
+                print(f'      Adding {cfg.add_new_valid} paired individuals:', *add_individuals[:3].tolist(), '...')
+                add_df = df.loc[df.individual_id.isin(set(add_individuals))].copy()
+                add_df.drop_duplicates(subset='individual_id', inplace=True)
+                df = df.set_index('individual_id').drop(labels=add_individuals).reset_index()
+                df = pd.concat([df, add_df], ignore_index=True)
 
-        # Add random identities to reach 0.112 in valid set
-        if cfg.add_new_valid:
-            rng = default_rng(seed=42)
-            paired_individuals = [i for i, count in id_counts.items() if count > 1]
-            add_individuals = rng.choice(paired_individuals, size=cfg.add_new_valid, replace=False)
-            new.update(add_individuals)
-            print(f'      Declaring all {n_new} unpaired images as "{cfg.negative_class}"')
-            print(f'      Adding {cfg.add_new_valid} paired individuals:', *add_individuals[:3].tolist(), '...')
-            add_df = df.loc[df.individual_id.isin(set(add_individuals))].copy()
-            add_df.drop_duplicates(subset='individual_id', inplace=True)
-            df = df.set_index('individual_id').drop(labels=add_individuals).reset_index()
-            df = pd.concat([df, add_df], ignore_index=True)
-
-        df.loc[df.individual_id.isin(new), 'individual_id'] = cfg.negative_class
-        print(f"{df.individual_id.nunique() - 1} paired individuals after unpaired's name change")
+            df.loc[df.individual_id.isin(new), 'individual_id'] = cfg.negative_class
+            print(f"{df.individual_id.nunique() - 1} paired individuals after unpaired's name change")
 
     return df.rename(columns={'individual_id': 'category_id'})
 
@@ -224,8 +276,21 @@ def filter_bg_images(bg_images, df, cfg):
     return bg_images
 
 
+def extra_columns(cfg):
+    if 'yolov5' in cfg.tags:
+        return []
+    elif 'species' in cfg.tags:
+        return ['individual_id']
+    else:
+        return ['species']
+
+
 def after_split(df, cfg):
+
     if not 'yolov5' in cfg.tags: 
+        if cfg.num_folds in {5, 10}:
+            # conventional splitting, like in TF notebooks
+            return df
         assert cfg.num_folds == 2
         assert len(cfg.use_folds) == 1
 
@@ -243,6 +308,7 @@ def after_split(df, cfg):
 
 
 def pooling(cfg, n_features):
+    # ignored if cfg.deotte
     # feature_size for nfnet_l1: 16 (128²), 64 (256²), 144 (384²), 256 (512²)
     if cfg.arcface: return None
     if cfg.feature_size:
@@ -254,6 +320,7 @@ def pooling(cfg, n_features):
 
 
 def bottleneck(cfg, n_features):
+    # ignored if cfg.deotte
     if len(cfg.dropout_ps) == 2:
         print(f"building bottleneck with weight {n_features, 512}")
         return nn.Sequential(nn.Linear(n_features, 512), nn.Dropout(p=cfg.dropout_ps[1]))

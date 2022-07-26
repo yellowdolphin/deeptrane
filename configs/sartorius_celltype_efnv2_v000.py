@@ -12,7 +12,7 @@ cfg = {
     "size": (260, 352),
     "multilabel": False,
     "use_albumentations": True,
-    "num_tpu_cores": 8,
+    "n_replicas": 8,
     "bs": 32,
     "n_acc": 1,
     "epochs": 10,

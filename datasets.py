@@ -34,6 +34,8 @@ class ImageDataset(Dataset):
         self.image_root = cfg.image_root
         self.transform = transform
         self.tensor_transform = tensor_transform
+        self.albu = transform and transform.__module__.startswith('albumentations')
+        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
         self.labeled = (mode in ['train', 'valid'])
         self.multilabel = cfg.multilabel
         if self.labeled:
@@ -87,9 +89,9 @@ class ImageDataset(Dataset):
             #image = PIL.Image.open(fn)
 
         if self.transform:
-            if self.transform.__module__.startswith('albumentations'):
+            if self.albu:
                 image = self.transform(image=np.array(image))['image']
-                image = (image / 255).float()
+                image = (image / 255).float() if self.floatify else image
             else:
                 # torchvision, requires PIL.Image
                 image = self.transform(PIL.Image.fromarray(image))

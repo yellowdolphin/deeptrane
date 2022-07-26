@@ -150,8 +150,9 @@ def maybe_encode_labels(df, cfg):
         return df, len(cfg.classes), cfg.classes
 
     max_label, min_label = df.category_id.max(), df.category_id.min()
+    cfg.n_classes = cfg.n_classes or max_label
 
-    if df.category_id.dtype == 'O' or any(max_label + 1 > cfg.n_classes, min_label < 0):
+    if df.category_id.dtype == 'O' or any((max_label + 1 > cfg.n_classes, min_label < 0)):
         #                           ^-- prevents TypeError
         import sklearn
         print("[ √ ] sklearn:", sklearn.__version__)
