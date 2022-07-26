@@ -31,8 +31,9 @@ for key, value in listify(parser_args.set):
 print(cfg)
 
 cfg.cloud = 'kaggle' if os.path.exists('/kaggle') else 'drive' if os.path.exists('/content') else 'gcp'
-if cfg.cloud == 'drive':
-    cfg.out_dir = get_drive_out_dir(cfg)
+if cfg.cloud == 'drive': 
+    cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
+
 print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)

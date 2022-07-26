@@ -61,7 +61,7 @@ def get_drive_out_dir(cfg):
     if not os.path.exists('/content/gdrive'):
         from google.colab import drive
         drive.mount('/content/gdrive', force_remount=False)
-        project_dir = f'/content/gdrive/MyDrive/{cfg.project}'
+    project_dir = f'/content/gdrive/MyDrive/{cfg.project}'
 
     experiment = cfg.experiment or 1
 
