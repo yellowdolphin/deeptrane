@@ -6,6 +6,9 @@ gcs_paths = {
 
 def init(cfg):
     cfg.competition_path = Path('/kaggle/input/cassava-leaf-disease-classification')
+    if cfg.cloud == 'drive':
+        cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
+
     if cfg.filetype == 'jpg':
         assert cfg.size[0] == cfg.size[1]
         size = cfg.size[0]
@@ -15,6 +18,7 @@ def init(cfg):
             print("image_root:", cfg.image_root)
     elif cfg.filetype == 'tfrec':
         cfg.image_root = cfg.competition_path / 'train_tfrecords'
+
     cfg.meta_csv = cfg.competition_path / 'train.csv'  # label
     cfg.gcs_filter = 'train_tfrecords/*.tfrec'
     cfg.n_classes = 5

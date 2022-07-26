@@ -28,12 +28,12 @@ cfg.dropout_ps = cfg.dropout_ps if parser_args.dropout_ps is None else listify(p
 cfg.lin_ftrs = cfg.lin_ftrs if parser_args.lin_ftrs is None else listify(parser_args.lin_ftrs)
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
-print(cfg)
 
 cfg.cloud = 'kaggle' if os.path.exists('/kaggle') else 'drive' if os.path.exists('/content') else 'gcp'
 if cfg.cloud == 'drive': 
     cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
 
+print(cfg)
 print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
