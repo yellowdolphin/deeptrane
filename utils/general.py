@@ -1,3 +1,4 @@
+import os
 from subprocess import run
 from typing import Iterable
 
@@ -51,3 +52,25 @@ def autotype(cfg, key, value):
     else:
         raise TypeError(f"Type {type(cfg[key])} of `{key}` not supported by `--set`")
     return None
+
+
+def get_drive_out_dir(cfg):
+    if cfg.project is None:
+        return '/content'
+
+    if not os.path.exists('/content/gdrive'):
+        from google.colab import drive
+        drive.mount('/content/gdrive', force_remount=False)
+        project_dir = f'/content/gdrive/MyDrive/{cfg.project}'
+
+    experiment = cfg.experiment or 1
+
+    # create new experiment folder on google drive
+    save_dir = f'{project_dir}/runs/{experiment:03d}'
+    if experiment > 0 and os.path.exists(save_dir):
+        prev_experiment = max(int(f.name) for f in os.scandir(f'{project_dir}/runs'))
+        experiment = prev_experiment + 1
+        save_dir = f'{project_dir}/runs/{experiment:03d}'
+    os.makedirs(save_dir, exist_ok=True)
+
+    return save_dir

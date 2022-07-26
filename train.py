@@ -10,7 +10,7 @@ from multiprocessing import cpu_count
 
 from future import removesuffix
 from config import Config, parser
-from utils.general import quietly_run, listify, sizify, autotype
+from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -31,6 +31,8 @@ for key, value in listify(parser_args.set):
 print(cfg)
 
 cfg.cloud = 'kaggle' if os.path.exists('/kaggle') else 'drive' if os.path.exists('/content') else 'gcp'
+if cfg.cloud == 'drive':
+    cfg.out_dir = get_drive_out_dir(cfg)
 print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
@@ -48,7 +50,7 @@ cfg.out_dir = Path(cfg.out_dir)
 
 # Install torch.xla on kaggle TPU supported nodes
 if (cfg.cloud == 'kaggle') and ('TPU_NAME' in os.environ):
-    cfg.xla = True         # pull out of cfg?
+    cfg.xla = True
     xla_version = '1.8.1'  # only '1.8.1' works on python3.7
 
     # Auto installation
