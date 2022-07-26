@@ -1,4 +1,5 @@
 from pathlib import Path
+from future import removesuffix
 
 import numpy as np
 import torch

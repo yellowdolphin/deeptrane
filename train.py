@@ -8,7 +8,6 @@ from multiprocessing import cpu_count
 #import warnings
 #warnings.filterwarnings('ignore')
 
-from future import removesuffix
 from config import Config, parser
 from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
 
@@ -192,19 +191,3 @@ for use_fold in cfg.use_folds:
         del pretrained_model
         gc.collect()
         torch.cuda.empty_cache()
-
-    # implemented in xla_train
-    #if cfg.save_best:
-    #    saved_models = sorted(glob(f'{cfg.out_dir / cfg.name}_fold{use_fold}_ep*.pth'))
-    #    if len(saved_models) > 1:
-    #        last_saved = removesuffix(saved_models[-1], '.pth')
-    #        print("Best saved model:", last_saved)
-    #        for saved_model in saved_models[:-1]:
-    #            path_stem = removesuffix(saved_model, '.pth')
-    #            for suffix in 'pth opt sched'.split():
-    #                fn = f'{path_stem}.{suffix}'
-    #                if os.path.exists(fn): Path(fn).unlink()
-    #    elif len(saved_models) == 1:
-    #        print(print("Best saved model:", saved_models[0]))
-    #    else:
-    #        print(f"no checkpoints found in {cfg.out_dir}")
