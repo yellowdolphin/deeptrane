@@ -24,7 +24,6 @@ from augmentation import get_tfms
 from utils.general import listify
 from models import is_bn
 from metrics import NegativeRate, MAP, AverageMeter
-from tf_datasets import get_tf_datasets, TFDataLoader
 from torch import FloatTensor, LongTensor
 
 torch.set_default_tensor_type('torch.FloatTensor')
@@ -341,6 +340,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
 
     if cfg.filetype == 'tfrec' and use_tfds:
+        from tf_datasets import get_tf_datasets, TFDataLoader
         ds_train, ds_valid = get_tf_datasets(cfg, use_fold)
     elif cfg.filetype == 'tfrec':
         pass
