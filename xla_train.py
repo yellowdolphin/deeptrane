@@ -80,7 +80,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
-        # extract inputs and labels (multi-core: data already on device)
+        # extract inputs and labels
         if cfg.fake_data:
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
@@ -120,9 +120,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
         #assert inputs.shape == (cfg.bs, 3, *cfg.size), f'wrong inputs shape: {inputs.shape}'
         #assert labels.shape == (cfg.bs,), f'wrong labels shape: {labels.shape}'
 
-        if 'Device' not in dataloader.__class__.__name__:  # ParallelLoader, MpDeviceLoader already do this
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+        # send to device(s) if still on CPU (device_loaders do this automatically)
+        inputs = inputs.to(device)
+        labels = labels.to(device)
 
         # image batch_tfms
         #if cfg.use_batch_tfms:
@@ -234,6 +234,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
+        # extract inputs and labels 
         if cfg.fake_data:
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
@@ -244,7 +245,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         else:
             inputs, labels = batch
 
-        # extract inputs and labels (multi-core: ParallelLoader does this already)
+        # send to device(s) if still on CPU (device_loaders do this automatically)
         inputs = inputs.to(device)
         labels = labels.to(device)
 
@@ -488,7 +489,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                   #pin_memory  = True,
                                   )
 
-    if cfg.xla and (deviceloader == 'mp') and not cfg.fake_data:
+    if cfg.xla and (deviceloader == 'mp') and not (cfg.fake_data or cfg.jump_deviceloader):
         train_loader = pl.MpDeviceLoader(train_loader, device)
         valid_loader = pl.MpDeviceLoader(valid_loader, device)
 
