@@ -6,6 +6,7 @@ cfg = dict(
 
 # Data Partitioning
     train_on_all = False,
+    fake_data = False,
     num_folds = 5,
     use_folds = [0],
 
