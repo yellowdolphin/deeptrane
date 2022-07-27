@@ -326,6 +326,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         loader_prefetch_size = 1
         device_prefetch_size = 1
         deviceloader = 'mp'  # 'mp' performs better than 'pl' on kaggle
+        if cfg.fake_data: import torch_xla.utils.utils as xu
 
     # Data samplers, class-weighted metrics
     class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
@@ -339,7 +340,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
 
 
-    if cfg.filetype == 'tfrec' and use_tfds:
+    if cfg.fake_data:
+        pass
+    elif cfg.filetype == 'tfrec' and use_tfds:
         from tf_datasets import get_tf_datasets, TFDataLoader
         ds_train, ds_valid = get_tf_datasets(cfg, use_fold)
     elif cfg.filetype == 'tfrec':
@@ -411,7 +414,16 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                            shuffle      = False)
 
     # Dataloaders
-    if cfg.filetype == 'tfrec' and use_tfds:
+    if cfg.fake_data:
+        train_loader = xu.SampleGenerator(
+            data=(torch.zeros(cfg.bs, 3, *cfg.size),
+                  torch.zeros(cfg.bs, dtype=torch.int64)),
+            sample_count=cfg.NUM_TRAINING_IMAGES // (cfg.bs * cfg.n_replicas))
+        valid_loader = xu.SampleGenerator(
+            data=(torch.zeros(cfg.bs, 3, *cfg.size),
+                  torch.zeros(cfg.bs, dtype=torch.int64)),
+            sample_count=cfg.NUM_VALIDATION_IMAGES // (cfg.bs * cfg.n_replicas))
+    elif cfg.filetype == 'tfrec' and use_tfds:
         train_loader = TFDataLoader(
             ds_train,
             n_examples = cfg.NUM_TRAINING_IMAGES,

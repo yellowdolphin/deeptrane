@@ -14,7 +14,8 @@ def init(cfg):
         size = cfg.size[0]
         cfg.image_root = Path(f'/kaggle/input/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
         if cfg.cloud == 'drive':
-            cfg.image_root = Path(f'/content/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
+            #cfg.image_root = Path(f'/content/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
+            cfg.image_root = Path(f'/tmp/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
     elif cfg.filetype == 'tfrec':
         cfg.image_root = cfg.competition_path / 'train_tfrecords'
 
