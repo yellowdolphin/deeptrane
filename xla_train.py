@@ -77,11 +77,17 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     n_iter = len(dataloader)
     iterable = range(n_iter) if cfg.use_batch_tfms else dataloader
     sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
+    if cfg.fake_data:
+        iterable = range(n_iter)
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
         # extract inputs and labels (multi-core: data already on device)
-        if cfg.use_batch_tfms:
+        if cfg.fake_data:
+            inputs, labels = (
+                torch.zeros(cfg.bs, 3, *cfg.size, device=device),
+                torch.zeros(cfg.bs, dtype=torch.int64, device=device))
+        elif cfg.use_batch_tfms:
             # resize and collate images, labels
             #samples = [next(sample_iterator) for _ in range(cfg.bs)]
             #for s in samples:
@@ -476,7 +482,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                   #pin_memory  = True,
                                   )
 
-    if cfg.xla and deviceloader == 'mp':
+    if cfg.xla and (deviceloader == 'mp') and not cfg.fake_data:
         train_loader = pl.MpDeviceLoader(train_loader, device)
         valid_loader = pl.MpDeviceLoader(valid_loader, device)
 
