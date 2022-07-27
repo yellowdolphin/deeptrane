@@ -51,7 +51,7 @@ cfg.out_dir = Path(cfg.out_dir)
 # Install torch.xla on TPU supported nodes
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
-    xla_version = '1.8.1' if (cfg.cloud == 'kaggle') else 'nightly+20220725'  # '1.8.1' works on kaggle
+    xla_version = '1.8.1' if (cfg.cloud == 'kaggle') else '1.12+20220615'  # '1.8.1' works on kaggle
     # check version for python 3.7: $ gsutil ls gs://tpu-pytorch/wheels/colab | grep cp37
     # 'nightly': installs torch-1.13.0a0+git83c6113, libmkl_intel_lp64.so.1 missing
     # '1.12': on colab re-installs torch etc anyways, libmkl_intel_lp64.so.1 missing
