@@ -407,7 +407,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     else:
         train_sampler = None
 
-    if (cfg.filetype == 'tfrec') or (cfg.n_replicas == 1):
+    if (cfg.filetype == 'tfrec') or (cfg.n_replicas == 1) or cfg.fake_data:
         valid_sampler = None
 
     else:
