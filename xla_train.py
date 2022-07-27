@@ -369,7 +369,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             xm.master_print("test_tfms:")
             xm.master_print(ds_valid.transform)
 
-    if cfg.filetype == 'tfrec':
+    if cfg.fake_data:
+        train_loader = None
+
+    elif cfg.filetype == 'tfrec':
         train_sampler = None
 
     elif cfg.do_class_sampling:
