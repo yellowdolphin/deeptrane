@@ -53,12 +53,14 @@ if 'TPU_NAME' in os.environ:
     cfg.xla = True
     xla_version = '1.8.1' if (cfg.cloud == 'kaggle') else '1.12'  # '1.8.1' works on kaggle
     # check version for python 3.7: $ gsutil ls gs://tpu-pytorch/wheels/colab | grep cp37
+    # '1.12': on colab re-installs torch etc anyways, libmkl_intel_lp64.so.1 missing
 
     # Auto installation
     if cfg.cloud == 'drive': 
         quietly_run(
             'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-            f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
+            #f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
+            f'{sys.executable} pytorch-xla-env-setup.py',
             'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
             debug=True
             )
