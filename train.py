@@ -51,7 +51,7 @@ cfg.out_dir = Path(cfg.out_dir)
 # Install torch.xla on TPU supported nodes
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
-    xla_version = '1.8.1' if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle
+    xla_version = '1.8.1' #if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle
     # check version for python 3.7: $ gsutil ls gs://tpu-pytorch/wheels/colab | grep cp37
     # 'nightly': installs torch-1.13.0a0+git83c6113, libmkl_intel_lp64.so.1 missing
     # '1.12': on colab re-installs torch etc anyways, libmkl_intel_lp64.so.1 missing
@@ -63,10 +63,11 @@ if 'TPU_NAME' in os.environ:
         quietly_run(
             'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
             f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
-            #f'{sys.executable} pytorch-xla-env-setup.py',
             'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
             debug=True
             )
+        print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
+        os.environ['LD_LIBRARY_PATH'] += ':/usr/local/lib'  # fix 'libmkl_intel_lp64.so.1 not found'
     else:
         quietly_run(
             f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
