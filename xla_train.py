@@ -75,10 +75,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
     # training loop
     n_iter = len(dataloader)
-    iterable = range(n_iter) if cfg.use_batch_tfms else dataloader
+    iterable = range(n_iter) if cfg.use_batch_tfms or cfg.fake_data else dataloader
     sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
-    if cfg.fake_data:
-        iterable = range(n_iter)
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -230,9 +228,17 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         metric_meters = [AverageMeter(xm) for m in metrics]
 
     # validation loop
-    for batch_idx, batch in enumerate(dataloader, start=1):
+    n_iter = len(dataloader)
+    iterable = range(n_iter) if cfg.use_batch_tfms or cfg.fake_data else dataloader
+    sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
 
-        if cfg.filetype == 'tfrec' and use_tfds:
+    for batch_idx, batch in enumerate(iterable, start=1):
+
+        if cfg.fake_data:
+            inputs, labels = (
+                torch.zeros(cfg.bs, 3, *cfg.size, device=device),
+                torch.zeros(cfg.bs, dtype=torch.int64, device=device))
+        elif cfg.filetype == 'tfrec' and use_tfds:
             inputs, labels = FloatTensor(batch[0]['inp1']), LongTensor(batch[0]['inp2'])
             inputs = inputs.permute((0, 3, 1, 2))  #.contiguous()  # mem? speed?
         else:
