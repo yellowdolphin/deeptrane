@@ -51,7 +51,7 @@ cfg.out_dir = Path(cfg.out_dir)
 # Install torch.xla on TPU supported nodes
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
-    xla_version = '1.8.1' if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle and colab
+    xla_version = '1.8.1' #if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle and colab
 
     # Auto installation
     if cfg.cloud == 'drive':
@@ -69,9 +69,10 @@ if 'TPU_NAME' in os.environ:
         # LD_LIBRARY_PATH points to /usr/local/nvidia, which does not exist
         # xla setup creates /usr/local/lib/libmkl_intel_lp64.so but not .so.1
         print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
-        os.environ['LD_LIBRARY_PATH'] += ':/usr/local/lib'  # fix 'libmkl_intel_lp64.so.1 not found'
-        if os.path.exists('/usr/local/lib/libmkl_intel_lp64.so'):
-            os.symlink('/usr/local/lib/libmkl_intel_lp64.so', '/usr/local/lib/libmkl_intel_lp64.so.1')
+        # For some reason this does not work:
+        #os.environ['LD_LIBRARY_PATH'] += ':/usr/local/lib'  # fix 'libmkl_intel_lp64.so.1 not found'
+        #if os.path.exists('/usr/local/lib/libmkl_intel_lp64.so'):
+        #    os.symlink('/usr/local/lib/libmkl_intel_lp64.so', '/usr/local/lib/libmkl_intel_lp64.so.1')
     else:
         quietly_run(
             f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
