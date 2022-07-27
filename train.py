@@ -54,18 +54,19 @@ if 'TPU_NAME' in os.environ:
     xla_version = '1.8.1' #if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle and colab
 
     # Auto installation
-    if cfg.cloud == 'drive' and False:  # install in notebook
+    if (cfg.cloud == 'drive'):
         # check xla_version for python 3.7: $ gsutil ls gs://tpu-pytorch/wheels/colab | grep cp37
         # 'nightly': installs torch-1.13.0a0+git83c6113, libmkl_intel_lp64.so.1 missing
         # '1.12': on colab re-installs torch etc anyways, libmkl_intel_lp64.so.1 missing
         # '1.11': on colab installs torch-1.11.0a0+git8d365ae, libmkl_intel_lp64.so.1 missing
         # w/o --version, installs torch 1.6.0 which has no MpSerialExecutor
-        quietly_run(
-            'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-            f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
-            'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
-            debug=True
-            )
+        if False:  # install in notebook instead
+            quietly_run(
+                'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
+                f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
+                'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
+                debug=True
+                )
         # LD_LIBRARY_PATH points to /usr/local/nvidia, which does not exist
         # xla setup creates /usr/local/lib/libmkl_intel_lp64.so but not .so.1
         print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
