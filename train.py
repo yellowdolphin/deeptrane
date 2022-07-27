@@ -54,7 +54,7 @@ if 'TPU_NAME' in os.environ:
     xla_version = '1.8.1' if (cfg.cloud == 'kaggle') else '1.12.0+cu113' # only '1.8.1' works on python3.7
 
     # Auto installation
-    if cloud == 'drive': 
+    if cfg.cloud == 'drive': 
         quietly_run('curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py')
     quietly_run(
         f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
