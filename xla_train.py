@@ -121,9 +121,13 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
         #assert labels.shape == (cfg.bs,), f'wrong labels shape: {labels.shape}'
 
         # send to device(s) if still on CPU (device_loaders do this automatically)
-        if True:
+        if False:
             inputs = inputs.to(device)
             labels = labels.to(device)
+        else:
+            inputs, labels = (
+                torch.zeros(cfg.bs, 3, *cfg.size, device=device),
+                torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
         # image batch_tfms
         #if cfg.use_batch_tfms:
@@ -247,9 +251,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             inputs, labels = batch
 
         # send to device(s) if still on CPU (device_loaders do this automatically)
-        if True:
+        if False:
             inputs = inputs.to(device)
             labels = labels.to(device)
+        else:
+            inputs, labels = (
+                torch.zeros(cfg.bs, 3, *cfg.size, device=device),
+                torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
         # forward
         with torch.no_grad():
