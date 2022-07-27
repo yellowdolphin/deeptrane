@@ -60,8 +60,8 @@ if 'TPU_NAME' in os.environ:
     if cfg.cloud == 'drive': 
         quietly_run(
             'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-            #f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
-            f'{sys.executable} pytorch-xla-env-setup.py',
+            f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
+            #f'{sys.executable} pytorch-xla-env-setup.py',
             'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
             debug=True
             )
