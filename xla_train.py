@@ -370,7 +370,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             xm.master_print(ds_valid.transform)
 
     if cfg.fake_data:
-        train_loader = None
+        train_sampler = None
 
     elif cfg.filetype == 'tfrec':
         train_sampler = None
