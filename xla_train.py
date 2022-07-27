@@ -75,13 +75,13 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
     # training loop
     n_iter = len(dataloader)
-    iterable = range(n_iter) if cfg.use_batch_tfms or cfg.fake_data else dataloader
+    iterable = range(n_iter) if cfg.use_batch_tfms or (cfg.fake_data == 'on_device') else dataloader
     sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
         # extract inputs and labels
-        if cfg.fake_data:
+        if cfg.fake_data == 'on_device':
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
@@ -121,7 +121,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
         #assert labels.shape == (cfg.bs,), f'wrong labels shape: {labels.shape}'
 
         # send to device(s) if still on CPU (device_loaders do this automatically)
-        if False:
+        if True:
             inputs = inputs.to(device)
             labels = labels.to(device)
         else:
@@ -234,13 +234,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
     # validation loop
     n_iter = len(dataloader)
-    iterable = range(n_iter) if cfg.use_batch_tfms or cfg.fake_data else dataloader
+    iterable = range(n_iter) if cfg.use_batch_tfms or (cfg.fake_data == 'on_device') else dataloader
     sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
         # extract inputs and labels 
-        if cfg.fake_data:
+        if (cfg.fake_data == 'on_device'):
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
@@ -251,7 +251,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             inputs, labels = batch
 
         # send to device(s) if still on CPU (device_loaders do this automatically)
-        if False:
+        if True:
             inputs = inputs.to(device)
             labels = labels.to(device)
         else:
@@ -439,7 +439,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                            shuffle      = False)
 
     # Dataloaders
-    if cfg.fake_data:
+    if cfg.fake_data and (cfg.fake_data != 'on_device'):
         train_loader = xu.SampleGenerator(
             data=(torch.zeros(cfg.bs, 3, *cfg.size),
                   torch.zeros(cfg.bs, dtype=torch.int64)),
@@ -498,7 +498,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                   #pin_memory  = True,
                                   )
 
-    if cfg.xla and (cfg.deviceloader == 'mp') and not cfg.fake_data:
+    if cfg.xla and (cfg.deviceloader == 'mp') and cfg.fake_data != 'on_device':
         train_loader = pl.MpDeviceLoader(train_loader, device)
         valid_loader = pl.MpDeviceLoader(valid_loader, device)
 
