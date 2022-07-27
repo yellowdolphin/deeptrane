@@ -51,15 +51,18 @@ cfg.out_dir = Path(cfg.out_dir)
 # Install torch.xla on kaggle TPU supported nodes
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
-    xla_version = '1.8.1' if (cfg.cloud == 'kaggle') else '1.12.0' # only '1.8.1' works on python3.7
+    xla_version = '1.8.1' #if (cfg.cloud == 'kaggle') else '1.12.0' # only '1.8.1' works on python3.7
 
     # Auto installation
     if cfg.cloud == 'drive': 
-        quietly_run('curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py')
+        quietly_run(
+            'pip install torch=={xla_version}',
+            'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
+            debug=True)
     quietly_run(
         f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
         #'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper, catalyst 21.8 already installed
-        #debug=True
+        debug=True
     )
     print("[ √ ] Python:", sys.version.replace('\n', ''))
     print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ['XLA_USE_BF16']})")
