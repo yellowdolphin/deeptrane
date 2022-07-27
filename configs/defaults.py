@@ -6,8 +6,6 @@ cfg = dict(
 
 # Data Partitioning
     train_on_all = False,
-    fake_data = False,
-    jump_deviceloader = False,
     num_folds = 5,
     use_folds = [0],
 
@@ -24,6 +22,8 @@ cfg = dict(
     do_class_sampling = False,
     frac = 1.0,
     use_batch_tfms = False,
+    fake_data = False,
+    deviceloader = None,
 
 # Optimizer, Scheduler
     optimizer = 'AdamW',

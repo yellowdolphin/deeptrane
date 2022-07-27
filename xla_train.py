@@ -331,14 +331,13 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     ### Setup
     device = xm.xla_device()
-    deviceloader = None
     if cfg.xla:
         import torch_xla.distributed.parallel_loader as pl
         from catalyst.data import DistributedSamplerWrapper
         from torch.utils.data.distributed import DistributedSampler
         loader_prefetch_size = 1
         device_prefetch_size = 1
-        deviceloader = 'mp'  # 'mp' performs better than 'pl' on kaggle
+        cfg.deviceloader = cfg.deviceloader or 'mp'  # 'mp' performs better than 'pl' on kaggle
         if cfg.fake_data: import torch_xla.utils.utils as xu
 
     # Data samplers, class-weighted metrics
@@ -489,7 +488,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                   #pin_memory  = True,
                                   )
 
-    if cfg.xla and (deviceloader == 'mp') and not (cfg.fake_data or cfg.jump_deviceloader):
+    if cfg.xla and (cfg.deviceloader == 'mp') and not cfg.fake_data:
         train_loader = pl.MpDeviceLoader(train_loader, device)
         valid_loader = pl.MpDeviceLoader(valid_loader, device)
 
@@ -641,7 +640,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         # Training
 
-        if cfg.xla and deviceloader == 'pl':
+        if cfg.xla and cfg.deviceloader == 'pl':
             # ParallelLoader requires instantiation per epoch
             dataloader = pl.ParallelLoader(train_loader, [device], 
                                            loader_prefetch_size=loader_prefetch_size,
@@ -665,7 +664,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         if cfg.train_on_all:
             valid_loss, valid_metrics = 0, []
         else:
-            if cfg.xla and deviceloader == 'pl':
+            if cfg.xla and cfg.deviceloader == 'pl':
                 # ParallelLoader requires instantiation per epoch
                 dataloader = pl.ParallelLoader(valid_loader, [device],
                                                loader_prefetch_size=loader_prefetch_size,
