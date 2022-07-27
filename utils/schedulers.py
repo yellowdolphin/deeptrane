@@ -25,8 +25,8 @@ def get_one_cycle_scheduler(optimizer, max_lr, cfg, xm, rst_epoch=0, dataloader=
     if cfg.DEBUG:
         xm.master_print("DEBUG: in schedulers.get_one_cycle_scheduler")
         xm.master_print("n_examples:", n_examples, "frac:", frac)
-        xm.master_print("cfg.bs:", cfg.bs, "num_cores:", num_cores, "n_acc:", n_acc)
-        xm.master_print("denominator:", (cfg.bs * num_cores * n_acc))
+        xm.master_print("cfg.bs:", cfg.bs, "num_cores:", num_cores, "n_acc:", cfg.n_acc)
+        xm.master_print("denominator:", (cfg.bs * num_cores * cfg.n_acc))
     total_steps = (rst_epoch + cfg.epochs) * steps_per_epoch
     last_step = rst_epoch * steps_per_epoch - 1 if rst_epoch else -1
 
