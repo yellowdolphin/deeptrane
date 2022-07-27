@@ -22,9 +22,11 @@ def get_one_cycle_scheduler(optimizer, max_lr, cfg, xm, rst_epoch=0, dataloader=
     n_examples = cfg.NUM_TRAINING_IMAGES
     steps_per_epoch = int(n_examples * frac) // (cfg.bs * num_cores * cfg.n_acc)
     # steps_per_epoch can be short by 1 even if drop_last==True: happywhale_classifier_deeptrane2 v62
-    #xm.master_print("n_examples:", n_examples, "frac:", frac)
-    #xm.master_print("cfg.bs:", cfg.bs, "num_cores:", num_cores, "n_acc:", n_acc)
-    #xm.master_print("denominator:", (cfg.bs * num_cores * n_acc))
+    if cfg.DEBUG:
+        xm.master_print("DEBUG: in schedulers.get_one_cycle_scheduler")
+        xm.master_print("n_examples:", n_examples, "frac:", frac)
+        xm.master_print("cfg.bs:", cfg.bs, "num_cores:", num_cores, "n_acc:", n_acc)
+        xm.master_print("denominator:", (cfg.bs * num_cores * n_acc))
     total_steps = (rst_epoch + cfg.epochs) * steps_per_epoch
     last_step = rst_epoch * steps_per_epoch - 1 if rst_epoch else -1
 
