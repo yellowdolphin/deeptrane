@@ -192,6 +192,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             # undo "loss /= n_acc" because loss_meter reduction is 'mean'
             #loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # aten!
             #loss_meter.update(loss.detach() * cfg.n_acc, inputs.size(0))  # recursion!
+            pass
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
