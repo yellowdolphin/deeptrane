@@ -192,7 +192,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             # undo "loss /= n_acc" because loss_meter reduction is 'mean'
             #loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # aten!
             #loss_meter.update(loss.detach() * cfg.n_acc, inputs.size(0))  # recursion!
-            pass
+            xm.add_step_closure(
+                loss_meter.update, args=(loss, cfg.n_acc * inputs.size(0)))
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
@@ -286,6 +287,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         loss = criterion(preds, labels)
         #loss_meter.update(loss.item(), inputs.size(0))  # aten!
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
+        xm.add_step_closure(loss_meter.update, args=(loss, inputs.size(0)))
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
