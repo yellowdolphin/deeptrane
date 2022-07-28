@@ -750,8 +750,12 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir)
 
     if cfg.xla_metrics:
-        xm.master_print(met.metrics_report())
-
+        report = met.metrics_report()
+        if 'XrtTryFreeMemory' in report:
+            xm.master_print("XrtTryFreeMemory: reduce bs!")
+        xm.master_print(report, type(report))
+        if hasattr(report, 'keys'):
+            print("report.keys:", list(report.keys()))
 
 
 def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
