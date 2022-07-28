@@ -203,6 +203,7 @@ for use_fold in cfg.use_folds:
         xmp.spawn(_mp_fn, nprocs=cfg.n_replicas, start_method='fork',
                   args=(cfg, metadata, pretrained_model, serial_executor, xm, use_fold))
 
+
     # Or train on CPU/GPU if no xla
     else:
         pretrained_model = pretrained_model
