@@ -190,7 +190,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             seg_loss_meter.update(seg_loss.item(), inputs.size(0))
         else:
             # undo "loss /= n_acc" because loss_meter reduction is 'mean'
-            loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))
+            #loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
@@ -282,7 +282,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         assert preds.detach().size()[1] == cfg.n_classes, f'preds have wrong shape {preds.detach().size()}'
         assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
         loss = criterion(preds, labels)
-        loss_meter.update(loss.item(), inputs.size(0))
+        #loss_meter.update(loss.item(), inputs.size(0))
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
@@ -750,12 +750,11 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir)
 
     if cfg.xla_metrics:
-        report = met.metrics_report()
+        xm.master_print()
+        report = met.metrics_report()  # str
         if 'XrtTryFreeMemory' in report:
             xm.master_print("XrtTryFreeMemory: reduce bs!")
-        xm.master_print(report, type(report))
-        if hasattr(report, 'keys'):
-            print("report.keys:", list(report.keys()))
+        xm.master_print(report)
 
 
 def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
