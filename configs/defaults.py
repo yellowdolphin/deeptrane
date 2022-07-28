@@ -3,6 +3,7 @@ from pathlib import Path
 cfg = dict(
     name = Path(__file__).stem,
     DEBUG = False,
+    xla_metrics = False,
 
 # Data Partitioning
     train_on_all = False,
