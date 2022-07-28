@@ -190,7 +190,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             seg_loss_meter.update(seg_loss.item(), inputs.size(0))
         else:
             # undo "loss /= n_acc" because loss_meter reduction is 'mean'
-            #loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))
+            #loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # aten
+            loss_meter.update(loss.detach() * cfg.n_acc, inputs.size(0))
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
@@ -283,6 +284,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
         loss = criterion(preds, labels)
         #loss_meter.update(loss.item(), inputs.size(0))
+        loss_meter.update(loss.detach(), inputs.size(0))
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
