@@ -28,7 +28,7 @@ class AverageMeter(object):
         self.count = 0
 
     def update(self, val, n=1):
-        self.val = val.item() if hasattr(val, 'item') else val
+        self.val = val
         self.sum += val * n
         self.count += n
 

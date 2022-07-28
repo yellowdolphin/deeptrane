@@ -190,10 +190,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             seg_loss_meter.update(seg_loss.item(), inputs.size(0))
         else:
             # undo "loss /= n_acc" because loss_meter reduction is 'mean'
-            #loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # aten!
+            loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # aten!
             #loss_meter.update(loss.detach() * cfg.n_acc, inputs.size(0))  # recursion!
-            xm.add_step_closure(
-                loss_meter.update, args=(loss, cfg.n_acc * inputs.size(0)))
+            #xm.add_step_closure(loss_meter.update, args=(loss.item(), cfg.n_acc * inputs.size(0)))  # recursion!
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
@@ -285,9 +284,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         assert preds.detach().size()[1] == cfg.n_classes, f'preds have wrong shape {preds.detach().size()}'
         assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
         loss = criterion(preds, labels)
-        #loss_meter.update(loss.item(), inputs.size(0))  # aten!
+        loss_meter.update(loss.item(), inputs.size(0))  # aten!
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
-        xm.add_step_closure(loss_meter.update, args=(loss, inputs.size(0)))
+        #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
