@@ -502,14 +502,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         train_loader = pl.MpDeviceLoader(train_loader, device)
         valid_loader = pl.MpDeviceLoader(valid_loader, device)
 
-    elif cfg.xla and (cfg.deviceloader == 'pl') and cfg.fake_data != 'on_device':
-        train_loader = pl.ParallelLoader(train_loader, [device], 
-                                         loader_prefetch_size=loader_prefetch_size,
-                                         device_prefetch_size=device_prefetch_size)
-        valid_loader = pl.ParallelLoader(valid_loader, [device], 
-                                         loader_prefetch_size=loader_prefetch_size,
-                                         device_prefetch_size=device_prefetch_size)
-
     # Send model to device
     model = wrapped_model.to(device)
 
@@ -660,7 +652,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         if cfg.xla and cfg.deviceloader == 'pl':
             # ParallelLoader requires instantiation per epoch
-            dataloader = train_loader.per_device_loader(device)
+            dataloader = pl.ParallelLoader(train_loader, [device], 
+                                           loader_prefetch_size=loader_prefetch_size,
+                                           device_prefetch_size=device_prefetch_size
+                                           ).per_device_loader(device)
         else:
             dataloader = train_loader
 
@@ -681,7 +676,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         else:
             if cfg.xla and cfg.deviceloader == 'pl':
                 # ParallelLoader requires instantiation per epoch
-                dataloader = valid_loader.per_device_loader(device)
+                dataloader = pl.ParallelLoader(valid_loader, [device],
+                                               loader_prefetch_size=loader_prefetch_size,
+                                               device_prefetch_size=device_prefetch_size
+                                               ).per_device_loader(device)
             else:
                 dataloader = valid_loader
 
