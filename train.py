@@ -64,7 +64,7 @@ if 'TPU_NAME' in os.environ:
         if False:  # install in notebook instead
             quietly_run(
                 'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-                f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
+                f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
                 'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
                 debug=True
                 )
