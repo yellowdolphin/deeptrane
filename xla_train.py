@@ -492,14 +492,14 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         train_loader = DataLoader(ds_train,
                                   batch_size  = cfg.bs,
                                   sampler     = train_sampler,
-                                  num_workers = cpu_count(),
+                                  num_workers = 4 if cfg.n_replicas > 1 else cpu_count(),
                                   #pin_memory  = True,
                                   drop_last   = True,
                                   shuffle     = False if train_sampler else True)
         valid_loader = DataLoader(ds_valid,
                                   batch_size  = cfg.bs,
                                   sampler     = valid_sampler,
-                                  num_workers = cpu_count(),
+                                  num_workers = 4 if cfg.n_replicas > 1 else cpu_count(),
                                   #pin_memory  = True,
                                   )
 
