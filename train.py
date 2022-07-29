@@ -51,7 +51,8 @@ cfg.out_dir = Path(cfg.out_dir)
 # Install torch.xla on TPU supported nodes
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
-    xla_version = '1.8.1' #if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle and colab
+    #xla_version, apt_libs = '1.8.1', '' #if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle and colab
+    xla_version, apt_libs = 'nightly', '--apt-packages libomp5 libopenblas-dev'
 
     # Auto installation
     if (cfg.cloud == 'drive'):
@@ -76,7 +77,7 @@ if 'TPU_NAME' in os.environ:
         #    os.symlink('/usr/local/lib/libmkl_intel_lp64.so', '/usr/local/lib/libmkl_intel_lp64.so.1')
     else:
         quietly_run(
-            f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
+            f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
             debug=True
             )
     print("[ √ ] Python:", sys.version.replace('\n', ''))

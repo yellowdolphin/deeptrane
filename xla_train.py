@@ -190,7 +190,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             seg_loss_meter.update(seg_loss.item(), inputs.size(0))
         else:
             # undo "loss /= n_acc" because loss_meter reduction is 'mean'
-            loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # aten!
+            loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # 1 aten/iter, but no performance drop
             #loss_meter.update(loss.detach() * cfg.n_acc, inputs.size(0))  # recursion!
             #xm.add_step_closure(loss_meter.update, args=(loss.item(), cfg.n_acc * inputs.size(0)))  # recursion!
 
@@ -284,7 +284,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         assert preds.detach().size()[1] == cfg.n_classes, f'preds have wrong shape {preds.detach().size()}'
         assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
         loss = criterion(preds, labels)
-        loss_meter.update(loss.item(), inputs.size(0))  # aten!
+        loss_meter.update(loss.item(), inputs.size(0))  # 1 aten/iter but no performance drop
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
 
