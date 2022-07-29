@@ -80,6 +80,7 @@ if 'TPU_NAME' in os.environ:
             f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
             debug=True
             )
+        print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
     print("[ √ ] Python:", sys.version.replace('\n', ''))
     print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ['XLA_USE_BF16']})")
 import torch
