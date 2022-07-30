@@ -1,3 +1,16 @@
+"""
+# Try leverage tensorflow_datasets for pytorch training
+
+- tensorflow_datasets allows to stream a tfds, which already reads multiple tfrec files, decodes, augments, 
+  buffers and shuffles them. It yields numpy arrays, which can be iterated over by a pytorch DataLoader.
+- On CPU/single-GPU, a custom torch DataLoader that iterates on the tfds seems to work.
+- On TPU, the parallel_dataloader can be initialized with some tricks but `next(iter(pl))` hangs forever.
+- What is missing is an Op that converts the TF tensors into pytorch ones on the TPU. Sending the data to 
+  the CPU host VM as numpy and then feeding them back via torch device loader might not be efficient.
+
+"""
+
+
 import os
 import re
 from functools import partial
