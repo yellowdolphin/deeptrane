@@ -304,13 +304,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 top5[negatives, 1:] = top5[negatives, :-1]
                 top5[negatives, 0] = cfg.vocab.transform([cfg.negative_class])[0]
             top5 = top5.cpu()
-            #xm.master_print("top5:", type(top5), hasattr(top5, 'numpy'), hasattr(top5, 'item'))
-            top5 = top5.numpy()
+            xm.master_print("top5:", type(top5), hasattr(top5, 'numpy'), hasattr(top5, 'item'))
+            #top5 = top5.numpy()
 
             for m, meter in zip(metrics, metric_meters):
                 top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
-                meter.update(m(labels.cpu().numpy(), top), inputs.size(0))
-                #meter.update(0.0, inputs.size(0))
+                #meter.update(m(labels.cpu().numpy(), top), inputs.size(0))
+                meter.update(0.0, inputs.size(0))
 
     # mesh_reduce loss
     if cfg.pudae_valid:
