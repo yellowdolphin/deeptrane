@@ -15,7 +15,6 @@ from datasets import ImageDataset, MySiimCovidAuxDataset
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
-import torch_xla.debug.metrics as met
 import torchvision.transforms.functional as TF
 import torchvision.transforms as TT
 import torch.optim as optim
@@ -755,13 +754,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         serial_executor.run(lambda: save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir))
     else:
         save_metrics(metrics_dicts, lrs, minutes, rst_epoch, use_fold, cfg.out_dir)
-
-    if cfg.xla_metrics:
-        xm.master_print()
-        report = met.metrics_report()  # str
-        if 'XrtTryFreeMemory' in report:
-            xm.master_print("XrtTryFreeMemory: reduce bs!")
-        xm.master_print(report)
 
 
 def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):

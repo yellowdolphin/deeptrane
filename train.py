@@ -113,7 +113,7 @@ if cfg.filetype == 'tfrec':
 if cfg.xla:
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.xla_multiprocessing as xmp
-    #import torch_xla.debug.metrics as met
+    import torch_xla.debug.metrics as met
 else:
     class xm(object):
         "Pseudo class to overload torch_xla.core.xla_model"
@@ -210,6 +210,13 @@ for use_fold in cfg.use_folds:
 
         xmp.spawn(_mp_fn, nprocs=cfg.n_replicas, start_method='fork',
                   args=(cfg, metadata, pretrained_model, serial_executor, xm, use_fold))
+
+        if cfg.xla_metrics:
+            xm.master_print()
+            report = met.metrics_report()  # str
+            if 'XrtTryFreeMemory' in report:
+                xm.master_print("XrtTryFreeMemory: reduce bs!")
+            xm.master_print(report)
 
 
     # Or train on CPU/GPU if no xla
