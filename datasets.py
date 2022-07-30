@@ -96,12 +96,8 @@ class ImageDataset(Dataset):
                 # torchvision, requires PIL.Image
                 image = self.transform(PIL.Image.fromarray(image))
 
-        assert len(image.shape) == 3, f'{image.shape}'
-
         if self.tensor_transform:
             image = self.tensor_transform(image)
-
-        assert len(image.shape) == 3, f'{image.shape}'
 
         if self.labeled:
             label = self.labels[index]

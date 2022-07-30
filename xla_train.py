@@ -215,7 +215,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'): 
         maybe_step(scheduler, xm)
 
-    return loss_meter.average(eps=1e-9)
+    return loss_meter.average
 
 
 def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None):
@@ -316,7 +316,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if cfg.pudae_valid:
         avg_loss = 0
     else:
-        avg_loss = loss_meter.average(eps=1e-6)
+        avg_loss = loss_meter.average
 
     # mesh_reduce metrics
     avg_metrics = []

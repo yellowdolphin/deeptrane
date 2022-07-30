@@ -33,7 +33,8 @@ class AverageMeter(object):
         self.count += n
 
     @property
-    def average(self, eps=1e-14):
+    def average(self):
+        eps = 1e-14
         reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
         reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
         return reduced_sum / (reduced_count + eps)
