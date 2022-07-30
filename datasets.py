@@ -88,6 +88,8 @@ class ImageDataset(Dataset):
             #image = torch.FloatTensor(cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)).to(device) / 255
             #image = PIL.Image.open(fn)
 
+        assert len(image.shape) == 4, f'{image.shape}'
+
         if self.transform:
             if self.albu:
                 image = self.transform(image=np.array(image))['image']
@@ -96,8 +98,12 @@ class ImageDataset(Dataset):
                 # torchvision, requires PIL.Image
                 image = self.transform(PIL.Image.fromarray(image))
 
+        assert len(image.shape) == 4, f'{image.shape}'
+
         if self.tensor_transform:
             image = self.tensor_transform(image)
+
+        assert len(image.shape) == 4, f'{image.shape}'
 
         if self.labeled:
             label = self.labels[index]
