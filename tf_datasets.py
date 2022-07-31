@@ -1,3 +1,4 @@
+# This module is for pytorch training, only. The data pipeline for train_tf is in tf_data.
 """
 # Try leverage tensorflow_datasets for pytorch training
 
@@ -9,7 +10,6 @@
   the CPU host VM as numpy and then feeding them back via torch device loader might not be efficient.
 
 """
-
 
 import os
 import re
