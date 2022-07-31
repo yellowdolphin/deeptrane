@@ -106,13 +106,15 @@ def get_tfms(cfg, mode='train'):
         flags.update(cfg.augmentation)
 
     if mode == 'train' and 'train_tfms' in flags:
-        flags.train_tfms[0].height = cfg.size[0]
-        flags.train_tfms[0].width = cfg.size[1]
+        for t in flags.train_tfms:
+            if hasattr(t, 'height'): t.height = cfg.size[0]
+            if hasattr(t, 'width'): t.width = cfg.size[1]
         return flags.train_tfms
 
     if 'test_tfms' in flags:
-        flags.test_tfms[0].height = cfg.size[0]
-        flags.test_tfms[0].width = cfg.size[1]
+        for t in flags.train_tfms:
+            if hasattr(t, 'height'): t.height = cfg.size[0]
+            if hasattr(t, 'width'): t.width = cfg.size[1]
         return flags.test_tfms
 
     assert not cfg.use_albumentations, 'define albumentations tfms in cfg.augmentation'
