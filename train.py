@@ -88,7 +88,7 @@ if 'TPU_NAME' in os.environ:
             debug=True
             )
     print("[ √ ] Python:", sys.version.replace('\n', ''))
-    print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ['XLA_USE_BF16']})")
+    print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ.get('XLA_USE_BF16', None)})")
 import torch
 print("[ √ ] torch:", torch.__version__)
 
@@ -143,8 +143,12 @@ else:
 
 print(f"[ √ ] {cpu_count()} CPUs")
 cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size() if cfg.xla else 1
-print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
-if not cfg.xla and not torch.cuda.is_available():
+cfg.gpu = not cfg.xla and torch.cuda.is_available()
+if cfg.xla:
+    print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
+elif cfg.gpu:
+    print(f"[ √ ] Using GPU")
+else:
     cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
     print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
 
