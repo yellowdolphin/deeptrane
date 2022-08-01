@@ -217,6 +217,7 @@ class ArcMarginProductSubCenter(tf.keras.layers.Layer):
     def build(self, input_shape):
         super(ArcMarginProductSubCenter, self).build(input_shape[0])
 
+        print("DEBUG self.n_classes:", self.n_classes, "self.k:", self.k)
         self.W = self.add_weight(
             name='W',
             shape=(int(input_shape[0][-1]), self.n_classes * self.k),
