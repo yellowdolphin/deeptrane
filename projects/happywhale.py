@@ -84,7 +84,7 @@ def init(cfg):
             'image': 'image',
             'bbox': crop_methods[cfg.dataset],
             'target': 'target'}
-        cfg.inputs = ['image', 'target']
+        cfg.inputs = ['image']
         cfg.targets = ['target']
 
     if cfg.filetype == 'tfrec':
