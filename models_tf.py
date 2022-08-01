@@ -392,9 +392,9 @@ class AddMarginProductSubCenter(tf.keras.layers.Layer):
 
 
 def get_margin(cfg, project):
-    # Adaptive margins for each training example should be defined in `project`, 
-    # ranging from cfg.margin_min ... cfg.margin_max
-    m = project.get_adaptive_margin(cfg) if cfg.adaptive_margin else 0.3
+    # Adaptive margins for each target class (range: cfg.margin_min ... cfg.margin_maxbe)
+    # should be defined in project.
+    m = cfg.adaptive_margin or 0.3
 
     if cfg.arcface == 'ArcMarginProduct':
         return ArcMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters, easy_margin=cfg.easy_margin,

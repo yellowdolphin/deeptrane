@@ -62,6 +62,7 @@ def init(cfg):
             cfg.filetype = 'jpg'
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
+        if cfg.adaptive_margin: cfg.adaptive_margin = get_adaptive_margin(cfg)
 
     if cfg.dataset or cfg.filetype == 'tfrec':
         cfg.splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
@@ -368,3 +369,10 @@ def get_adaptive_margin(cfg):
     adaptive_margin = adaptive_margin.loc[individual_ids].values.astype(np.float32)
 
     return adaptive_margin
+
+
+#def get_pretrained_model(cfg, strategy):
+#    if cfg.adaptive_margin:
+#        cfg.adaptive_margin = get_adaptive_margin(cfg)
+#
+#    return models_tf.get_pretrained_model(cfg, strategy)
