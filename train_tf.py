@@ -89,8 +89,16 @@ if tpu:
 else:
     strategy = tf.distribute.get_strategy()  # default for cpu, gpu
 
+print(f"[ √ ] {cpu_count()} CPUs")
 cfg.n_replicas = strategy.num_replicas_in_sync
-print("[ √ ] Number of replicas:", cfg.n_replicas)
+cfg.gpu = len(tf.config.list_physical_devices('GPU'))
+if cfg.gpu:
+    print(f"[ √ ] {cfg.gpu} GPU(s) found")
+elif cfg.n_replicas > 1:
+    print("[ √ ] Number of replicas:", cfg.n_replicas)
+else:
+    cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
+    print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
 
 cfg.gcs_path = cfg.gcs_path or get_gcs_path(cfg, project)
 

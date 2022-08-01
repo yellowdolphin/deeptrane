@@ -84,7 +84,7 @@ def init(cfg):
             'image': 'image',
             'bbox': crop_methods[cfg.dataset],
             'target': 'target'}
-        cfg.inputs = ['image']
+        cfg.inputs = ['image']  # target for ArcFace would be added in get_pretrained_model
         cfg.targets = ['target']
 
     if cfg.filetype == 'tfrec':
