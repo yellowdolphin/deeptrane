@@ -49,6 +49,7 @@ def init(cfg):
     # TFRecords
     private_datasets = {}
     crop_methods = {
+        'happywhale-cropped-dataset-yolov5-ds': 'detic_box',
         'happywhale-tfrecords-unsubmerged': 'unsubmerged', 
         'happywhale-wds-unsubmerged': None,
         }
