@@ -30,6 +30,18 @@ but there are issues:
 import tensorflow as tf
 from utils.general import quietly_run
 
+if cfg.arch_name.startswith('efnv1'):
+    import efficientnet.tfkeras as efn
+    EFN = {'efnv1b0': efn.EfficientNetB0, 'efnv1b1': efn.EfficientNetB1, 
+           'efnv1b2': efn.EfficientNetB2, 'efnv1b3': efn.EfficientNetB3,
+           'efnv1b4': efn.EfficientNetB4, 'efnv1b5': efn.EfficientNetB5, 
+           'efnv1b6': efn.EfficientNetB6, 'efnv1b7': efn.EfficientNetB7}
+
+if cfg.arch_name.startswith('efnv2'):
+    import keras_efficientnet_v2 as efn
+    EFN = {'efnv2s': efn.EfficientNetV2S, 'efnv2m': efn.EfficientNetV2M,
+           'efnv2l': efn.EfficientNetV2L, 'efnv2xl': efn.EfficientNetV2XL}
+
 TFHUB = {
     'hub_efnv2s': "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_ft1k_s/feature_vector/2",
     'hub_efnv2m': "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_ft1k_m/feature_vector/2",
