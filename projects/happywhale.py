@@ -72,6 +72,7 @@ def init(cfg):
 
     if cfg.dataset:
         # TFRecords dataset for TF training
+        assert not cfg.filetype, f'{cfg.filetype}'
         import tensorflow as tf
         cfg.n_classes = 15587
 
@@ -92,6 +93,7 @@ def init(cfg):
         cfg.targets = ['target']
 
     if cfg.filetype == 'tfrec':
+        # TFRecords dataset for pytorch training
         import tensorflow as tf
         from tf_datasets import get_gcs_path, count_data_items
 
