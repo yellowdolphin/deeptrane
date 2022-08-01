@@ -76,18 +76,12 @@ def init(cfg):
         cfg.n_classes = 15587
 
         # Customize data pipeline (see tf_data for definition and defaults)
-        #cfg.tfrec_format = {
-        #    'image': tf.io.FixedLenFeature([], tf.string),
-        #    crop_methods[cfg.dataset]: tf.io.FixedLenFeature([4], tf.int64),
-        #    'target': tf.io.FixedLenFeature([], tf.int64),
-        #    #'species': tf.io.FixedLenFeature([], tf.int64),
-        #    }
         cfg.tfrec_format = {
-            'image_name': tf.io.FixedLenFeature([], tf.string),
             'image': tf.io.FixedLenFeature([], tf.string),
+            crop_methods[cfg.dataset]: tf.io.FixedLenFeature([4], tf.int64),
             'target': tf.io.FixedLenFeature([], tf.int64),
+            #'species': tf.io.FixedLenFeature([], tf.int64),
             }
-        cfg.tfrec_format['unsubmerged'] = tf.io.FixedLenFeature([4], tf.int64)
         cfg.data_format = {
             'image': 'image',
             'bbox': crop_methods[cfg.dataset],

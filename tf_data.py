@@ -215,6 +215,7 @@ def parse_tfrecord(cfg, example):
 
 def get_dataset(cfg, mode='train'):
     filenames = cfg.train_files if mode == 'train' else cfg.valid_files
+    tf.print("DEBUG filenames:", filenames)
     shuffle = cfg.shuffle_buffer or 2048 if mode == 'train' else None
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = False  # faster
