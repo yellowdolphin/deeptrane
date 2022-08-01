@@ -34,7 +34,7 @@ cfg = dict(
     use_batch_tfms = False,
 
 # Model
-    arch_name = 'efnv1b0'
+    arch_name = 'efnv1b0',
     pool = 'avg',
     dropout_ps = [],
     arcface = 'ArcMarginProduct',
