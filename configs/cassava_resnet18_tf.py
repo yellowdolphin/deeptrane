@@ -21,6 +21,7 @@ cfg = dict(
     batch_verbose = None,
     multilabel = False,
     optimizer = "Adam",  # Adam, AdamW, SGD
+    wd = 5e-2,
     lr = 3e-4,
     one_cycle = True,
     div_factor = 5,                            # default: 25, from Chest14: 1
@@ -52,7 +53,6 @@ cfg = dict(
 # Restart
     rst_path = '/kaggle/input/cassava-deeptrane-rst',
     #rst_name = '',
-    wd = 5e-2,
 )
 
 cfg["tags"] = cfg["name"].split("_")
@@ -60,5 +60,4 @@ cfg["pretrained"] = 'noisy_student' if 'v1' in cfg["arch_name"] else 'imagenet21
 #cfg["lr_head"] = cfg["lr"]
 #cfg["lr_bn"] = cfg["lr_head"]
 #cfg["lr_body"] = cfg["lr_head"]
-if cfg["epochs"] == 1: cfg["batch_verbose"] = 10
-#cfg["folds_json"] = f'/kaggle/input/cassava-folds-json/folds{cfg["num_folds"]}.json'
+if cfg["epochs"] == 1: cfg["batch_verbose"] = 1
