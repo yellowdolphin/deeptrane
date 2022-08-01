@@ -333,9 +333,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
     if cfg.arch_name.startswith('efnv1'):
         import efficientnet
         import efficientnet.tfkeras as efn
+        model_cls = getattr(efn, f'EfficientNetB{arch_name[6:]}')
         print("efficientnet:", efficientnet.__version__)
     elif cfg.arch_name.startswith('efnv2'):
         import keras_efficientnet_v2 as efn
+        model_cls = getattr(efn, f'EfficientNetV2{arch_name[5:].upper()}')
         print("keras_efficientnet_v2:", efn.__version__)
     elif cfg.arch_name in TFHUB:
         pass
@@ -359,8 +361,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
         tfhub = cfg.arch_name in TFHUB
 
         pretrained_model = (
-            EFN[cfg.arch_name](weights=cfg.pretrained, input_shape=input_shape, include_top=False) if efnv1 else
-            EFN[cfg.arch_name](input_shape=input_shape, num_classes=0, pretrained=cfg.pretrained) if efnv2 else
+            model_cls(weights=cfg.pretrained, input_shape=input_shape, include_top=False) if efnv1 else
+            model_cls(input_shape=input_shape, num_classes=0, pretrained=cfg.pretrained) if efnv2 else
             hub.KerasLayer(TFHUB[cfg.arch_name], trainable=True) if tfhub else
             tfimm.create_model(cfg.arch_name, pretrained="timm", nb_classes=0))
 
