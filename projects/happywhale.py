@@ -63,6 +63,12 @@ def init(cfg):
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
 
+    if cfg.dataset or cfg.filetype == 'tfrec':
+        cfg.splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
+            '/kaggle/input/lextoumbourou' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-private2') else
+            f'/kaggle/input/happy-whale-and-dolphin/lextoumbourou' if (cfg.dataset == 'happywhale-tfrecords-private2') else
+            '/kaggle/input/happy-whale-and-dolphin')
+
     if cfg.dataset:
         # TFRecords dataset for TF training
         import tensorflow as tf
@@ -111,13 +117,9 @@ def init(cfg):
             cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
         if cfg.dataset == 'whale-tfrecords-512': cfg.crop_method = None
         if cfg.dataset == 'happywhale-tfrecords-backfin': cfg.BGR = True
-        splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
-               '/kaggle/input/lextoumbourou' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-private2') else
-               f'/kaggle/input/happy-whale-and-dolphin/lextoumbourou' if (cfg.dataset == 'happywhale-tfrecords-private2') else
-               '/kaggle/input/happy-whale-and-dolphin')
         print(f'{len(cfg.train_files)} train tfrec files, {len(cfg.test_files)} test tfrec files')
         print(f'{count_data_items(cfg.train_files)} train images, {count_data_items(cfg.test_files)} test images')
-        print(f'Using individual_id and species encoding from {splits_path}')
+        print(f'Using individual_id and species encoding from {cfg.splits_path}')
         assert len(cfg.train_files) > 0, f'no tfrec files found, check GCS_DS_PATH: {cfg.gcs_path}'
 
 
@@ -345,3 +347,24 @@ def bottleneck(cfg, n_features):
     if len(cfg.dropout_ps) == 2:
         print(f"building bottleneck with weight {n_features, 512}")
         return nn.Sequential(nn.Linear(n_features, 512), nn.Dropout(p=cfg.dropout_ps[1]))
+
+
+def get_adaptive_margin(cfg):
+    # Define adaptive margins based on class frequencies ("dynamic margins")
+    assert cfg.margin_min and cfg.margin_max, 'set cfg.margin_min, cfg.margin_max'
+    assert cfg.splits_path, 'set cfg.splits_path in project'
+
+    df = pd.read_csv(cfg.meta_csv)
+    fewness = df['individual_id'].value_counts().sort_index() ** (-1/4)
+    fewness -= fewness.min()
+    fewness /= fewness.max() - fewness.min()
+
+    adaptive_margin = cfg.margin_min + fewness * (cfg.margin_max - cfg.margin_min)
+
+    # Align margins with targets
+    with open (f'{cfg.splits_path}/individual_ids.json', "r") as f:
+        target_encodings = json.loads(f.read())  # individual_id: index
+    individual_ids = pd.Series(target_encodings).sort_values().index.values
+    adaptive_margin = adaptive_margin.loc[individual_ids].values.astype(np.float32)
+
+    return adaptive_margin

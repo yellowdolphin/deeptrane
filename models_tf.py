@@ -253,6 +253,87 @@ class ModelWithGrad(tf.keras.Model):
             x.assign_add(y)
 
 
+class ArcMarginProductSubCenter(tf.keras.layers.Layer):
+    '''
+    Implements large margin arc distance.
+
+    References:
+        https://arxiv.org/pdf/1801.07698.pdf
+        https://github.com/lyakaap/Landmark2019-1st-and-3rd-Place-Solution/
+        https://github.com/haqishen/Google-Landmark-Recognition-2020-3rd-Place-Solution/
+
+    Sub-center version:
+        for k > 1, the embedding layer can learn k sub-centers per class
+    '''
+    def __init__(self, n_classes, s=30, m=0.50, k=3, easy_margin=False,
+                 ls_eps=0.0, **kwargs):
+
+        super(ArcMarginProductSubCenter, self).__init__(**kwargs)
+
+        self.n_classes = n_classes
+        self.s = s
+        self.m = m
+        self.k = k
+        self.ls_eps = ls_eps
+        self.easy_margin = easy_margin
+        self.cos_m = tf.math.cos(m)
+        self.sin_m = tf.math.sin(m)
+        self.th = tf.math.cos(math.pi - m)
+        self.mm = tf.math.sin(math.pi - m) * m
+
+    def get_config(self):
+
+        config = super().get_config().copy()
+        config.update({
+            'n_classes': self.n_classes,
+            's': self.s,
+            'm': self.m,
+            'k': self.k,
+            'ls_eps': self.ls_eps,
+            'easy_margin': self.easy_margin,
+        })
+        return config
+
+    def build(self, input_shape):
+        super(ArcMarginProductSubCenter, self).build(input_shape[0])
+
+        self.W = self.add_weight(
+            name='W',
+            shape=(int(input_shape[0][-1]), self.n_classes * self.k),
+            initializer='glorot_uniform',
+            dtype='float32',
+            trainable=True)
+
+    def call(self, inputs):
+        X, y = inputs
+        y = tf.cast(y, dtype=tf.int32)
+        cosine_all = tf.matmul(
+            tf.math.l2_normalize(X, axis=1),
+            tf.math.l2_normalize(self.W, axis=0)
+        )
+        if self.k > 1:
+            cosine_all = tf.reshape(cosine_all, [-1, self.n_classes, self.k])
+            cosine = tf.math.reduce_max(cosine_all, axis=2)
+        else:
+            cosine = cosine_all
+        sine = tf.math.sqrt(1.0 - tf.math.pow(cosine, 2))
+        phi = cosine * self.cos_m - sine * self.sin_m
+        if self.easy_margin:
+            phi = tf.where(cosine > 0, phi, cosine)
+        else:
+            phi = tf.where(cosine > self.th, phi, cosine - self.mm)
+        one_hot = tf.cast(
+            tf.one_hot(y, depth=self.n_classes),
+            dtype=cosine.dtype
+        )
+        if self.ls_eps > 0:
+            one_hot = (1 - self.ls_eps) * one_hot + self.ls_eps / self.n_classes
+
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+        output *= self.s
+        return output
+
+
 class AddMarginProductSubCenter(tf.keras.layers.Layer):
     """
     Add the subcenter DOF but keep all other properties of AddMarginProduct (my idea)
@@ -308,6 +389,22 @@ class AddMarginProductSubCenter(tf.keras.layers.Layer):
         output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
         output *= self.s
         return output
+
+
+def get_margin(cfg, project):
+    # Adaptive margins for each training example should be defined in `project`, 
+    # ranging from cfg.margin_min ... cfg.margin_max
+    m = project.get_adaptive_margin(cfg) if cfg.adaptive_margin else 0.3
+
+    if cfg.arcface == 'ArcMarginProduct':
+        return ArcMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters, easy_margin=cfg.easy_margin,
+            name=f'head/{cfg.arcface}', dtype='float32')
+
+    if cfg.arcface == 'AddMarginProduct':
+        return AddMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters,
+            name=f'head/{cfg.arcface}', dtype='float32')
+
+    raise ValueError(f'ArcFace type {cfg.arcface} not supported')
 
 
 def BatchNorm(bn_type):
@@ -434,6 +531,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if cfg.arcface and inference:
             output = embed
         elif cfg.arcface:
+            margin = get_margin(cfg, project)
             features = margin([embed, inputs[1]])
             output = tf.keras.layers.Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
         else:
