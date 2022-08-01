@@ -72,8 +72,9 @@ def init(cfg):
 
     if cfg.dataset:
         # TFRecords dataset for TF training
-        assert not cfg.filetype, f'{cfg.filetype}'
         import tensorflow as tf
+        cfg.filetype = None
+        cfg.image_root = None
         cfg.n_classes = 15587
 
         # Customize data pipeline (see tf_data for definition and defaults)
