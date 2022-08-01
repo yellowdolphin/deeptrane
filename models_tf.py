@@ -391,7 +391,7 @@ class AddMarginProductSubCenter(tf.keras.layers.Layer):
         return output
 
 
-def get_margin(cfg, project):
+def get_margin(cfg):
     # Adaptive margins for each target class (range: cfg.margin_min ... cfg.margin_maxbe)
     # should be defined in project.
     m = cfg.adaptive_margin or 0.3
@@ -531,7 +531,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if cfg.arcface and inference:
             output = embed
         elif cfg.arcface:
-            margin = get_margin(cfg, project)
+            margin = get_margin(cfg)
             features = margin([embed, inputs[1]])
             output = tf.keras.layers.Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
         else:
