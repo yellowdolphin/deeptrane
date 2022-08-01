@@ -5,8 +5,7 @@ cfg = dict(
 
 # Setup
     project = 'happywhale',
-    #dataset = 'happywhale-tfrecords-unsubmerged',
-    dataset = 'happywhale-cropped-dataset-yolov5-ds',
+    dataset = 'happywhale-tfrecords-unsubmerged',
     out_dir = '/kaggle/working',
     image_root = '/kaggle/input/happywhale-cropped-dataset-yolov5-ds/train_images/train_images',
 
