@@ -64,8 +64,20 @@ def init(cfg):
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
 
     if cfg.dataset:
+        # TFRecords for TF training
         cfg.n_classes = 15587
-        cfg.data_format = {'bbox': crop_methods[cfg.dataset]}
+
+        # Customize data pipeline (see tf_data for definition and defaults)
+        cfg.tfrec_format = {
+            'image': tf.io.FixedLenFeature([], tf.string),
+            crop_methods[cfg.dataset]: tf.io.FixedLenFeature([4], tf.int64),
+            'target': tf.io.FixedLenFeature([], tf.int64)}
+        cfg.data_format = {
+            'image': 'image',
+            'bbox': crop_methods[cfg.dataset],
+            'target': 'target'}
+        cfg.inputs = ['image', 'target']
+        cfg.targets = ['target']
 
     if cfg.filetype == 'tfrec':
         import tensorflow as tf
