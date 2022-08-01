@@ -195,8 +195,9 @@ def parse_tfrecord(cfg, example):
 
     if 'target' in cfg.data_format:
         features['target'] = tf.cast(example[cfg.data_format['target']], tf.int32)
+        tf.print(f"example[{cfg.data_format['target']}]:", example[cfg.data_format['target']])
         #features['target'] = tf.one_hot(features['target'], depth=cfg.n_classes)
-        tf.print("targets valid?", tf.reduce_all(features['target'] != -1))
+        tf.print("targets:", features['target'])
     
     if 'aux_target' in cfg.data_format:
         features['aux_target'] = tf.cast(example[cfg.data_format['aux_target']], tf.int32)
