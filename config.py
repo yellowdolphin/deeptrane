@@ -46,7 +46,7 @@ class Config(DotDict):
     def save_yaml(self, filename=None, width=120):
         if filename is None:
             os.makedirs(self.out_dir, exist_ok=True)
-            filename = Path(self.out_dir) / "cfg.yaml"
+            filename = Path(self.out_dir) / "config.yaml"
         save_yaml(filename, dict(self), width=width)
 
     def __repr__(self):
