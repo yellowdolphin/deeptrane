@@ -76,6 +76,7 @@ def init(cfg):
         cfg.filetype = None
         cfg.image_root = None
         cfg.n_classes = 15587
+        cfg.gcs_filter = 'train-*.tfrec' if cfg.mode == 'train' else 'test-*.tfrec'  # unsubmerged
 
         # Customize data pipeline (see tf_data for definition and defaults)
         cfg.tfrec_format = {
@@ -92,8 +93,6 @@ def init(cfg):
             }
         cfg.inputs = ['image']  # target for ArcFace would be added in get_pretrained_model
         cfg.targets = ['target']
-
-        cfg.gcs_filter = 'train-*.tfrec' if cfg.mode == 'train' else 'test-*.tfrec'  # unsubmerged
 
     if cfg.filetype == 'tfrec':
         # TFRecords dataset for pytorch training

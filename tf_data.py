@@ -196,9 +196,7 @@ def parse_tfrecord(cfg, example):
 
     if 'target' in cfg.data_format:
         features['target'] = tf.cast(example[cfg.data_format['target']], tf.int32)
-        tf.print(f"example[{cfg.data_format['target']}]:", example[cfg.data_format['target']])
         #features['target'] = tf.one_hot(features['target'], depth=cfg.n_classes)
-        tf.print("targets:", features['target'])
     
     if 'aux_target' in cfg.data_format:
         features['aux_target'] = tf.cast(example[cfg.data_format['aux_target']], tf.int32)
@@ -216,7 +214,7 @@ def parse_tfrecord(cfg, example):
 
 def get_dataset(cfg, mode='train'):
     filenames = cfg.train_files if mode == 'train' else cfg.valid_files
-    tf.print("DEBUG filenames:", filenames)
+    if cfg.DEBUG: tf.print(f'urls for mode "{mode}":', filenames)
     shuffle = cfg.shuffle_buffer or 2048 if mode == 'train' else None
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = False  # faster
