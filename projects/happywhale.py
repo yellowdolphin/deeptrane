@@ -46,23 +46,29 @@ def init(cfg):
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
 
+    # TFRecords
+    private_datasets = {}
+    crop_methods = {
+        'happywhale-tfrecords-unsubmerged': 'unsubmerged', 
+        'happywhale-wds-unsubmerged': None,
+        }
+    gcs_paths = {
+        'happywhale-tfrecords-bb': 'gs://kds-78e0d66e23ba96609ed1a523cf56ec15ec84f29f27b87552a60f16f6',
+        'happywhale-tfrecords-backfin': 'gs://kds-13f1a788145b3009a82fa0fef6e890470e153bb00dd2488e5191173b',
+        'backfintfrecords': 'gs://kds-c953863165740d37e881cc034deeb733e92fa4e567c5d920ca2dd678',
+        'happywhale-tfrecords-private2': 'gs://kds-9bd7ea7f4535a67c5ae349b0c8cec3f223d9bb4e80e77283e89eda88',
+        'happywhale-tfrecords-unsubmerged': 'gs://kds-1496d45e5836d50e2cef05444e618de382680ba556a56b94a2b474e4',
+        'happywhale-wds-unsubmerged': 'gs://kds-651ab29172b09817da278473d6c028824ff60078e89b80ccc8fbf62a',
+        }
+
+    if cfg.dataset:
+        cfg.n_classes = 15587
+        cfg.data_format = {'bbox': crop_method[cfg.dataset]}
+
     if cfg.filetype == 'tfrec':
         import tensorflow as tf
         from tf_datasets import get_gcs_path, count_data_items
 
-        private_datasets = {}
-        crop_methods = {
-            'happywhale-tfrecords-unsubmerged': 'unsubmerged', 
-            'happywhale-wds-unsubmerged': None,
-            }
-        gcs_paths = {
-            'happywhale-tfrecords-bb': 'gs://kds-78e0d66e23ba96609ed1a523cf56ec15ec84f29f27b87552a60f16f6',
-            'happywhale-tfrecords-backfin': 'gs://kds-13f1a788145b3009a82fa0fef6e890470e153bb00dd2488e5191173b',
-            'backfintfrecords': 'gs://kds-c953863165740d37e881cc034deeb733e92fa4e567c5d920ca2dd678',
-            'happywhale-tfrecords-private2': 'gs://kds-9bd7ea7f4535a67c5ae349b0c8cec3f223d9bb4e80e77283e89eda88',
-            'happywhale-tfrecords-unsubmerged': 'gs://kds-1496d45e5836d50e2cef05444e618de382680ba556a56b94a2b474e4',
-            'happywhale-wds-unsubmerged': 'gs://kds-651ab29172b09817da278473d6c028824ff60078e89b80ccc8fbf62a',
-            }
         cfg.gcs_path = get_gcs_path(cfg, gcs_paths)
         assert cfg.dataset, 'filetype is tfrec but no dataset in config'
         cfg.dataset_is_private = cfg.dataset in private_datasets
