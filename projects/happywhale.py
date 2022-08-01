@@ -65,6 +65,7 @@ def init(cfg):
 
     if cfg.dataset:
         # TFRecords for TF training
+        import tensorflow as tf
         cfg.n_classes = 15587
 
         # Customize data pipeline (see tf_data for definition and defaults)
