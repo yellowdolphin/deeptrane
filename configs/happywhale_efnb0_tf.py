@@ -18,15 +18,16 @@ cfg = dict(
     bs = 16,
     n_acc = 1,
     epochs = 30,
-    batch_verbose = None,
+    batch_verbose = 2,
     multilabel = False,
     optimizer = "Adam",  # Adam, AdamW, SGD
     wd = 5e-2,
-    lr = 3e-3,
+    lr = 1e-3,
     one_cycle = True,
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 0.05,
+    metrics = ['acc', 'top5']
     save_best = 'acc',
 
 # Augmentation
