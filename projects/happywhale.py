@@ -79,11 +79,15 @@ def init(cfg):
         cfg.tfrec_format = {
             'image': tf.io.FixedLenFeature([], tf.string),
             crop_methods[cfg.dataset]: tf.io.FixedLenFeature([4], tf.int64),
-            '_target': tf.io.FixedLenFeature([], tf.int64)}
+            'target': tf.io.FixedLenFeature([], tf.int64),
+            #'species': tf.io.FixedLenFeature([], tf.int64),
+            }
         cfg.data_format = {
             'image': 'image',
             'bbox': crop_methods[cfg.dataset],
-            'target': 'target'}
+            'target': 'target',
+            #'aux_target': 'species',
+            }
         cfg.inputs = ['image']  # target for ArcFace would be added in get_pretrained_model
         cfg.targets = ['target']
 
