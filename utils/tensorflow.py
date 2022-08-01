@@ -4,6 +4,10 @@ import tensorflow as tf
 
 
 def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
+    assert cfg.lr, 'config lacks lr'
+    assert cfg.lr_min, 'config lacks lr_min'
+    assert cfg.pct_start, 'config lacks pct_start'
+    assert cfg.epochs, 'config lacks epochs'
     steps_per_epoch = tf.constant(steps_per_epoch, dtype=tf.float32)
     lr_max     = tf.constant(cfg.lr, dtype=tf.float32)
     lr_start   = tf.constant(0.2 * lr_max, dtype=tf.float32)
