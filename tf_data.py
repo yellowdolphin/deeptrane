@@ -105,6 +105,7 @@ def cv_split(cfg, use_fold):
 
     assert cfg.num_folds, 'need num_folds in config for shard splitting'
     all_files, n_files = get_shards(cfg)
+
     train_files, valid_files = [], []
     for i, url in enumerate(all_files):
         if i % cfg.num_folds == use_fold:

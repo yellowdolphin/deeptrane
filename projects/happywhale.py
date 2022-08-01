@@ -92,6 +92,8 @@ def init(cfg):
         cfg.inputs = ['image']  # target for ArcFace would be added in get_pretrained_model
         cfg.targets = ['target']
 
+        cfg.gcs_filter = 'train-*.tfrec' if cfg.mode == 'train' else 'test-*.tfrec'  # unsubmerged
+
     if cfg.filetype == 'tfrec':
         # TFRecords dataset for pytorch training
         import tensorflow as tf
