@@ -3,6 +3,7 @@ import sys
 import importlib
 from pathlib import Path
 from time import perf_counter
+from multiprocessing import cpu_count
 
 from config import Config, parser
 from utils.general import quietly_run, sizify, listify, autotype
