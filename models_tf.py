@@ -185,7 +185,7 @@ class ArcMarginProductSubCenter(tf.keras.layers.Layer):
     Sub-center version:
         for k > 1, the embedding layer can learn k sub-centers per class
     '''
-    def __init__(self, n_classes, s=30, m=0.50, k=3, easy_margin=False,
+    def __init__(self, n_classes, s=30, m=0.50, k=1, easy_margin=False,
                  ls_eps=0.0, **kwargs):
 
         super(ArcMarginProductSubCenter, self).__init__(**kwargs)
@@ -318,11 +318,11 @@ def get_margin(cfg):
     m = cfg.adaptive_margin or 0.3
 
     if cfg.arcface == 'ArcMarginProduct':
-        return ArcMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters, easy_margin=cfg.easy_margin,
+        return ArcMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters or 1, easy_margin=cfg.easy_margin,
             name=f'head/{cfg.arcface}', dtype='float32')
 
     if cfg.arcface == 'AddMarginProduct':
-        return AddMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters,
+        return AddMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters or 1,
             name=f'head/{cfg.arcface}', dtype='float32')
 
     raise ValueError(f'ArcFace type {cfg.arcface} not supported')
