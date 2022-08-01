@@ -63,7 +63,7 @@ def init(cfg):
 
     if cfg.dataset:
         cfg.n_classes = 15587
-        cfg.data_format = {'bbox': crop_method[cfg.dataset]}
+        cfg.data_format = {'bbox': crop_methods[cfg.dataset]}
 
     if cfg.filetype == 'tfrec':
         import tensorflow as tf
