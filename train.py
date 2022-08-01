@@ -28,7 +28,7 @@ cfg.lin_ftrs = cfg.lin_ftrs if parser_args.lin_ftrs is None else listify(parser_
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
 
-cfg.cloud = 'kaggle' if os.path.exists('/kaggle') else 'drive' if os.path.exists('/content') else 'gcp'
+cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
 if cfg.cloud == 'drive': 
     cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
 

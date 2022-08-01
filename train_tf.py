@@ -30,7 +30,8 @@ if cfg.batch_verbose not in ['auto', 0, 1, 2]:
     print('Valid values are 0 = silent, 1 = progress bar, 2 = one line per epoch.')
 print(cfg)
 
-cfg.cloud = 'kaggle' if os.path.exists('/kaggle') else 'drive' if os.path.exists('/content') else 'gcp'
+cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
+if cfg.out_dir and cfg.cloud == 'drive': cfg.out_dir = cfg.out_dir.replace('/kaggle/working', '/content')
 print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
