@@ -51,5 +51,5 @@ cfg = dict(
 )
 
 cfg["tags"] = cfg["name"].split("_")
-cfg["pretrained"] = 'noisy_student' if 'v1' in cfg["arch_name"] else 'imagenet21k-ft1k'
+cfg["pretrained"] = 'noisy-student' if 'v1' in cfg["arch_name"] else 'imagenet21k-ft1k'
 if cfg["epochs"] == 1: cfg["batch_verbose"] = 1

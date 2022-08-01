@@ -56,7 +56,7 @@ cfg = dict(
 )
 
 cfg["tags"] = cfg["name"].split("_")
-cfg["pretrained"] = 'noisy_student' if 'v1' in cfg["arch_name"] else 'imagenet21k-ft1k'
+cfg["pretrained"] = 'noisy-student' if 'v1' in cfg["arch_name"] else 'imagenet21k-ft1k'
 #cfg["lr_head"] = cfg["lr"]
 #cfg["lr_bn"] = cfg["lr_head"]
 #cfg["lr_body"] = cfg["lr_head"]

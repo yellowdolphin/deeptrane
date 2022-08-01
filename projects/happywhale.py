@@ -64,7 +64,7 @@ def init(cfg):
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
 
     if cfg.dataset:
-        # TFRecords for TF training
+        # TFRecords dataset for TF training
         import tensorflow as tf
         cfg.n_classes = 15587
 
