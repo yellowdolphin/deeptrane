@@ -333,11 +333,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
     if cfg.arch_name.startswith('efnv1'):
         import efficientnet
         import efficientnet.tfkeras as efn
-        model_cls = getattr(efn, f'EfficientNetB{arch_name[6:]}')
+        model_cls = getattr(efn, f'EfficientNetB{cfg.arch_name[6:]}')
         print("efficientnet:", efficientnet.__version__)
     elif cfg.arch_name.startswith('efnv2'):
         import keras_efficientnet_v2 as efn
-        model_cls = getattr(efn, f'EfficientNetV2{arch_name[5:].upper()}')
+        model_cls = getattr(efn, f'EfficientNetV2{cfg.arch_name[5:].upper()}')
         print("keras_efficientnet_v2:", efn.__version__)
     elif cfg.arch_name in TFHUB:
         pass
