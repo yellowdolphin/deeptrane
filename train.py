@@ -82,7 +82,7 @@ if 'TPU_NAME' in os.environ:
             debug=True
             )
         print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
-    else:
+    elif not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla'):
         quietly_run(
             f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
             debug=True
