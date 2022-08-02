@@ -66,6 +66,7 @@ if 'TPU_NAME' in os.environ:
                 'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
                 f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
                 'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
+                'pip install -U numpy',  # nightly torch_xla needs newer numpy but does not "require" it
                 debug=True
                 )
         # LD_LIBRARY_PATH points to /usr/local/nvidia, which does not exist
