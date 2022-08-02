@@ -310,7 +310,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             for m, meter in zip(metrics, metric_meters):
                 top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
                 meter.update(m(labels.cpu(), top.cpu()), inputs.size(0))  # RuntimeError: Numpy is not available
-                meter.update(m(labels.item(), top.item()), inputs.size(0))
+                meter.update(m(labels.item(), top.item()), inputs.size(0))  # RuntimeError: Numpy is not available
+                meter.update(m(labels, top), inputs.size(0))
                 #meter.update(0.0, inputs.size(0))
 
     # mesh_reduce loss
