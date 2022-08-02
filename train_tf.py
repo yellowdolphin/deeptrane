@@ -167,7 +167,7 @@ for use_fold in cfg.use_folds:
                         validation_data=valid_dataset,
                         steps_per_epoch=batches_per_epoch,
                         epochs=cfg.epochs - cfg.rst_epoch,
-                        callbacks=[train_logger, save_best, lr_callback],
+                        callbacks=[lr_callback, save_best, train_logger],
                         verbose=cfg.batch_verbose,
                         initial_epoch=cfg.rst_epoch,
                         )
