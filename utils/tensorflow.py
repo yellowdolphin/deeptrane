@@ -40,7 +40,7 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
     @tf.function
     def lrfn(iterations):
         # iterations is tensor with dtype=tf.float32
-        #tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
+        tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
         # Issue: If model is built with optimizer with constant lr, 
         # learning_rate will be called with epoch rather than optimizer.iterations
         epoch = iterations / steps_per_epoch
