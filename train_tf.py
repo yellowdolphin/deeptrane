@@ -18,7 +18,7 @@ if parser_args.config_file: cfg.update(parser_args.config_file)
 cfg.mode = parser_args.mode
 cfg.use_folds = parser_args.use_folds or cfg.use_folds
 cfg.epochs = parser_args.epochs or cfg.epochs
-cfg.rst_epoch = cfg.rst_epoch or 0
+cfg.rst_epoch = (cfg.rst_epoch or 0) if (cfg.rst_path and cfg.rst_name) else 0
 cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
 cfg.betas = parser_args.betas or cfg.betas
 cfg.dropout_ps = cfg.dropout_ps if parser_args.dropout_ps is None else listify(parser_args.dropout_ps)

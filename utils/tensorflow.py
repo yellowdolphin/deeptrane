@@ -30,8 +30,7 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
     lr_sus_ep  = tf.constant(0, dtype=tf.float32)
     lr_decay   = tf.constant(0.9, dtype=tf.float32)
     n_epochs   = tf.constant(cfg.epochs, dtype=tf.float32)
-    restart    = cfg.rst_path and cfg.rst_name
-    rst_epoch  = tf.constant(cfg.rst_epoch or 0, dtype=tf.float32)
+    rst_epoch  = tf.constant(cfg.rst_epoch, dtype=tf.float32)
     pi         = tf.constant(math.pi, dtype=tf.float32)
 
     @tf.function
