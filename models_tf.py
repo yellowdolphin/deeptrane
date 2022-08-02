@@ -485,7 +485,14 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         if cfg.use_custom_training_loop: return model
 
-        opt = tf.keras.optimizers.Adam(learning_rate=cfg.lr)
+        optimizer = (
+            tfa.optimizers.AdamW(weight_decay=cfg.wd, learning_rate=cfg.lr, 
+                                 beta_1=cfg.betas[0], beta_2=cfg.betas[1]) if cfg.optimizer == 'AdamW' else
+            tf.keras.optimizers.Adam(learning_rate=cfg.lr, 
+                                     beta_1=cfg.betas[0], beta_2=cfg.betas[1]) if cfg.optimizer == 'Adam' else
+            tf.keras.optimizers.SGD(learning_rate=cfg.lr, momentum=cfg.betas[0])
+            )
+
         cfg.metrics = cfg.metrics or []
         metrics = []
         if 'acc' in cfg.metrics:
@@ -494,7 +501,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             metrics.append(tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5'))
 
         model.compile(
-            optimizer = opt,
+            optimizer = optimizer,
             loss = 'sparse_categorical_crossentropy',
             loss_weights = (1 - cfg.aux_loss, cfg.aux_loss) if cfg.aux_loss else None,
             metrics = metrics)
