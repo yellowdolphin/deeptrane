@@ -138,7 +138,7 @@ for use_fold in cfg.use_folds:
     tf.print("batches_per_epoch:", batches_per_epoch)
 
     # Training callbacks
-    train_logger = tf.keras.callbacks.CSVLogger(f'{cfg.out_dir}/metrics_fold{use_fold}.csv')
+    csv_logger = tf.keras.callbacks.CSVLogger(f'{cfg.out_dir}/metrics_fold{use_fold}.csv')
     save_best = tf.keras.callbacks.ModelCheckpoint(
         f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
         monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
@@ -167,7 +167,7 @@ for use_fold in cfg.use_folds:
                         validation_data=valid_dataset,
                         steps_per_epoch=batches_per_epoch,
                         epochs=cfg.epochs - cfg.rst_epoch,
-                        callbacks=[lr_callback, save_best, train_logger],
+                        callbacks=[lr_callback, save_best, csv_logger],
                         verbose=cfg.batch_verbose,
                         initial_epoch=cfg.rst_epoch,
                         )
