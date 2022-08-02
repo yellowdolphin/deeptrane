@@ -26,7 +26,6 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
         #tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
         # Issue: If model is built with optimizer with constant lr, 
         # learning_rate will be called with epoch rather than optimizer.iterations
-        # in custom training loop (callbacks passed to model.fit() are not affected).
         epoch = iterations / steps_per_epoch
         if restart:
             epoch += cfg.rst_epoch
@@ -54,3 +53,13 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
     lr_callback = tf.keras.callbacks.LearningRateScheduler(lrfn, verbose=False)
 
     return lr_callback
+
+
+class LRSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, sched, **kwargs):
+        super().__init__()
+        is_callback = isinstance(sched, tf.keras.callbacks.LearningRateScheduler)
+        self.lrfn = sched.schedule if is_callback else sched
+
+    def __call__(self, step):
+        return self.lrfn(step)

@@ -30,6 +30,7 @@ import math
 
 import tensorflow as tf
 from utils.general import quietly_run
+from utils.tensorflow import get_lr_callback, LRSchedule
 
 # if cfg.arch_name.startswith('efnv1'):
 #     import efficientnet.tfkeras as efn
@@ -485,13 +486,18 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         if cfg.use_custom_training_loop: return model
 
-        opt = tf.keras.optimizers.Adam(learning_rate=cfg.lr)
+        dataloader_bs = cfg.bs * cfg.n_replicas
+        batches_per_epoch = cfg.num_train_images // dataloader_bs
+        steps_per_epoch = batches_per_epoch // cfg.n_acc   ## check: float possible? is last opt step skipped?
+        lr_callback = get_lr_callback(cfg, steps_per_epoch=steps_per_epoch)
+
+        opt = tf.keras.optimizers.Adam(learning_rate=LRSchedule(lr_callback) if cfg.one_cycle else cfg.lr)
         cfg.metrics = cfg.metrics or []
         metrics = []
         if 'acc' in cfg.metrics:
             metrics.append(tf.keras.metrics.SparseCategoricalAccuracy(name='acc'))
         if 'top5' in cfg.metrics: 
-            metrics.append(tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5_acc'))
+            metrics.append(tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5'))
 
         model.compile(
             optimizer = opt,

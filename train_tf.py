@@ -62,7 +62,6 @@ from models_tf import get_pretrained_model
 import tf_data
 from tf_data import (get_gcs_path, cv_split, count_data_items,
     get_dataset, configure_data_pipeline)
-from utils.tensorflow import get_lr_callback
 
 # Import project (code, constant settings)
 project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
@@ -130,7 +129,7 @@ for use_fold in cfg.use_folds:
 
     dataloader_bs = cfg.bs * cfg.n_replicas
     batches_per_epoch = cfg.num_train_images // dataloader_bs
-    steps_per_epoch = batches_per_epoch // cfg.n_acc   ## check: float possible? is last opt step skipped?
+    #steps_per_epoch = batches_per_epoch // cfg.n_acc   ## check: float possible? is last opt step skipped?
     step_size = cfg.bs * cfg.n_replicas * cfg.n_acc
     if hasattr(train_dataset, 'batch_size'): tf.print("dataset.batch_size:", train_dataset.batch_size)
     tf.print("dataloader_bs:", dataloader_bs)
@@ -140,13 +139,9 @@ for use_fold in cfg.use_folds:
     train_logger = tf.keras.callbacks.CSVLogger(f'{cfg.out_dir}/metrics_fold{use_fold}.csv')
     save_best = tf.keras.callbacks.ModelCheckpoint(
         f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
-        monitor=f'val_{"arc_" if cfg.arcface else ""}{cfg.save_best}', 
+        monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
         mode='min' if 'loss' in cfg.save_best else 'max',
         save_weights_only=True, save_freq='epoch', verbose=1)
-    lr_callback = get_lr_callback(cfg, steps_per_epoch=steps_per_epoch)
-    callbacks = [train_logger]
-    if cfg.save_best: callbacks.append(save_best)
-    if cfg.one_cycle: callbacks.append(lr_callback)
 
     clear_session()
 
@@ -169,7 +164,7 @@ for use_fold in cfg.use_folds:
                         validation_data=valid_dataset,
                         steps_per_epoch=batches_per_epoch,
                         epochs=cfg.epochs - cfg.rst_epoch,
-                        callbacks=[train_logger, save_best, lr_callback],
+                        callbacks=[train_logger, save_best],
                         verbose=cfg.batch_verbose,
                         initial_epoch=cfg.rst_epoch,
                         )
