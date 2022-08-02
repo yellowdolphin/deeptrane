@@ -225,7 +225,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if not cfg.pudae_valid:
         loss_meter = AverageMeter(xm)
     metrics = metrics or []
-    any_macro = metrics and any(getattr(m, 'needs_scores', False) for m in metrics)
+    any_macro = metrics and any(getattr(m, 'needs_scores', False) for m in metrics) or True ## DEBUG
     if any_macro:
         # macro metrics need all predictions and labels
         all_scores = []
@@ -311,7 +311,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
                 #meter.update(m(labels.cpu(), top.cpu()), inputs.size(0))  # RuntimeError: Numpy is not available
                 #meter.update(m(labels.item(), top.item()), inputs.size(0))  # ValueError: only one element tensors can be converted to Python scalars
-                meter.update(m(labels, top), inputs.size(0))
+                #meter.update(m(labels, top), inputs.size(0))  # RuntimeError: Numpy is not available (sklearn calls np.asarray)
+                #local_value = 
                 #meter.update(0.0, inputs.size(0))
 
     # mesh_reduce loss
