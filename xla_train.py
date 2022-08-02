@@ -313,6 +313,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 #meter.update(m(labels.item(), top.item()), inputs.size(0))  # ValueError: only one element tensors can be converted to Python scalars
                 #meter.update(m(labels, top), inputs.size(0))  # RuntimeError: Numpy is not available (sklearn calls np.asarray)
                 local_value = tf.numpy_function(m, [labels, top], tf.float32, stateful=True)
+                meter.update(local_value, inputs.size(0))
                 #meter.update(0.0, inputs.size(0))
 
     # mesh_reduce loss
