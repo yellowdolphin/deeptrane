@@ -1,3 +1,20 @@
+"""
+The Issue with learning-rate schedulers in TF
+
+tf.keras.model.fit() allows two ways to schedule the lr, (1) pass a 
+LearningRateSchedule as learning_rate to optimizer, or (2) pass a
+LearningRateScheduler as callback to fit().
+
+(1) updates the lr at each optimizer step (good) but CSVLogger does not
+log the lr (bad).
+
+(2) updates the lr once per epoch (bad), CSVLogger logs the lr (good).
+
+How log lr in case of (1)?
+   - add lr as metric?
+   - does History callback return lrs? Probably not, CSVLogger might log all that History returns
+"""
+
 import math
 import matplotlib.pyplot as plt
 import tensorflow as tf

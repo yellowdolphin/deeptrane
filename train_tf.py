@@ -172,3 +172,4 @@ for use_fold in cfg.use_folds:
     wall = perf_counter() - t0
     min_per_ep = wall / cfg.epochs / 60
     print(f"Training finished in {wall / 60:.2f} min ({min_per_ep:.2f} min/epoch)")
+    print(f"history:", history.history.keys())
