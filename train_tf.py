@@ -6,7 +6,7 @@ from time import perf_counter
 from multiprocessing import cpu_count
 
 from config import Config, parser
-from utils.general import quietly_run, sizify, listify, autotype
+from utils.general import quietly_run, sizify, listify, autotype, get_drive_out_dir
 from utils.tf_setup import install_model_libs
 
 # Read config file and parser_args
@@ -32,7 +32,8 @@ if cfg.batch_verbose not in ['auto', 0, 1, 2]:
 print(cfg)
 
 cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
-if cfg.out_dir and cfg.cloud == 'drive': cfg.out_dir = cfg.out_dir.replace('/kaggle/working', '/content')
+if cfg.cloud == 'drive':
+    cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
 print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
