@@ -75,7 +75,7 @@ if 'TPU_NAME' in os.environ:
         #os.environ['LD_LIBRARY_PATH'] += ':/usr/local/lib'  # fix 'libmkl_intel_lp64.so.1 not found'
         #if os.path.exists('/usr/local/lib/libmkl_intel_lp64.so'):
         #    os.symlink('/usr/local/lib/libmkl_intel_lp64.so', '/usr/local/lib/libmkl_intel_lp64.so.1')
-    elif xla_version != '1.8.1':
+    elif (xla_version != '1.8.1') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
         quietly_run(
             'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
             f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
