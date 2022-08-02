@@ -29,11 +29,11 @@ for key, value in listify(parser_args.set):
 if cfg.batch_verbose not in ['auto', 0, 1, 2]:
     print(f'WARNING: batch_verbose {cfg.batch_verbose} ignored.')
     print('Valid values are 0 = silent, 1 = progress bar, 2 = one line per epoch.')
-print(cfg)
-
 cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
 if cfg.cloud == 'drive':
     cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
+
+print(cfg)
 print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)

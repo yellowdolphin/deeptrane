@@ -5,14 +5,11 @@ tf.keras.model.fit() allows two ways to schedule the lr, (1) pass a
 LearningRateSchedule as learning_rate to optimizer, or (2) pass a
 LearningRateScheduler as callback to fit().
 
-(1) updates the lr at each optimizer step (good) but CSVLogger does not
-log the lr (bad).
+(1) May update the lr at each optimizer step (good) but CSVLogger does not
+log the lr (bad). Could not confirm correct lr on TPUs.
 
-(2) updates the lr once per epoch (bad), CSVLogger logs the lr (good).
-
-How log lr in case of (1)?
-   - add lr as metric?
-   - does History callback return lrs? Probably not, CSVLogger might log all that History returns
+(2) Updates the lr once per epoch (bad), CSVLogger logs the lr (good), tracing may occur (bad).
+    => Do not pass `steps_per_epoch`!
 """
 
 import math
@@ -41,11 +38,10 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
     def lrfn(iterations):
         # iterations is tensor with dtype=tf.float32
         #tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
-        # Issue: If model is built with optimizer with constant lr, 
-        # learning_rate will be called with epoch rather than optimizer.iterations
-        epoch = iterations / steps_per_epoch
-        if restart:
-            epoch += cfg.rst_epoch
+        # lrfn will be called at epoch_start.
+        # If passed inside LRSchedule to optimizer, it may be called with optimizer.iterations, once per optimizer step.
+        epoch = iterations / steps_per_epoch + rst_epoch
+
         if epoch < lr_ramp_ep:
             lr = (lr_max - lr_start) / lr_ramp_ep * epoch + lr_start
             
@@ -54,6 +50,7 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
             
         elif decay == 'exp':
             lr = (lr_max - lr_min) * lr_decay**(epoch - lr_ramp_ep - lr_sus_ep) + lr_min
+
         else:
             x = (epoch - lr_ramp_ep - lr_sus_ep) / (n_epochs - lr_ramp_ep - lr_sus_ep)
             lr = (lr_min + lr_max) / 2 + (lr_max - lr_min) / 2 * tf.math.cos(pi * x)
