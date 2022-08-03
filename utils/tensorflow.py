@@ -35,6 +35,7 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
 
     @tf.function
     def lrfn(iterations):
+        return lr_max
         # iterations is tensor with dtype=tf.float32
         #tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
         # lrfn will be called at epoch_start.
@@ -52,8 +53,8 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
 # - deeptrane@kaggle no warn w ramp/lr_max (no elif)
 # - deeptrane@kaggle no warn w ramp/cos (no elif)
 # - deeptrane@colab warns in ep 4, 5 w ramp/lr_sus_ep/cos (1 elif)
-# - deeptrane@colab   w ramp/cos (no elif)
-# - deeptrane@kaggle w ramp/lr_sus_ep/cos (1 elif)
+# - deeptrane@colab warns in ep 4,  w ramp/cos (no elif)
+# - deeptrane@kaggle  w ramp/lr_sus_ep/cos (1 elif)
 
         elif epoch < lr_ramp_ep + lr_sus_ep:
             lr = lr_max
