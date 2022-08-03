@@ -95,8 +95,7 @@ def init(cfg):
         cfg.targets = ['target']
 
     if cfg.filetype == 'tfrec':
-        # TFRecords dataset for pytorch training
-        import tensorflow as tf
+        # TFRecords dataset for pytorch training (additional settings)
         from tf_datasets import get_gcs_path, count_data_items
 
         cfg.gcs_path = get_gcs_path(cfg, gcs_paths)
