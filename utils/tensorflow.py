@@ -52,7 +52,10 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
         # - tf2.8.2@colab warns in ep 4, 5 w ramp/cos (no elif)
         # - tf2.4.1@kaggle no warn w ramp/lr_sus_ep/cos (1 elif)
         # - tf2.8.2@colab warns in ep 4, w return max_lr (max_lr is tf.constant in closure)
-        # - tf2.8.2@colab warns w return tf.constant(3e-4, dtype=tf.float32) (no closure) still running......................
+        # - tf2.8.2@colab warns w return tf.constant(3e-4, dtype=tf.float32) (no closure)
+        # - tf2.8.2@colab no warn w all but w/o @tf.function
+        # => tf2.4.1 does not warn at all and tf2.8.2 retraces any lrfn if decorated with tf.function.
+        # Effect on performance is minor if any.
 
         epoch = iterations / steps_per_epoch + rst_epoch
 
