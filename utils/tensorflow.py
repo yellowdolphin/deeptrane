@@ -36,11 +36,13 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
     @tf.function
     def lrfn(iterations):
         return tf.constant(3e-4, dtype=tf.float32)
+
+"""
         # iterations is tensor with dtype=tf.float32
         #tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
         # lrfn will be called at epoch_start.
         # If passed inside LRSchedule to optimizer, it may be called with optimizer.iterations, once per optimizer step.
-"""        epoch = iterations / steps_per_epoch + rst_epoch
+        epoch = iterations / steps_per_epoch + rst_epoch
 
         if epoch < lr_ramp_ep:
             lr = (lr_max - lr_start) / lr_ramp_ep * epoch + lr_start  # tracing Warning in ep 4, 5
@@ -56,6 +58,8 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
 # - tf2.8.2@colab warns in ep 4, 5 w ramp/cos (no elif)
 # - tf2.4.1@kaggle no warn w ramp/lr_sus_ep/cos (1 elif)
 # - tf2.8.2@colab warns in ep 4, 5 w return max_lr (max_lr is tf.constant in closure)
+# - tf2.8.2@colab  w return tf.constant(3e-4, dtype=tf.float32) (no closure)
+
 
         elif epoch < lr_ramp_ep + lr_sus_ep:
             lr = lr_max
@@ -68,7 +72,8 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
             lr = (lr_min + lr_max) / 2 + (lr_max - lr_min) / 2 * tf.math.cos(pi * x)
             
         return lr
-"""        
+"""
+
     if plot:
         n_ep = cfg.epochs - cfg.rst_epoch if (cfg.rst_path and cfg.rst_name) else cfg.epochs
         epochs = tf.range(n_ep, dtype=tf.float32)
