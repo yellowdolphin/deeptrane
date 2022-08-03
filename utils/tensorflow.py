@@ -37,7 +37,7 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
     def lrfn(iterations):
         return tf.constant(3e-4, dtype=tf.float32)
 
-"""
+    """
         # iterations is tensor with dtype=tf.float32
         #tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
         # lrfn will be called at epoch_start.
@@ -72,7 +72,7 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
             lr = (lr_min + lr_max) / 2 + (lr_max - lr_min) / 2 * tf.math.cos(pi * x)
             
         return lr
-"""
+    """
 
     if plot:
         n_ep = cfg.epochs - cfg.rst_epoch if (cfg.rst_path and cfg.rst_name) else cfg.epochs
