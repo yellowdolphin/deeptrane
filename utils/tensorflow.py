@@ -50,9 +50,11 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
 # (3) passing Python objects instead of tensors. [NO]
 # For (1), please define your @tf.function outside of the loop. For (2), @tf.function has experimental_relax_shapes=True option that relaxes argument shapes that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
 # - deeptrane@kaggle no warn w ramp/lr_max (no elif)
+# - deeptrane@kaggle no warn w ramp/cos (no elif)
+# - deeptrane@colab warns in ep 4, 5 w ramp/lr_sus_ep/cos (1 elif)
 
-        elif epoch < lr_ramp_ep + lr_sus_ep:
-            lr = lr_max
+        #elif epoch < lr_ramp_ep + lr_sus_ep:
+        #    lr = lr_max
 
         #elif decay == 'exp':
         #    lr = (lr_max - lr_min) * lr_decay**(epoch - lr_ramp_ep - lr_sus_ep) + lr_min
