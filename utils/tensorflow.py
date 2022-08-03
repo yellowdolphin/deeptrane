@@ -42,16 +42,13 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
         epoch = iterations / steps_per_epoch + rst_epoch
 
         if epoch < lr_ramp_ep:
-            lr = (lr_max - lr_start) / lr_ramp_ep * epoch + lr_start  # tracing Warning
+            lr = (lr_max - lr_start) / lr_ramp_ep * epoch + lr_start  # tracing Warning in ep 4, 5
 # WARNING:tensorflow:5 out of the last 5 calls to <function get_lr_callback.<locals>.lrfn at 0x7f9e045e43b0> triggered 
 # tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to 
 # (1) creating @tf.function repeatedly in a loop, [NO]
 # (2) passing tensors with different shapes, [NO]
 # (3) passing Python objects instead of tensors. [NO]
 # For (1), please define your @tf.function outside of the loop. For (2), @tf.function has experimental_relax_shapes=True option that relaxes argument shapes that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.            
-
-        #else:
-        #    lr = lr_max
 
         #elif epoch < lr_ramp_ep + lr_sus_ep:
         #    lr = lr_max
