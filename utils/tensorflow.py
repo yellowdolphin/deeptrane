@@ -52,9 +52,11 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
 # - deeptrane@kaggle no warn w ramp/lr_max (no elif)
 # - deeptrane@kaggle no warn w ramp/cos (no elif)
 # - deeptrane@colab warns in ep 4, 5 w ramp/lr_sus_ep/cos (1 elif)
+# - deeptrane@colab   w ramp/cos (no elif)
+# - deeptrane@kaggle w ramp/lr_sus_ep/cos (1 elif)
 
-        #elif epoch < lr_ramp_ep + lr_sus_ep:
-        #    lr = lr_max
+        elif epoch < lr_ramp_ep + lr_sus_ep:
+            lr = lr_max
 
         #elif decay == 'exp':
         #    lr = (lr_max - lr_min) * lr_decay**(epoch - lr_ramp_ep - lr_sus_ep) + lr_min
