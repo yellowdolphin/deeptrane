@@ -50,11 +50,11 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
 
     shuffle = 2048 if mode == 'train' else None
     drop_last = (mode == 'train')
-    resampled = (xm.xrt_world_size() > 1) and (mode == 'train')
+    resampled = (cfg.n_replicas > 1) and (mode == 'train')
 
     # Calculate iterations / epoch ()
     n_examples = count_data_items(shards)  # requires shard names "*-{n_examples}.*"
-    n_replica = xm.xrt_world_size()
+    n_replica = cfg.n_replicas
     n_workers = kwargs.get('num_workers', 0) or 1
     n_dataset_instances = n_replica * n_workers        # n_workers = 1 if xla anyways
     ds_epoch_size = n_examples // n_dataset_instances  # n_replica? not sure about this...
@@ -126,3 +126,20 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
     xm.master_print("label.shape from loader:", next(iter(loader))[1].shape)
 
     return loader
+
+
+def get_dataloaders(cfg, use_fold):
+
+        train_loader = get_dataloader(cfg, use_fold, xm, mode='train',
+                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
+                                      pin_memory=True)
+
+        valid_loader = get_dataloader(cfg, use_fold, xm, mode='valid',
+                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
+                                      pin_memory=True)
+
+        xm.master_print("train:", cfg.NUM_TRAINING_IMAGES)
+        xm.master_print("valid:", cfg.NUM_VALIDATION_IMAGES)
+        xm.master_print("test:", cfg.NUM_TEST_IMAGES)
+
+        return train_loader, valid_loader

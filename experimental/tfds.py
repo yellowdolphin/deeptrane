@@ -270,3 +270,30 @@ class TFDataLoader(DataLoader):
     
     def __len__(self):
         return self.n_examples // (self.batch_size * self.n_replica)
+
+
+def get_dataloaders(cfg, use_fold, xm):
+
+        ds_train, ds_valid = get_tf_datasets(cfg, use_fold)
+
+        train_loader = TFDataLoader(
+            ds_train,
+            n_examples = cfg.NUM_TRAINING_IMAGES,
+            n_replica = cfg.n_replicas,
+            dataset = None, #train_dl._ds if hasattr(train_dl, '_ds') else train_dl,
+            batch_size  = cfg.bs,
+            #num_workers = 0 if cfg.n_replicas > 1 else cpu_count(),
+            #pin_memory  = True,
+            drop_last   = True,
+            shuffle     = False)
+
+        valid_loader = TFDataLoader(
+            ds_valid,
+            n_examples = cfg.NUM_VALIDATION_IMAGES,
+            n_replica = cfg.n_replicas,
+            dataset = None, #valid_dl._ds if hasattr(valid_dl, '_ds') else valid_dl,
+            batch_size  = cfg.bs,
+            #num_workers = 0 if cfg.n_replicas > 1 else cpu_count(),
+            #pin_memory  = True,
+            drop_last   = False,
+            shuffle     = False)

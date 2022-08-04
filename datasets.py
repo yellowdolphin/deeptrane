@@ -182,3 +182,131 @@ class ImageDataLoader(DataLoader):
                                pad_value=pad_value)
         plt.imshow(grid.numpy().transpose((1, 2, 0)))
         plt.title('Batch from dataloader')
+
+
+def get_fakedata_loaders(cfg):
+    from torch_xla.utils.utils import SampleGenerator
+
+    train_loader = SampleGenerator(
+        data=(torch.zeros(cfg.bs, 3, *cfg.size),
+              torch.zeros(cfg.bs, dtype=torch.int64)),
+        sample_count=cfg.NUM_TRAINING_IMAGES // (cfg.bs * cfg.n_replicas))
+    valid_loader = SampleGenerator(
+        data=(torch.zeros(cfg.bs, 3, *cfg.size),
+              torch.zeros(cfg.bs, dtype=torch.int64)),
+        sample_count=cfg.NUM_VALIDATION_IMAGES // (cfg.bs * cfg.n_replicas))
+
+    if cfg.xla and (cfg.deviceloader == 'mp'):
+        train_loader = pl.MpDeviceLoader(train_loader, device)
+        valid_loader = pl.MpDeviceLoader(valid_loader, device)
+
+    return train_loader, valid_loader
+
+
+def get_dataloaders(cfg, use_fold, metadata, xm):
+
+    if cfg.filetype == 'wds':
+        from experimental import web_datasets
+        return get_dataloaders.get_dataloaders(cfg, use_fold, xm)  # xm: only for printing
+
+    elif cfg.filetype == 'tfds':
+        from experimental import tfds
+        return tfds.get_dataloaders(cfg, use_fold)
+
+    class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
+    xm.master_print("Using class labels from column", class_column)
+
+    # Create datasets
+    train_tfms = get_tfms(cfg, mode='train')
+    test_tfms = get_tfms(cfg, mode='test')
+    tensor_tfms = None
+
+    ds_train = ImageDataset(metadata.loc[~ is_valid], cfg, mode='train',
+                            transform=train_tfms, tensor_transform=tensor_tfms,
+                            class_column=class_column)
+    
+    ds_valid = ImageDataset(metadata.loc[is_valid | is_shared], cfg, mode='valid',
+                            transform=test_tfms, tensor_transform=tensor_tfms,
+                            class_column=class_column)
+
+    xm.master_print("ds_train:", len(ds_train))
+    xm.master_print("ds_valid:", len(ds_valid))
+    if cfg.DEBUG:
+        xm.master_print("train_tfms:")
+        xm.master_print(ds_train.transform)
+        xm.master_print("test_tfms:")
+        xm.master_print(ds_valid.transform)
+
+    # Create samplers for distributed shuffling or class-balancing
+    if cfg.xla:
+        from catalyst.data import DistributedSamplerWrapper
+        from torch.utils.data.distributed import DistributedSampler
+
+    if cfg.do_class_sampling:
+        # Data samplers, class-weighted metrics
+        is_valid = metadata.is_valid
+        is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
+
+        train_labels = metadata.loc[~ is_valid, class_column]
+        valid_labels = metadata.loc[is_valid | is_shared, class_column]
+
+        # Use torch's WeightedRandomSampler with custom class weights
+        class_counts = train_labels.value_counts().sort_index().values
+        n_examples = len(train_labels)
+        assert class_counts.sum() == n_examples, f"{class_counts.sum()} != {n_examples}"
+        class_weights_full = n_examples / (cfg.n_classes * class_counts)
+        class_weights_sqrt = np.sqrt(class_weights_full)
+        sample_weights = class_weights_sqrt[train_labels.values]
+        assert len(sample_weights) == n_examples
+        #xm.master_print("Class counts:           ", class_counts)
+        #xm.master_print("Class weights:          ", class_weights_full)
+        #xm.master_print("Weighted class counts:  ", class_weights_full * class_counts)
+        xm.master_print(f"Sampling {int(n_examples * cfg.frac)} out of {n_examples} examples")
+
+        train_sampler = WeightedRandomSampler(
+            sample_weights, int(n_examples * cfg.frac), replacement=True)
+
+        train_sampler = DistributedSamplerWrapper(
+            train_sampler,
+            num_replicas = cfg.n_replicas,
+            rank         = xm.get_ordinal(),
+            shuffle      = False
+            ) if cfg.xla else train_sampler
+
+    elif cfg.n_replicas > 1:
+        train_sampler = DistributedSampler(
+            ds_train,
+            num_replicas = cfg.n_replicas,
+            rank         = xm.get_ordinal(),
+            shuffle      = True)
+
+    else:
+        train_sampler = None
+
+    valid_sampler = DistributedSampler(ds_valid,
+                                       num_replicas = cfg.n_replicas,
+                                       rank         = xm.get_ordinal(),
+                                       shuffle      = False,
+                                       ) if cfg.n_replicas > 1 else None
+
+    # Create dataloaders
+    train_loader = DataLoader(ds_train,
+                              batch_size  = cfg.bs,
+                              sampler     = train_sampler,
+                              num_workers = 4 if cfg.n_replicas > 1 else cpu_count(),
+                              #pin_memory  = True,
+                              drop_last   = True,
+                              shuffle     = False if train_sampler else True)
+
+    valid_loader = DataLoader(ds_valid,
+                              batch_size  = cfg.bs,
+                              sampler     = valid_sampler,
+                              num_workers = 4 if cfg.n_replicas > 1 else cpu_count(),
+                              #pin_memory  = True,
+                              )
+
+    if cfg.xla and (cfg.deviceloader == 'mp'):
+        train_loader = pl.MpDeviceLoader(train_loader, device)
+        valid_loader = pl.MpDeviceLoader(valid_loader, device)
+
+    return train_loader, valid_loader

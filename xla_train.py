@@ -11,7 +11,7 @@ import numpy as np
 from sklearn.metrics import f1_score, accuracy_score
 from sklearn.metrics import label_ranking_average_precision_score
 from metrics import val_map, multiclass_average_precision_score
-from datasets import ImageDataset, MySiimCovidAuxDataset
+from datasets import get_dataloaders, get_fakedata_loaders
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
@@ -342,168 +342,23 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     "Distributed training loop master function"
 
-    ### Setup
+    # XLA device setup
     device = xm.xla_device()
     if cfg.xla:
         import torch_xla.distributed.parallel_loader as pl
-        from catalyst.data import DistributedSamplerWrapper
-        from torch.utils.data.distributed import DistributedSampler
         loader_prefetch_size = 1
         device_prefetch_size = 1
         cfg.deviceloader = cfg.deviceloader or 'mp'  # 'mp' performs better than 'pl' on kaggle
-        if cfg.fake_data: import torch_xla.utils.utils as xu
-
-    # Data samplers, class-weighted metrics
-    class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
-    xm.master_print("Using class labels from column", class_column)
-
-    is_valid = metadata.is_valid
-    is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
-
-    train_labels = metadata.loc[~ is_valid, class_column]
-    valid_labels = metadata.loc[is_valid | is_shared, class_column]
-
-
-
-    if cfg.fake_data:
-        pass
-    elif cfg.filetype == 'tfds':
-        from tfds import get_tf_datasets, TFDataLoader
-        ds_train, ds_valid = get_tf_datasets(cfg, use_fold)
-    elif cfg.filetype == 'wds':
-        pass
-
-    else:
-        train_tfms = get_tfms(cfg, mode='train')
-        test_tfms = get_tfms(cfg, mode='test')
-        tensor_tfms = None
-
-        ds_train = ImageDataset(metadata.loc[~ is_valid], cfg, mode='train',
-                                transform=train_tfms, tensor_transform=tensor_tfms,
-                                class_column=class_column)
-        
-        ds_valid = ImageDataset(metadata.loc[is_valid | is_shared], cfg, mode='valid',
-                                transform=test_tfms, tensor_transform=tensor_tfms,
-                                class_column=class_column)
-
-        xm.master_print("ds_train:", len(ds_train))
-        xm.master_print("ds_valid:", len(ds_valid))
-        if cfg.DEBUG:
-            xm.master_print("train_tfms:")
-            xm.master_print(ds_train.transform)
-            xm.master_print("test_tfms:")
-            xm.master_print(ds_valid.transform)
-
-    if cfg.fake_data:
-        train_sampler = None
-
-    elif cfg.filetype in ['wds', 'tfds']:
-        train_sampler = None
-
-    elif cfg.do_class_sampling:
-        # Use torch's WeightedRandomSampler with custom class weights
-        class_counts = train_labels.value_counts().sort_index().values
-        n_examples = len(train_labels)
-        assert class_counts.sum() == n_examples, f"{class_counts.sum()} != {n_examples}"
-        class_weights_full = n_examples / (cfg.n_classes * class_counts)
-        class_weights_sqrt = np.sqrt(class_weights_full)
-        sample_weights = class_weights_sqrt[train_labels.values]
-        assert len(sample_weights) == n_examples
-        #xm.master_print("Class counts:           ", class_counts)
-        #xm.master_print("Class weights:          ", class_weights_full)
-        #xm.master_print("Weighted class counts:  ", class_weights_full * class_counts)
-        xm.master_print(f"Sampling {int(n_examples * cfg.frac)} out of {n_examples} examples")
-        weighted_train_sampler = WeightedRandomSampler(
-            sample_weights, int(n_examples * cfg.frac), replacement=True)
-
-        # Wrap it in a DistributedSamplerWrapper
-        train_sampler = (DistributedSamplerWrapper(weighted_train_sampler,
-                                                   num_replicas = cfg.n_replicas,
-                                                   rank         = xm.get_ordinal(),
-                                                   shuffle      = False) if cfg.xla else
-                         weighted_train_sampler)
-
-    elif cfg.n_replicas > 1:
-        train_sampler = DistributedSampler(ds_train,
-                                           num_replicas = cfg.n_replicas,
-                                           rank         = xm.get_ordinal(),
-                                           shuffle      = True)
-
-    else:
-        train_sampler = None
-
-    if cfg.fake_data or (cfg.n_replicas == 1) or (cfg.filetype in ['wds', 'tfds']):
-        valid_sampler = None
-
-    else:
-        valid_sampler = DistributedSampler(ds_valid,
-                                           num_replicas = cfg.n_replicas,
-                                           rank         = xm.get_ordinal(),
-                                           shuffle      = False)
 
     # Dataloaders
-    if cfg.fake_data and (cfg.fake_data != 'on_device'):
-        train_loader = xu.SampleGenerator(
-            data=(torch.zeros(cfg.bs, 3, *cfg.size),
-                  torch.zeros(cfg.bs, dtype=torch.int64)),
-            sample_count=cfg.NUM_TRAINING_IMAGES // (cfg.bs * cfg.n_replicas))
-        valid_loader = xu.SampleGenerator(
-            data=(torch.zeros(cfg.bs, 3, *cfg.size),
-                  torch.zeros(cfg.bs, dtype=torch.int64)),
-            sample_count=cfg.NUM_VALIDATION_IMAGES // (cfg.bs * cfg.n_replicas))
-    elif cfg.filetype == 'tfds':
-        train_loader = TFDataLoader(
-            ds_train,
-            n_examples = cfg.NUM_TRAINING_IMAGES,
-            n_replica = cfg.n_replicas,
-            dataset = None, #train_dl._ds if hasattr(train_dl, '_ds') else train_dl,
-            batch_size  = cfg.bs,
-            #num_workers = 0 if cfg.n_replicas > 1 else cpu_count(),
-            #pin_memory  = True,
-            drop_last   = True,
-            shuffle     = False)
-        valid_loader = TFDataLoader(
-            ds_valid,
-            n_examples = cfg.NUM_VALIDATION_IMAGES,
-            n_replica = cfg.n_replicas,
-            dataset = None, #valid_dl._ds if hasattr(valid_dl, '_ds') else valid_dl,
-            batch_size  = cfg.bs,
-            #num_workers = 0 if cfg.n_replicas > 1 else cpu_count(),
-            #pin_memory  = True,
-            drop_last   = False,
-            shuffle     = False)
+    if cfg.fake_data == 'on_device':
+        train_loader, valid_loader = None, None
 
-    elif cfg.filetype == 'wds':
-        from web_datasets import get_dataloader
-
-        train_loader = get_dataloader(cfg, use_fold, xm, mode='train',
-                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
-                                      pin_memory=True)
-        valid_loader = get_dataloader(cfg, use_fold, xm, mode='valid',
-                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
-                                      pin_memory=True)
-        xm.master_print("train:", cfg.NUM_TRAINING_IMAGES)
-        xm.master_print("valid:", cfg.NUM_VALIDATION_IMAGES)
-        xm.master_print("test:", cfg.NUM_TEST_IMAGES)
+    elif cfg.fake_data:
+        train_loader, valid_loader = get_fakedata_loaders(cfg)
 
     else:
-        train_loader = DataLoader(ds_train,
-                                  batch_size  = cfg.bs,
-                                  sampler     = train_sampler,
-                                  num_workers = 4 if cfg.n_replicas > 1 else cpu_count(),
-                                  #pin_memory  = True,
-                                  drop_last   = True,
-                                  shuffle     = False if train_sampler else True)
-        valid_loader = DataLoader(ds_valid,
-                                  batch_size  = cfg.bs,
-                                  sampler     = valid_sampler,
-                                  num_workers = 4 if cfg.n_replicas > 1 else cpu_count(),
-                                  #pin_memory  = True,
-                                  )
-
-    if cfg.xla and (cfg.deviceloader == 'mp') and cfg.fake_data != 'on_device':
-        train_loader = pl.MpDeviceLoader(train_loader, device)
-        valid_loader = pl.MpDeviceLoader(valid_loader, device)
+        train_loader, valid_loader = get_dataloaders(cfg, use_fold, metadata, xm)
 
     # Send model to device
     model = wrapped_model.to(device)
@@ -653,7 +508,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         # Training
 
-        if cfg.xla and cfg.deviceloader == 'pl':
+        if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
             # ParallelLoader requires instantiation per epoch
             dataloader = pl.ParallelLoader(train_loader, [device], 
                                            loader_prefetch_size=loader_prefetch_size,
@@ -677,7 +532,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         if cfg.train_on_all:
             valid_loss, valid_metrics = 0, []
         else:
-            if cfg.xla and cfg.deviceloader == 'pl':
+            if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
                 # ParallelLoader requires instantiation per epoch
                 dataloader = pl.ParallelLoader(valid_loader, [device],
                                                loader_prefetch_size=loader_prefetch_size,
