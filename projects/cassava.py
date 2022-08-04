@@ -16,8 +16,9 @@ def init(cfg):
         if cfg.cloud == 'drive':
             #cfg.image_root = Path(f'/content/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
             cfg.image_root = Path(f'/tmp/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
-    elif cfg.filetype == 'tfrec':
-        cfg.image_root = cfg.competition_path / 'train_tfrecords'
+
+    #elif cfg.filetype == 'tfrec':
+    #    cfg.image_root = cfg.competition_path / 'train_tfrecords'
 
     cfg.meta_csv = cfg.competition_path / 'train.csv'  # label
     cfg.gcs_filter = 'train_tfrecords/*.tfrec'

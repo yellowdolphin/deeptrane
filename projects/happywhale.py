@@ -9,8 +9,6 @@ from PIL import Image
 from torch import nn
 
 
-use_tfds = False
-
 # TFRecords
 private_datasets = []
 crop_methods = {
@@ -97,7 +95,7 @@ def init(cfg):
             cfg.data_format.update({'aux_target': 'species'})
             cfg.targets.append('aux_target')
 
-    if cfg.filetype == 'tfrec':
+    if cfg.filetype in ['wds', 'tfds']:
         # TFRecords dataset for pytorch training (additional settings)
         from tfds import count_data_items
         from tf_data import get_gcs_path
@@ -121,10 +119,10 @@ def init(cfg):
             cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/train*.tfrec')).tolist()
             cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/test*.tfrec')).tolist()
             cfg.crop_method = None  # cannot have private dataset with 62 GB uncropped images
-        elif use_tfds:
+        elif cfg.filetype == 'tfds':
             cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*train*.tfrec')).tolist()
             cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*test*.tfrec')).tolist()
-        else:
+        elif cfg.filetype == 'wds':
             cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-[tv][ra][al]*.tarball')).tolist()
             cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
         if cfg.dataset == 'whale-tfrecords-512': cfg.crop_method = None
@@ -380,10 +378,3 @@ def get_adaptive_margin(cfg):
     adaptive_margin = adaptive_margin.loc[individual_ids].values.astype(np.float32)
 
     return adaptive_margin
-
-
-#def get_pretrained_model(cfg, strategy):
-#    if cfg.adaptive_margin:
-#        cfg.adaptive_margin = get_adaptive_margin(cfg)
-#
-#    return models_tf.get_pretrained_model(cfg, strategy)

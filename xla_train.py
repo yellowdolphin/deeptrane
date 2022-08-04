@@ -27,7 +27,6 @@ from metrics import NegativeRate, MAP, AverageMeter
 from torch import FloatTensor, LongTensor
 
 torch.set_default_tensor_type('torch.FloatTensor')
-use_tfds = False
 
 
 def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, scheduler, device):
@@ -107,7 +106,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             #assert labels.shape == (cfg.bs,)
             #xm.master_print(inputs.device, labels.device)
 
-        elif cfg.filetype == 'tfrec' and use_tfds:
+        elif cfg.filetype == 'tfds':
             inputs, labels = FloatTensor(batch[0]['inp1']), LongTensor(batch[0]['inp2'])
             inputs = inputs.permute((0, 3, 1, 2))  #.contiguous()  # mem? speed?
         elif cfg.use_aux_loss:
@@ -246,7 +245,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
-        elif cfg.filetype == 'tfrec' and use_tfds:
+        elif cfg.filetype == 'tfds':
             inputs, labels = FloatTensor(batch[0]['inp1']), LongTensor(batch[0]['inp2'])
             inputs = inputs.permute((0, 3, 1, 2))  #.contiguous()  # mem? speed?
         else:
@@ -368,10 +367,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     if cfg.fake_data:
         pass
-    elif cfg.filetype == 'tfrec' and use_tfds:
+    elif cfg.filetype == 'tfds':
         from tfds import get_tf_datasets, TFDataLoader
         ds_train, ds_valid = get_tf_datasets(cfg, use_fold)
-    elif cfg.filetype == 'tfrec':
+    elif cfg.filetype == 'wds':
         pass
 
     else:
@@ -398,7 +397,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if cfg.fake_data:
         train_sampler = None
 
-    elif cfg.filetype == 'tfrec':
+    elif cfg.filetype in ['wds', 'tfds']:
         train_sampler = None
 
     elif cfg.do_class_sampling:
@@ -433,7 +432,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     else:
         train_sampler = None
 
-    if (cfg.filetype == 'tfrec') or (cfg.n_replicas == 1) or cfg.fake_data:
+    if cfg.fake_data or (cfg.n_replicas == 1) or (cfg.filetype in ['wds', 'tfds']):
         valid_sampler = None
 
     else:
@@ -452,7 +451,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             data=(torch.zeros(cfg.bs, 3, *cfg.size),
                   torch.zeros(cfg.bs, dtype=torch.int64)),
             sample_count=cfg.NUM_VALIDATION_IMAGES // (cfg.bs * cfg.n_replicas))
-    elif cfg.filetype == 'tfrec' and use_tfds:
+    elif cfg.filetype == 'tfds':
         train_loader = TFDataLoader(
             ds_train,
             n_examples = cfg.NUM_TRAINING_IMAGES,
@@ -474,7 +473,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             drop_last   = False,
             shuffle     = False)
 
-    elif cfg.filetype == 'tfrec':
+    elif cfg.filetype == 'wds':
         from web_datasets import get_dataloader
 
         train_loader = get_dataloader(cfg, use_fold, xm, mode='train',

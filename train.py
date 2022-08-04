@@ -42,7 +42,7 @@ print("[ √ ] Architecture:", cfg.arch_name)
 cfg.save_yaml()
 
 # Config consistency checks
-if cfg.frac != 1: assert cfg.do_class_sampling or (cfg.filetype == 'tfrec'), 'frac w/o class_sampling not implemented'
+if cfg.frac != 1: assert cfg.do_class_sampling or (cfg.filetype == 'wds'), 'frac w/o class_sampling not implemented'
 if cfg.rst_name is not None:
     rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
@@ -108,7 +108,7 @@ if cfg.use_timm:
 # Install keras if preprocess_inputs is needed
 if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
     quietly_run(f'pip install keras=={tf.keras.__version__}', debug=False)
-if cfg.filetype == 'tfrec':
+if cfg.filetype == 'wds':
     quietly_run('pip install webdataset', debug=False)
 
 if cfg.xla:
