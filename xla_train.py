@@ -356,7 +356,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         train_loader, valid_loader = None, None
 
     elif cfg.fake_data:
-        train_loader, valid_loader = get_fakedata_loaders(cfg)
+        train_loader, valid_loader = get_fakedata_loaders(cfg, device)
 
     else:
         train_loader, valid_loader = get_dataloaders(cfg, use_fold, metadata, xm)

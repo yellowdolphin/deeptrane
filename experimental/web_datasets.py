@@ -1,6 +1,4 @@
 from pathlib import Path
-import sys
-from functools import partial
 from multiprocessing import cpu_count
 
 import torch
@@ -13,14 +11,14 @@ from webdataset.utils import identity
 def patch_len_call(instance, func):
     class _(type(instance)):
         def __len__(self, *arg, **kwarg):
-           return func(*arg, **kwarg)
+            return func(*arg, **kwarg)
     instance.__class__ = _
 
 
 def patch_len_value(instance, value):
     class _(type(instance)):
         def __len__(self, *arg, **kwarg):
-           return value
+            return value
     instance.__class__ = _
 
 
@@ -31,7 +29,7 @@ def split_train_files(cfg, use_fold):
     # split by name
     train_shards = [s for s in shards if '-train-' in Path(s).name]
     valid_shards = sorted(set(shards) - set(train_shards))
-    if train_shards and valid_shards: 
+    if train_shards and valid_shards:
         return train_shards, valid_shards
 
     # split by use_fold, num_folds
@@ -87,11 +85,10 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
         #print("img:", type(img), img.shape, img.dtype)  # unbatched uint8 array
         #print("label:", type(label))  # int
         #print("image writable?", img.flags['WRITEABLE'])
-        img = torch.FloatTensor(img.copy()).permute((2,0,1)).contiguous() / 255.0  # w/o copy(): not-writable warning
+        img = torch.FloatTensor(img.copy()).permute((2, 0, 1)).contiguous() / 255.0  # w/o copy(): not-writable warning
         label = torch.tensor(label, dtype=torch.int64)
         return img, label
 
-    
     dataset = wds.WebDataset(shards, shardshuffle=bool(shuffle), resampled=resampled)
     dataset = dataset.shuffle(shuffle) if shuffle else dataset
     #dataset = dataset.decode("pil").to_tuple("jpeg", "cls").map_tuple(tfms, identity)  # torchvision
@@ -128,18 +125,18 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
     return loader
 
 
-def get_dataloaders(cfg, use_fold):
+def get_dataloaders(cfg, use_fold, xm):
 
-        train_loader = get_dataloader(cfg, use_fold, xm, mode='train',
-                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
-                                      pin_memory=True)
+    train_loader = get_dataloader(cfg, use_fold, xm, mode='train',
+                                  num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
+                                  pin_memory=True)
 
-        valid_loader = get_dataloader(cfg, use_fold, xm, mode='valid',
-                                      num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
-                                      pin_memory=True)
+    valid_loader = get_dataloader(cfg, use_fold, xm, mode='valid',
+                                  num_workers=0 if cfg.n_replicas > 1 else cpu_count(),
+                                  pin_memory=True)
 
-        xm.master_print("train:", cfg.NUM_TRAINING_IMAGES)
-        xm.master_print("valid:", cfg.NUM_VALIDATION_IMAGES)
-        xm.master_print("test:", cfg.NUM_TEST_IMAGES)
+    xm.master_print("train:", cfg.NUM_TRAINING_IMAGES)
+    xm.master_print("valid:", cfg.NUM_VALIDATION_IMAGES)
+    xm.master_print("test:", cfg.NUM_TEST_IMAGES)
 
-        return train_loader, valid_loader
+    return train_loader, valid_loader

@@ -1,4 +1,5 @@
 import os
+from multiprocessing import cpu_count
 from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
@@ -64,7 +65,7 @@ class ImageDataset(Dataset):
             if DEBUG: print(f"Labels from column {oh_columns if self.multilabel else class_column}")
 
         if cfg.xla and False:
-            # Try GCS paths... breaks dataloader
+            # Try GCS paths... fixme!
             import io
             from torch_xla.utils import gcsfs
 
@@ -106,7 +107,6 @@ class ImageDataset(Dataset):
             return (image, label)
         else:
             return image
-
 
 
 class MySiimCovidAuxDataset(Dataset):
@@ -186,21 +186,24 @@ class ImageDataLoader(DataLoader):
         plt.title('Batch from dataloader')
 
 
-def get_fakedata_loaders(cfg):
+def get_fakedata_loaders(cfg, device):
     from torch_xla.utils.utils import SampleGenerator
 
     train_loader = SampleGenerator(
         data=(torch.zeros(cfg.bs, 3, *cfg.size),
               torch.zeros(cfg.bs, dtype=torch.int64)),
         sample_count=cfg.NUM_TRAINING_IMAGES // (cfg.bs * cfg.n_replicas))
+
     valid_loader = SampleGenerator(
         data=(torch.zeros(cfg.bs, 3, *cfg.size),
               torch.zeros(cfg.bs, dtype=torch.int64)),
         sample_count=cfg.NUM_VALIDATION_IMAGES // (cfg.bs * cfg.n_replicas))
 
     if cfg.xla and (cfg.deviceloader == 'mp'):
-        train_loader = pl.MpDeviceLoader(train_loader, device)
-        valid_loader = pl.MpDeviceLoader(valid_loader, device)
+        from torch_xla.distributed.parallel_loader import MpDeviceLoader
+
+        train_loader = MpDeviceLoader(train_loader, device)
+        valid_loader = MpDeviceLoader(valid_loader, device)
 
     return train_loader, valid_loader
 
@@ -209,7 +212,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm):
 
     if cfg.filetype == 'wds':
         from experimental import web_datasets
-        return get_dataloaders.get_dataloaders(cfg, use_fold, xm)  # xm: only for printing
+        return web_datasets.get_dataloaders(cfg, use_fold, xm)  # xm: only for printing
 
     elif cfg.filetype == 'tfds':
         from experimental import tfds
@@ -227,7 +230,6 @@ def get_dataloaders(cfg, use_fold, metadata, xm):
     train_tfms = get_tfms(cfg, mode='train')
     test_tfms = get_tfms(cfg, mode='test')
     tensor_tfms = None
-
 
     ds_train = ImageDataset(meta_train, cfg, mode='train',
                             transform=train_tfms, tensor_transform=tensor_tfms,
@@ -274,8 +276,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm):
             train_sampler,
             num_replicas = cfg.n_replicas,
             rank         = xm.get_ordinal(),
-            shuffle      = False
-            ) if cfg.xla else train_sampler
+            shuffle      = False) if (cfg.n_replicas > 1) else train_sampler
 
     elif cfg.n_replicas > 1:
         train_sampler = DistributedSampler(
@@ -310,7 +311,9 @@ def get_dataloaders(cfg, use_fold, metadata, xm):
                               )
 
     if cfg.xla and (cfg.deviceloader == 'mp'):
-        train_loader = pl.MpDeviceLoader(train_loader, device)
-        valid_loader = pl.MpDeviceLoader(valid_loader, device)
+        from torch_xla.distributed.parallel_loader import MpDeviceLoader
+        device = xm.xla_device()
+        train_loader = MpDeviceLoader(train_loader, device)
+        valid_loader = MpDeviceLoader(valid_loader, device)
 
     return train_loader, valid_loader
