@@ -6,7 +6,7 @@ from multiprocessing import cpu_count
 import torch
 import webdataset as wds
 from augmentation import get_tfms, get_torchvision_tfms
-from tf_datasets import count_data_items
+from tfds import count_data_items
 from webdataset.utils import identity
 
 

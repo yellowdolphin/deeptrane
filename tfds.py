@@ -26,40 +26,6 @@ from torch.utils.data import DataLoader
 AUTO = tf.data.experimental.AUTOTUNE
 
 
-def get_gcs_path(cfg, gcs_paths):
-    if cfg.cloud == 'kaggle':
-        from kaggle_datasets import KaggleDatasets
-        from kaggle_web_client import BackendError
-        if cfg.dataset_is_private:
-            # Enable GCS for private datasets
-            assert os.path.exists(f'/kaggle/input/{cfg.dataset}'), f'Add {cfg.dataset} first!'
-            from kaggle_secrets import UserSecretsClient
-            user_secrets = UserSecretsClient()
-            user_credential = user_secrets.get_gcloud_credential()
-            try:
-                user_secrets.set_tensorflow_credential(user_credential)
-            except NotImplementedError:
-                print("tensorflow_gcs_config import failed, probably because of installed tf version")
-                print("Using /kaggle/input instead")
-        try:
-            GCS_DS_PATH = KaggleDatasets().get_gcs_path(cfg.dataset)
-        except ConnectionError:
-            print("ConnectionError, using gcs_paths")
-            GCS_DS_PATH = gcs_paths[cfg.dataset]
-        except BackendError:
-            print(f"dataset {cfg.dataset} not in /input, using gcs_paths")
-            GCS_DS_PATH = gcs_paths[cfg.dataset]
-        print("GCS_DS_PATH:", GCS_DS_PATH)
-    elif cfg.dataset_is_private:
-        from google.colab import auth
-        auth.authenticate_user()
-        GCS_DS_PATH = private_datasets[cfg.dataset]
-    else:
-        GCS_DS_PATH = gcs_paths[cfg.dataset]
-
-    return GCS_DS_PATH
-
-
 def count_data_items(filenames):
     n = [int(re.compile(r"-([0-9]*)\.").search(filename).group(1)) 
          for filename in filenames]

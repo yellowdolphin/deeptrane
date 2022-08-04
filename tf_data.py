@@ -36,17 +36,17 @@ def count_data_items(filenames):
     return np.sum(n)
 
 
-def get_gcs_path(cfg, project=None):
-    "Get GCS dataset path from cfg.dataset and kaggle, fallback to lists from project"
+def get_gcs_path(cfg):
+    "Get GCS dataset path from cfg.dataset and kaggle, fallback to cfg.gcs_paths"
 
+    if cfg.gcs_path: return cfg.gcs_path
     assert cfg.dataset, 'specify either gcs_path or dataset in config'
-    gcs_paths = project.gcs_paths if hasattr(project, 'gcs_paths') else {}
 
     if cfg.cloud == 'kaggle':
         from kaggle_datasets import KaggleDatasets
         from kaggle_web_client import BackendError
 
-        if cfg.private_dataset:
+        if cfg.dataset_is_private:
             # Enable GCS for private datasets
             assert os.path.exists(f'/kaggle/input/{cfg.dataset}'), f'Add {cfg.dataset} first!'
             from kaggle_secrets import UserSecretsClient
@@ -61,20 +61,22 @@ def get_gcs_path(cfg, project=None):
         try:
             gcs_path = KaggleDatasets().get_gcs_path(cfg.dataset)
         except ConnectionError:
-            print("ConnectionError, using project.gcs_paths")
-            gcs_path = gcs_paths[cfg.dataset]
+            print("ConnectionError, using cfg.gcs_paths")
+            assert cfg.gcs_paths, 'No gcs_paths defined in config'
+            gcs_path = cfg.gcs_paths[cfg.dataset]
         except BackendError:
-            print(f"dataset {cfg.dataset} not in /kaggle/input, using project.gcs_paths")
-            gcs_path = gcs_paths[cfg.dataset]
-        print("kaggle gcs_path:", gcs_path)
+            print(f"dataset {cfg.dataset} not in /kaggle/input, using cfg.gcs_paths")
+            assert cfg.gcs_paths, 'No gcs_paths defined in config'
+            gcs_path = cfg.gcs_paths[cfg.dataset]
 
-    else:
-    
-        if cfg.private_dataset:
-            from google.colab import auth
-            auth.authenticate_user()
+        print("GCS path:", gcs_path)
+        return gcs_path
 
-        gcs_path = gcs_paths[cfg.dataset]
+    if cfg.dataset_is_private:
+        from google.colab import auth
+        auth.authenticate_user()
+
+    gcs_path = cfg.gcs_paths[cfg.dataset]
 
     return gcs_path
 
@@ -238,6 +240,7 @@ def get_dataset(cfg, mode='train'):
 
 
 def check_data_format(cfg):
+    "Consistency checks for data pipeline config"
     data_format = cfg.data_format
     tfrec_format = cfg.tfrec_format
     inputs = cfg.inputs
@@ -261,17 +264,25 @@ def check_data_format(cfg):
         assert target in cfg.data_format, f'"{inp}" (cfg.targets) is missing in cfg.data_format'
 
 
-def configure_data_pipeline(cfg, project):
+def configure_data_pipeline(cfg):
+    """Adds to config: gcs_path, tfrec_format, data_format, inputs, targets.
+
+    These attributes can be overridden in the project or config file.
+    They are tested for consistency.
+    """
+    cfg.gcs_path = get_gcs_path(cfg)
+
+    if cfg.arcface:
+        default_inputs.append('target')
+
+    if cfg.aux_loss:
+        default_tfrec_format['aux_target'] = tf.io.FixedLenFeature([], tf.int64)
+        default_targets.append('aux_target')
+
     cfg.tfrec_format = cfg.tfrec_format or default_tfrec_format
     cfg.data_format = cfg.data_format or default_data_format
     cfg.inputs = cfg.inputs or default_inputs
     cfg.targets = cfg.targets or default_targets
-
-    if cfg.arcface and not hasattr(project, 'inputs'):
-        cfg.inputs.append('target')
-    if cfg.aux_loss and not hasattr(project, 'targets'):
-        cfg.tfrec_format['aux_target'] = tf.io.FixedLenFeature([], tf.int64)
-        cfg.targets.append('aux_target')
 
     if cfg.mode in ['eval', 'inference']:
         for key in ['target', 'aux_target']:

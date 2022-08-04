@@ -369,7 +369,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if cfg.fake_data:
         pass
     elif cfg.filetype == 'tfrec' and use_tfds:
-        from tf_datasets import get_tf_datasets, TFDataLoader
+        from tfds import get_tf_datasets, TFDataLoader
         ds_train, ds_valid = get_tf_datasets(cfg, use_fold)
     elif cfg.filetype == 'tfrec':
         pass

@@ -12,7 +12,7 @@ from torch import nn
 use_tfds = False
 
 # TFRecords
-private_datasets = {}
+private_datasets = []
 crop_methods = {
     'happywhale-cropped-dataset-yolov5-ds': 'detic_box',
     'happywhale-tfrecords-unsubmerged': 'unsubmerged', 
@@ -63,6 +63,7 @@ def init(cfg):
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
         if cfg.adaptive_margin: cfg.adaptive_margin = get_adaptive_margin(cfg)
+        cfg.gcs_paths = gcs_paths
 
     if cfg.dataset or cfg.filetype == 'tfrec':
         cfg.splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
@@ -83,22 +84,25 @@ def init(cfg):
             'image': tf.io.FixedLenFeature([], tf.string),
             crop_methods[cfg.dataset]: tf.io.FixedLenFeature([4], tf.int64),
             'target': tf.io.FixedLenFeature([], tf.int64),
-            #'species': tf.io.FixedLenFeature([], tf.int64),
             }
         cfg.data_format = {
             'image': 'image',
             'bbox': crop_methods[cfg.dataset],
             'target': 'target',
-            #'aux_target': 'species',
             }
-        cfg.inputs = ['image']  # target for ArcFace would be added in get_pretrained_model
+        cfg.inputs = ['image', 'target'] if cfg.arcface else ['image']
         cfg.targets = ['target']
+        if cfg.aux_loss:
+            cfg.tfrec_format.update({'species': tf.io.FixedLenFeature([], tf.int64)})
+            cfg.data_format.update({'aux_target': 'species'})
+            cfg.targets.append('aux_target')
 
     if cfg.filetype == 'tfrec':
         # TFRecords dataset for pytorch training (additional settings)
-        from tf_datasets import get_gcs_path, count_data_items
+        from tfds import count_data_items
+        from tf_data import get_gcs_path
 
-        cfg.gcs_path = get_gcs_path(cfg, gcs_paths)
+        cfg.gcs_path = get_gcs_path(cfg)
         assert cfg.dataset, 'filetype is tfrec but no dataset in config'
         cfg.dataset_is_private = cfg.dataset in private_datasets
         assert cfg.dataset in crop_methods, f'{cfg.dataset} not in {list(crop_methods.keys())}'

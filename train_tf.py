@@ -61,8 +61,7 @@ if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
 from tensorflow.keras.backend import clear_session
 from models_tf import get_pretrained_model
 import tf_data
-from tf_data import (get_gcs_path, cv_split, count_data_items,
-    get_dataset, configure_data_pipeline)
+from tf_data import cv_split, count_data_items, get_dataset, configure_data_pipeline
 from utils.tensorflow import get_lr_callback
 
 # Import project (code, constant settings)
@@ -102,9 +101,7 @@ else:
     cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
     print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
 
-cfg.gcs_path = cfg.gcs_path or get_gcs_path(cfg, project)
-
-configure_data_pipeline(cfg, project)
+configure_data_pipeline(cfg)
 
 
 # CV Training
