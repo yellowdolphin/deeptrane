@@ -51,8 +51,8 @@ cfg.out_dir = Path(cfg.out_dir)
 # Install torch.xla on TPU supported nodes
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
-    #xla_version, apt_libs = '1.8.1', '' #if (cfg.cloud == 'kaggle') else 'nightly'  # '1.8.1' works on kaggle and colab
-    xla_version, apt_libs = 'nightly', '--apt-packages libomp5 libopenblas-dev'
+    # '1.8.1' works on kaggle and colab, nightly only on kaggle
+    xla_version, apt_libs = 'nightly', '--apt-packages libomp5 libopenblas-dev' if cfg.xla_nightly else '1.8.1', ''
 
     # Auto installation
     if (cfg.cloud == 'drive'):
