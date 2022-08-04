@@ -52,7 +52,7 @@ cfg.out_dir = Path(cfg.out_dir)
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
     # '1.8.1' works on kaggle and colab, nightly only on kaggle
-    xla_version, apt_libs = 'nightly', '--apt-packages libomp5 libopenblas-dev' if cfg.xla_nightly else '1.8.1', ''
+    xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.8.1', '')
 
     # Auto installation
     if (cfg.cloud == 'drive'):
