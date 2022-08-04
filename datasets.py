@@ -3,12 +3,14 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torchvision import transforms, utils
 import PIL.Image
 # Alternatives to PIL (no speed gain):
 # from skimage import io
 import cv2
+
+from augmentation import get_tfms
 
 DEBUG = False
 

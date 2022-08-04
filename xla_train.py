@@ -1,10 +1,8 @@
-from multiprocessing import cpu_count
 from functools import partial
 from pathlib import Path
 from future import removesuffix
 import time
 import math
-import random
 
 import pandas as pd
 import numpy as np
@@ -14,13 +12,10 @@ from metrics import val_map, multiclass_average_precision_score
 from datasets import get_dataloaders, get_fakedata_loaders
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, WeightedRandomSampler
 import torchvision.transforms.functional as TF
-import torchvision.transforms as TT
 import torch.optim as optim
 from torch.optim import lr_scheduler
 from utils.schedulers import get_one_cycle_scheduler, maybe_step
-from augmentation import get_tfms
 from utils.general import listify
 from models import is_bn
 from metrics import NegativeRate, MAP, AverageMeter
