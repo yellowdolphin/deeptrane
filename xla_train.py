@@ -50,22 +50,22 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
         #    )
         #batch_tfms.to(device)
 
-    if False and cfg.use_batch_tfms:
-        raise NotImplementedError('get aug_flags first!')
-        xm.master_print("aug_flags:")
-        for k, v in aug_flags.items():
-            xm.master_print(f'{k:<30} {v}')
-        horizontal_flip = aug_flags['horizontal_flip']
-        vertical_flip = aug_flags['vertical_flip']
-        p_grayscale = aug_flags['p_grayscale']
-        jitter_brightness = aug_flags['jitter_brightness']
-        jitter_saturation = aug_flags['jitter_saturation']
-        max_rotate = aug_flags['max_rotate']
-        p_rotation = 0.8 if max_rotate > 0 else 0
-        diag = math.sqrt(cfg.size[0] ** 2 + cfg.size[1] ** 2)
-        padding = [1 + int((diag - s) / 2) for s in cfg.size[::-1]]  # [x,y]
-        left, top = padding
-        height, width = cfg.size
+    #if cfg.use_batch_tfms:
+    #    raise NotImplementedError('get aug_flags first!')
+    #    xm.master_print("aug_flags:")
+    #    for k, v in aug_flags.items():
+    #        xm.master_print(f'{k:<30} {v}')
+    #    horizontal_flip = aug_flags['horizontal_flip']
+    #    vertical_flip = aug_flags['vertical_flip']
+    #    p_grayscale = aug_flags['p_grayscale']
+    #    jitter_brightness = aug_flags['jitter_brightness']
+    #    jitter_saturation = aug_flags['jitter_saturation']
+    #    max_rotate = aug_flags['max_rotate']
+    #    p_rotation = 0.8 if max_rotate > 0 else 0
+    #    diag = math.sqrt(cfg.size[0] ** 2 + cfg.size[1] ** 2)
+    #    padding = [1 + int((diag - s) / 2) for s in cfg.size[::-1]]  # [x,y]
+    #    left, top = padding
+    #    height, width = cfg.size
 
     # training loop
     n_iter = len(dataloader)
@@ -173,7 +173,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
         if batch_idx % cfg.n_acc == 0:
             xm.optimizer_step(optimizer, barrier=True)  # rendevouz, required for proper xmp shutdown
             optimizer.zero_grad()
-            if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'): 
+            if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'):
                 maybe_step(scheduler, xm)
 
         # aggregate loss locally
@@ -206,7 +206,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             xm.master_print(f"train inputs: {inputs.shape}, value range: {inputs.min():.2f} ... {inputs.max():.2f}")
 
     # scheduler step after epoch
-    if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'): 
+    if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'):
         maybe_step(scheduler, xm)
 
     return loss_meter.average
@@ -231,12 +231,11 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     # validation loop
     n_iter = len(dataloader)
     iterable = range(n_iter) if cfg.use_batch_tfms or (cfg.fake_data == 'on_device') else dataloader
-    sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
-        # extract inputs and labels 
-        if (cfg.fake_data == 'on_device'):
+        # extract inputs and labels
+        if cfg.fake_data == 'on_device':
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
@@ -334,6 +333,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     return avg_loss, avg_metrics
 
 
+def get_valid_labels(cfg, metadata):
+    class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
+    is_valid = metadata.is_valid
+    is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
+    return metadata.loc[is_valid | is_shared, class_column].values
+
+
 def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     "Distributed training loop master function"
 
@@ -365,7 +371,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
     micro_f1 = partial(f1_score, average='micro')
     micro_f1.__name__ = 'F1'
-    macro_f1 = partial(f1_score, average='macro', labels=valid_labels.values)
+    macro_f1 = partial(f1_score, average='macro', labels=get_valid_labels(cfg, metadata))
     macro_f1.__name__ = 'F1'
     acc = accuracy_score
     acc.__name__ = 'acc'
@@ -388,7 +394,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         [acc, macro_f1, map]
     )
 
-    if 'happywhale' in cfg.tags: 
+    if 'happywhale' in cfg.tags:
         metrics = [acc, map5]  # map5 is macro, TPU issue
     elif 'cassava' in cfg.tags:
         metrics = [acc]
@@ -478,8 +484,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     ### Training Loop ---------------------------------------------------------
 
     lrs = []
-    train_losses = []
-    valid_losses = []
+    #train_losses = []
+    #valid_losses = []
     metrics_dicts = []
     minutes = []
     best_model_score = -np.inf
@@ -498,14 +504,14 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             assert scheduler.get_last_lr()[-1] == current_lr
 
         # Update train_loader shuffling
-        if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'): 
+        if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
             train_loader.sampler.set_epoch(epoch)
 
         # Training
 
         if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
             # ParallelLoader requires instantiation per epoch
-            dataloader = pl.ParallelLoader(train_loader, [device], 
+            dataloader = pl.ParallelLoader(train_loader, [device],
                                            loader_prefetch_size=loader_prefetch_size,
                                            device_prefetch_size=device_prefetch_size
                                            ).per_device_loader(device)
@@ -517,7 +523,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                               dataloader  = dataloader,
                               criterion   = criterion,
                               seg_crit    = seg_crit,
-                              optimizer   = optimizer, 
+                              optimizer   = optimizer,
                               scheduler   = scheduler,
                               device      = device)
 

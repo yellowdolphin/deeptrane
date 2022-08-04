@@ -218,16 +218,22 @@ def get_dataloaders(cfg, use_fold, metadata, xm):
     class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
     xm.master_print("Using class labels from column", class_column)
 
+    is_valid = metadata.is_valid
+    is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
+    meta_train = metadata.loc[~ is_valid]
+    meta_valid = metadata.loc[is_valid | is_shared]
+
     # Create datasets
     train_tfms = get_tfms(cfg, mode='train')
     test_tfms = get_tfms(cfg, mode='test')
     tensor_tfms = None
 
-    ds_train = ImageDataset(metadata.loc[~ is_valid], cfg, mode='train',
+
+    ds_train = ImageDataset(meta_train, cfg, mode='train',
                             transform=train_tfms, tensor_transform=tensor_tfms,
                             class_column=class_column)
     
-    ds_valid = ImageDataset(metadata.loc[is_valid | is_shared], cfg, mode='valid',
+    ds_valid = ImageDataset(meta_valid, cfg, mode='valid',
                             transform=test_tfms, tensor_transform=tensor_tfms,
                             class_column=class_column)
 
@@ -246,11 +252,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm):
 
     if cfg.do_class_sampling:
         # Data samplers, class-weighted metrics
-        is_valid = metadata.is_valid
-        is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
-
-        train_labels = metadata.loc[~ is_valid, class_column]
-        valid_labels = metadata.loc[is_valid | is_shared, class_column]
+        train_labels = meta_train[class_column]
 
         # Use torch's WeightedRandomSampler with custom class weights
         class_counts = train_labels.value_counts().sort_index().values
