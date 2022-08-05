@@ -24,7 +24,7 @@ gcs_paths = {
     'happywhale-tfrecords-private2': 'gs://kds-9bd7ea7f4535a67c5ae349b0c8cec3f223d9bb4e80e77283e89eda88',
     'happywhale-tfrecords-unsubmerged': 'gs://kds-7da70e248765c9851de2db0257775f23164077d70fdf6fcfd74b9dd1',
     'happywhale-wds-unsubmerged': 'gs://kds-2b1bdcd1a1ae7e9713c1cfa1cd7f7df9540596bb2dc5b6b70d1d479c',
-    'happywhale-wds-unsubmerged': 'gs://kds-d63be5c24e746777ff62fa4976b75568b7de3062d90a5e554dd795e9',
+    'happywhale-wds384-unsubmerged': 'gs://kds-d63be5c24e746777ff62fa4976b75568b7de3062d90a5e554dd795e9',
     'happywhale-cropped-dataset-yolov5-ds': 'gs://kds-51b907bdd20683124ee8a9ad48edcfde04041f8a08c4324d0c0c6900',  # jpg
     }
 
@@ -124,8 +124,11 @@ def init(cfg):
             cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*train*.tfrec')).tolist()
             cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*test*.tfrec')).tolist()
         elif cfg.filetype == 'wds':
-            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-[tv][ra][al]*.tarball')).tolist()
-            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
+            #cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-[tv][ra][al]*.tarball')).tolist()
+            #cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
+            ### interim bugfix ---v
+            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset.replace('384', '')}-[tv][ra][al]*.tarball')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset.replace('384', '')}-test-.tarball')).tolist()
         if cfg.dataset == 'whale-tfrecords-512': cfg.crop_method = None
         if cfg.dataset == 'happywhale-tfrecords-backfin': cfg.BGR = True
         print(f'{len(cfg.train_files)} train shards, {len(cfg.test_files)} test shards')
