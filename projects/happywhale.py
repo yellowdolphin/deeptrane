@@ -127,8 +127,8 @@ def init(cfg):
             #cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-[tv][ra][al]*.tarball')).tolist()
             #cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
             ### interim bugfix ---v
-            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset.replace('384', '')}-[tv][ra][al]*.tarball')).tolist()
-            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset.replace('384', '')}-test-.tarball')).tolist()
+            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset.replace("384", "")}-[tv][ra][al]*.tarball')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset.replace("384", "")}-test-.tarball')).tolist()
         if cfg.dataset == 'whale-tfrecords-512': cfg.crop_method = None
         if cfg.dataset == 'happywhale-tfrecords-backfin': cfg.BGR = True
         print(f'{len(cfg.train_files)} train shards, {len(cfg.test_files)} test shards')
