@@ -22,7 +22,7 @@ gcs_paths = {
     'backfintfrecords': 'gs://kds-c953863165740d37e881cc034deeb733e92fa4e567c5d920ca2dd678',
     'happywhale-tfrecords-private2': 'gs://kds-9bd7ea7f4535a67c5ae349b0c8cec3f223d9bb4e80e77283e89eda88',
     'happywhale-tfrecords-unsubmerged': 'gs://kds-7da70e248765c9851de2db0257775f23164077d70fdf6fcfd74b9dd1',
-    'happywhale-wds-unsubmerged': 'gs://kds-651ab29172b09817da278473d6c028824ff60078e89b80ccc8fbf62a',
+    'happywhale-wds-unsubmerged': 'gs://kds-2b1bdcd1a1ae7e9713c1cfa1cd7f7df9540596bb2dc5b6b70d1d479c',
     'happywhale-cropped-dataset-yolov5-ds': 'gs://kds-51b907bdd20683124ee8a9ad48edcfde04041f8a08c4324d0c0c6900',  # jpg
     }
 

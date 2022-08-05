@@ -139,7 +139,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
         interpolation = torchvision.transforms.InterpolationMode.NEAREST if hasattr(torchvision.transforms, 'InterpolationMode') else 0
 
     if mode == 'test' or cfg.use_batch_tfms:
-        return Compose([TF.Resize(size, interpolation=interpolation), ToTensor()])
+        return Compose([TF.Resize(size, interpolation=interpolation), TF.ToTensor()])
 
     from torchvision.transforms import (
         RandomApply, CenterCrop,
@@ -184,7 +184,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
         tfms.append(RandomEqualize(p=flags.hist_equalize))
 
     # tensorize, normalize
-    tfms.append(ToTensor())
+    tfms.append(TF.ToTensor())
     if flags.normalize:
         tfms.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
 
