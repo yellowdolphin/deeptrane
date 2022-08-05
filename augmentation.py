@@ -139,7 +139,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
         interpolation = torchvision.transforms.InterpolationMode.NEAREST if hasattr(torchvision.transforms, 'InterpolationMode') else 0
 
     if mode == 'test' or cfg.use_batch_tfms:
-        return Compose([TF.Resize(size, interpolation=interpolation), TF.ToTensor()])
+        return TF.Compose([TF.Resize(size, interpolation=interpolation), TF.ToTensor()])
 
     from torchvision.transforms import (
         RandomApply, CenterCrop,
@@ -192,7 +192,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
     if flags.p_cutout:
         tfms.append(RandomErasing(p=flags.p_cutout,
                                   scale=(0.05, 0.3), ratio=(0.5, 1.4), value=0.93))
-    return Compose(tfms)
+    return TF.Compose(tfms)
 
 
 def get_tf_tfms(cfg, mode='train'):
