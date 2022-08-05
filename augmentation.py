@@ -138,7 +138,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
     if cfg.use_batch_tfms:
         interpolation = torchvision.transforms.InterpolationMode.NEAREST if hasattr(torchvision.transforms, 'InterpolationMode') else 0
 
-    if mode == 'test' or cfg.use_batch_tfms:
+    if (mode != 'train') or cfg.use_batch_tfms:
         return TF.Compose([TF.Resize(size, interpolation=interpolation), TF.ToTensor()])
 
     from torchvision.transforms import (

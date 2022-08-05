@@ -4,6 +4,7 @@ except ImportError:
     from configs.torchvision import InterpolationMode
 
 cfg = dict(
+    skip_crop_resize   = True,
     max_rotate         = 5,
     jitter_brightness  = 0.1,
     jitter_contrast    = 0.2,
