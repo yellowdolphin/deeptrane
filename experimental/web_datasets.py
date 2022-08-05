@@ -72,8 +72,9 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
         macro_batches_per_epoch = mini_batches_per_epoch // n_replica
         if mini_batches_per_epoch % n_replica > 0: macro_batches_per_epoch += 1
 
-    tfms = get_tfms(cfg, mode=mode)  # albu wants named args: aug(image=image)
-    #tfms = get_torchvision_tfms(cfg, mode=mode)  # wants pil.image not array
+    tfms = get_tfms(cfg, mode=mode) if cfg.use_albumentations else get_torchvision_tfms(cfg, mode=mode)
+    # albu wants named args: aug(image=image)
+    # torchvision wants pil.image not array
     if cfg.DEBUG:
         xm.master_print(f'{mode} tfms:')
         xm.master_print(tfms)
@@ -94,11 +95,11 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
 
     dataset = wds.WebDataset(shards, shardshuffle=bool(shuffle), resampled=resampled)
     dataset = dataset.shuffle(shuffle) if shuffle else dataset
-    xm.master_print(tfms.__class__)
-    xm.master_print(tfms.__module__)
-    #dataset = dataset.decode("pil").to_tuple("jpeg", "cls").map_tuple(tfms, identity)  # torchvision
-    dataset = dataset.decode("rgb8").to_tuple("jpeg", "cls").map_tuple(map_albu, identity)  # albumentations
-    #dataset = dataset.decode("rgb8").to_tuple("jpeg", "cls").map(tensorize)
+    if cfg.use_albumentations:
+        dataset = dataset.decode("rgb8").to_tuple("jpeg", "cls").map_tuple(map_albu, identity)  # albumentations
+    else:
+        dataset = dataset.decode("pil").to_tuple("jpeg", "cls").map_tuple(tfms, identity)  # torchvision
+        #dataset = dataset.decode("rgb8").to_tuple("jpeg", "cls").map(tensorize)
     dataset = dataset.batched(cfg.bs, partial=drop_last) if not cfg.use_batch_tfms else dataset
     dataset = dataset.with_epoch(ds_epoch_size) if resampled else dataset
 
