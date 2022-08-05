@@ -8,7 +8,7 @@ cfg = dict(
     out_dir = '/kaggle/working',
     image_root = '/kaggle/input/happywhale-cropped-dataset-yolov5-ds/train_images/train_images',
     filetype = 'jpg',
-    #filetype = 'tfrec',  # tfds or wds
+    #filetype = 'wds',  # tfds or wds
     #dataset = 'happywhale-tfrecords-unsubmerged',  # tfds
     #dataset = 'happywhale-wds-unsubmerged',  # wds
 
@@ -33,7 +33,7 @@ cfg = dict(
     n_acc = 2,
     epochs = 30,
     batch_verbose = None,
-    lr_head = 3e-4,
+    lr_head = 6.4e-4,
     one_cycle = True,
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
