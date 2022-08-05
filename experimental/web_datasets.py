@@ -116,14 +116,14 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
     #macro_batches_per_epoch = 3 ### DEBUG
     loader = loader.with_epoch(macro_batches_per_epoch).with_length(mini_batches_per_epoch)
     xm.master_print(f"\n{mode} DataLoader")
-    xm.master_print("Batches / epoch:   ", mini_batches_per_epoch)
-    xm.master_print("Iterations / epoch:", macro_batches_per_epoch)
-    xm.master_print("Steps / epoch:     ", steps_per_epoch)
-    xm.master_print("ds_epoch_size:     ", ds_epoch_size)
-    xm.master_print("len(dataloader):   ", len(loader))
-    xm.master_print("dataset.nsamples:  ", dataset.nsamples)
-    xm.master_print("loader.nsamples:   ", loader.nsamples)
-    xm.master_print("label.shape from loader:", next(iter(loader))[1].shape)
+    xm.master_print("Batches / epoch:   ", mini_batches_per_epoch)   # OK
+    xm.master_print("Iterations / epoch:", macro_batches_per_epoch)  # OK
+    xm.master_print("Steps / epoch:     ", steps_per_epoch)          # OK
+    xm.master_print("ds_epoch_size:     ", ds_epoch_size)            # no sense
+    xm.master_print("len(dataloader):   ", len(loader))              # OK
+    xm.master_print("dataset.nsamples:  ", dataset.nsamples)         # no sense (=ds_epoch_size)
+    xm.master_print("loader.nsamples:   ", loader.nsamples)          # OK (=iter/epoch)
+    xm.master_print("label.shape from loader:", next(iter(loader))[1].shape)  # OK, replica_bs
 
     return loader
 
@@ -138,8 +138,15 @@ def get_dataloaders(cfg, use_fold, xm):
                                   num_workers=2 if cfg.n_replicas > 1 else cpu_count(),
                                   pin_memory=True)
 
-    xm.master_print("train:", cfg.NUM_TRAINING_IMAGES)
-    xm.master_print("valid:", cfg.NUM_VALIDATION_IMAGES)
-    xm.master_print("test:", cfg.NUM_TEST_IMAGES)
+    xm.master_print("train images:", cfg.NUM_TRAINING_IMAGES)
+    xm.master_print("valid images:", cfg.NUM_VALIDATION_IMAGES)
+    xm.master_print("test images: ", cfg.NUM_TEST_IMAGES)
+
+    if cfg.xla and (cfg.deviceloader == 'mp'):
+        from torch_xla.distributed.parallel_loader import MpDeviceLoader
+        device = xm.xla_device()
+        train_loader = MpDeviceLoader(train_loader, device)
+        valid_loader = MpDeviceLoader(valid_loader, device)
+        # When iterated in train_fn: what divides by 8, bs or n_iter?
 
     return train_loader, valid_loader
