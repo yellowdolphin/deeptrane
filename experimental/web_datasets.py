@@ -113,7 +113,8 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
     # loader.with_length() just sets the value returned by len(), no change to its iterator.
     # => set loader.nsamples so that it applies "cfg.frac"
     # => set loader.__len__ so that ParallelLoader behaves as expected.
-    #macro_batches_per_epoch = 3 ### DEBUG
+    # MpDeviceLoader does not divide len by n_replicas (DistributedSampler presumably does that)
+    # => use .with_length(macro_batches_per_epoch)
     loader = loader.with_epoch(macro_batches_per_epoch).with_length(mini_batches_per_epoch)
     xm.master_print(f"\n{mode} DataLoader")
     xm.master_print("Batches / epoch:   ", mini_batches_per_epoch)   # OK
@@ -145,8 +146,8 @@ def get_dataloaders(cfg, use_fold, xm):
     if cfg.xla and (cfg.deviceloader == 'mp'):
         from torch_xla.distributed.parallel_loader import MpDeviceLoader
         device = xm.xla_device()
-        train_loader = MpDeviceLoader(train_loader, device)
-        valid_loader = MpDeviceLoader(valid_loader, device)
+        train_loader = MpDeviceLoader(train_loader.with_length(len(train_loader) // cfg.n_replicas), device)
+        valid_loader = MpDeviceLoader(valid_loader.with_length(len(train_loader) // cfg.n_replicas), device)
         # When iterated in train_fn: bs on replica is correct (cfg.bs) and each rank gets a different batch
         # => len(iterable) should be divided by cfg.n_replicas
         xm.master_print(f"len(train_loader):", len(train_loader))
