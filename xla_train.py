@@ -110,10 +110,10 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
         else:
             inputs, labels = batch
         del batch
-        xm.master_print("inputs:", type(inputs), inputs.shape, inputs.dtype, inputs.device)
+        #xm.master_print("inputs:", type(inputs), inputs.shape, inputs.dtype, inputs.device)
         #assert inputs.shape == (cfg.bs, 3, *cfg.size), f'wrong inputs shape: {inputs.shape}'
         #assert labels.shape == (cfg.bs,), f'wrong labels shape: {labels.shape}'
-        print(f"rank {xm.get_ordinal()} labels: {labels}")
+        #print(f"rank {xm.get_ordinal()} labels: {labels}")
 
         # send to device(s) if still on CPU (device_loaders do this automatically)
         if True:

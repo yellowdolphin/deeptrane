@@ -147,6 +147,9 @@ def get_dataloaders(cfg, use_fold, xm):
         device = xm.xla_device()
         train_loader = MpDeviceLoader(train_loader, device)
         valid_loader = MpDeviceLoader(valid_loader, device)
-        # When iterated in train_fn: what divides by 8, bs or n_iter?
+        # When iterated in train_fn: bs on replica is correct (cfg.bs) and each rank gets a different batch
+        # => len(iterable) should be divided by cfg.n_replicas
+        xm.master_print(f"len(train_loader):", len(train_loader))
+        xm.master_print(f"len(valid_loader):", len(valid_loader))
 
     return train_loader, valid_loader
