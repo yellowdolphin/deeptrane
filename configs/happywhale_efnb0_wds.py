@@ -8,7 +8,7 @@ cfg = dict(
     out_dir = '/kaggle/working',
     filetype = 'wds',  # pytorch only, image-file suffix or "tfds" or "wds"
     #dataset = 'happywhale-tfrecords-unsubmerged',  # tfds
-    dataset = 'happywhale-wds-unsubmerged',  # wds
+    dataset = 'happywhale-wds384-unsubmerged',  # wds
 
 # Training
     num_folds = 5,
@@ -19,6 +19,7 @@ cfg = dict(
     no_train_singlets = True,
     negative_thres = 0.0,
     size = (384, 384),
+    skip_crop_resize = True,
     multilabel = False,
     use_albumentations = False,
     #augmentation = 'tfms_015',
