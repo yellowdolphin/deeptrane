@@ -22,14 +22,9 @@ import tensorflow_addons as tfa
 import tensorflow_datasets as tfds
 import torch
 from torch.utils.data import DataLoader
+from tf_data import count_data_items
 
 AUTO = tf.data.experimental.AUTOTUNE
-
-
-def count_data_items(filenames):
-    n = [int(re.compile(r"-([0-9]*)\.").search(filename).group(1)) 
-         for filename in filenames]
-    return np.sum(n)
 
 
 def arcface_format(posting_id, image, label_group):

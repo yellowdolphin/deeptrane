@@ -72,8 +72,6 @@ def init(cfg):
     if cfg.dataset:
         # TFRecords dataset for TF training
         import tensorflow as tf
-        cfg.filetype = None
-        cfg.image_root = None
         cfg.n_classes = 15587
         cfg.gcs_filter = 'train-*.tfrec' if cfg.mode == 'train' else 'test-*.tfrec'  # unsubmerged
 
@@ -97,11 +95,10 @@ def init(cfg):
 
     if cfg.filetype in ['wds', 'tfds']:
         # TFRecords dataset for pytorch training (additional settings)
-        from tfds import count_data_items
-        from tf_data import get_gcs_path
+        from tf_data import get_gcs_path, count_data_items
 
         cfg.gcs_path = get_gcs_path(cfg)
-        assert cfg.dataset, 'filetype is tfrec but no dataset in config'
+        assert cfg.dataset, f'need cfg.dataset for filetype {cfg.filetype}'
         cfg.dataset_is_private = cfg.dataset in private_datasets
         assert cfg.dataset in crop_methods, f'{cfg.dataset} not in {list(crop_methods.keys())}'
         cfg.crop_method = crop_methods[cfg.dataset]
@@ -127,7 +124,7 @@ def init(cfg):
             cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
         if cfg.dataset == 'whale-tfrecords-512': cfg.crop_method = None
         if cfg.dataset == 'happywhale-tfrecords-backfin': cfg.BGR = True
-        print(f'{len(cfg.train_files)} train tfrec files, {len(cfg.test_files)} test tfrec files')
+        print(f'{len(cfg.train_files)} train shards, {len(cfg.test_files)} test shards')
         print(f'{count_data_items(cfg.train_files)} train images, {count_data_items(cfg.test_files)} test images')
         print(f'Using individual_id and species encoding from {cfg.splits_path}')
         assert len(cfg.train_files) > 0, f'no tfrec files found, check GCS_DS_PATH: {cfg.gcs_path}'

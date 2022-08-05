@@ -8,7 +8,7 @@ cfg = dict(
     out_dir = '/kaggle/working',
     image_root = '/kaggle/input/happywhale-cropped-dataset-yolov5-ds/train_images/train_images',
     filetype = 'jpg',
-    #filetype = 'tfrec',  # tfds or wds
+    #filetype = 'wds',  # tfds or wds
     #dataset = 'happywhale-tfrecords-unsubmerged',  # tfds
     #dataset = 'happywhale-wds-unsubmerged',  # wds
 
