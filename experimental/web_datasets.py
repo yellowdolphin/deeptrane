@@ -74,6 +74,9 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
 
     #tfms = get_tfms(cfg, mode=mode)  # albu wants named args: aug(image=image)
     tfms = get_torchvision_tfms(cfg, mode=mode)  # wants pil.image not array
+    if cfg.DEBUG:
+        xm.master_print(f'{mode} tfms:')
+        xm.master_print(tfms)
 
     def map_albu(image):
         image = tfms(image=image)['image']
