@@ -144,7 +144,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
     from torchvision.transforms import (
         RandomApply, CenterCrop,
         RandomHorizontalFlip, RandomVerticalFlip,
-        RandomRotation, Pad, RandomPerspective, RandomEqualize,
+        RandomRotation, Pad, RandomPerspective, #RandomEqualize,
         ColorJitter, Normalize, RandomErasing, Grayscale)
 
     tfms = []
