@@ -13,6 +13,7 @@ cfg = dict(
     hist_equalize      = 0,
     p_cutout           = 0,
     p_perspective      = 0,
+    blur               = 0.25,
     interpolation      = InterpolationMode('bilinear'),
 )
 # Interpolation depends on library

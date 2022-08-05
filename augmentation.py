@@ -145,7 +145,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
         RandomApply, CenterCrop,
         RandomHorizontalFlip, RandomVerticalFlip,
         RandomRotation, Pad, RandomPerspective, #RandomEqualize,
-        ColorJitter, Normalize, RandomErasing, Grayscale)
+        ColorJitter, Normalize, RandomErasing, Grayscale, GaussianBlur)
 
     tfms = []
 
@@ -182,6 +182,9 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
 
     if flags.hist_equalize:
         tfms.append(RandomEqualize(p=flags.hist_equalize))
+
+    if flags.blur:
+        tfms.append(RandomApply([GaussianBlur(kernel_size=5)], p=flags.blur))
 
     # tensorize, normalize
     tfms.append(TF.ToTensor())
