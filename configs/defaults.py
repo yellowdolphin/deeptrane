@@ -4,6 +4,7 @@ cfg = dict(
     name = Path(__file__).stem,
     DEBUG = False,
     xla_metrics = False,
+    xla_nightly = False,
 
 # Data Partitioning
     train_on_all = False,
