@@ -94,7 +94,8 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
 
     dataset = wds.WebDataset(shards, shardshuffle=bool(shuffle), resampled=resampled)
     dataset = dataset.shuffle(shuffle) if shuffle else dataset
-    xm.master_print(tfms.__class__.__name__, tfms.__module__.__name__)
+    xm.master_print(tfms.__class__)
+    xm.master_print(tfms.__module__)
     #dataset = dataset.decode("pil").to_tuple("jpeg", "cls").map_tuple(tfms, identity)  # torchvision
     dataset = dataset.decode("rgb8").to_tuple("jpeg", "cls").map_tuple(map_albu, identity)  # albumentations
     #dataset = dataset.decode("rgb8").to_tuple("jpeg", "cls").map(tensorize)
