@@ -108,14 +108,6 @@ def init(cfg):
         cfg.crop_method = crop_methods[cfg.dataset]
         cfg.BGR = False
 
-        # tfrec augmentations (0: min, 1: max effect)
-        cfg.use_albumentations = False
-        cfg.hflip            = True
-        cfg.random_grayscale = 0.2
-        cfg.random_crop      = 0.4
-        cfg.mean_filter      = 0.5
-        cfg.rotate           = 5
-
         if cfg.dataset_is_private and cfg.cloud == 'kaggle':
             cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/train*.tfrec')).tolist()
             cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/test*.tfrec')).tolist()

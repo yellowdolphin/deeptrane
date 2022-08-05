@@ -132,11 +132,11 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
 def get_dataloaders(cfg, use_fold, xm):
 
     train_loader = get_dataloader(cfg, use_fold, xm, mode='train',
-                                  num_workers=2 if cfg.n_replicas > 1 else cpu_count(),
+                                  num_workers=1 if cfg.n_replicas > 1 else cpu_count(),
                                   pin_memory=True)
 
     valid_loader = get_dataloader(cfg, use_fold, xm, mode='valid',
-                                  num_workers=2 if cfg.n_replicas > 1 else cpu_count(),
+                                  num_workers=1 if cfg.n_replicas > 1 else cpu_count(),
                                   pin_memory=True)
 
     xm.master_print("train images:", cfg.NUM_TRAINING_IMAGES)
