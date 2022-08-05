@@ -50,7 +50,9 @@ def init(cfg):
             cfg.competition_path = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection')
         if cfg.image_root:
             cfg.filetype = cfg.filetype or 'png'  # use png for all cropped+scaled images
-        elif cfg.filetype not in ['wds', 'tfds']:
+        elif cfg.filetype in ['wds', 'tfds']:
+            cfg.image_root = Path('.')  # dummy path for get_metadata
+        else:
             scaled_size = 128 if max(cfg.size) <= 128 else 256 if max(cfg.size) <= 256 else 384
             cfg.image_root = Path(f'/kaggle/input/jpeg-happywhale-{scaled_size}x{scaled_size}/'
                                   f'train_images-{scaled_size}-{scaled_size}/'
