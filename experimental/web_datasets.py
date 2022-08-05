@@ -80,7 +80,7 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
         xm.master_print(tfms)
 
     def map_albu(image):
-        image = tfms(image=image)['image']
+        image = tfms(image=np.array(image))['image']
         return image.float() / 255.0
 
     def tensorize(inputs):
