@@ -50,7 +50,7 @@ def init(cfg):
             cfg.competition_path = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection')
         if cfg.image_root:
             cfg.filetype = cfg.filetype or 'png'  # use png for all cropped+scaled images
-        else:
+        elif cfg.filetype not in ['wds', 'tfds']:
             scaled_size = 128 if max(cfg.size) <= 128 else 256 if max(cfg.size) <= 256 else 384
             cfg.image_root = Path(f'/kaggle/input/jpeg-happywhale-{scaled_size}x{scaled_size}/'
                                   f'train_images-{scaled_size}-{scaled_size}/'
@@ -63,7 +63,7 @@ def init(cfg):
         if cfg.adaptive_margin: cfg.adaptive_margin = get_adaptive_margin(cfg)
         cfg.gcs_paths = gcs_paths
 
-    if cfg.dataset or cfg.filetype == 'tfrec':
+    if cfg.dataset or cfg.filetype in ['wds', 'tfds']:
         cfg.splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
             '/kaggle/input/lextoumbourou' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-private2') else
             f'/kaggle/input/happy-whale-and-dolphin/lextoumbourou' if (cfg.dataset == 'happywhale-tfrecords-private2') else
