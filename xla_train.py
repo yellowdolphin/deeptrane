@@ -388,6 +388,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if cfg.negative_class and cfg.vocab:
         pct_negatives = NegativeRate(negative_class=cfg.vocab.transform([cfg.negative_class])[0])
     map5 = MAP(xm, k=5, name='mAP5')
+    map1 = MAP(xm, k=1, name='mAP')
 
     metrics = (
         []                     if cfg.NUM_VALIDATION_IMAGES == 0 else  # fix for sequential loaders!
@@ -398,7 +399,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if 'happywhale' in cfg.tags:
         metrics = [acc, map5]  # map5 is macro, TPU issue
     elif 'cassava' in cfg.tags:
-        metrics = [acc]
+        metrics = [acc, map1, map5]
     if cfg.negative_thres: metrics.append(pct_negatives)
 
     if cfg.no_macro_metrics:
