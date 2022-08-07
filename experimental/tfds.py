@@ -85,7 +85,7 @@ def data_augment(posting_id, image, label_group, cfg):
     #    area = 2 * int((cfg.size * cfg.cutout) ** 2 / 2)
     #    image = tfa.image.random_cutout(image, mask_size=area, constant_values=220)
 
-    return posting_id, image, label_group #, matches
+    return posting_id, image, label_group
 
 
 def decode_image(image_data, cfg, box=None):
