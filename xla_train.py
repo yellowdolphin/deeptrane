@@ -201,7 +201,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
             xm.master_print(', '.join(info_strings))
             if hasattr(scheduler, 'get_last_lr'):
-                assert scheduler.get_last_lr()[-1] == optimizer.param_groups[-1]['lr']
+                current_lr = optimizer.param_groups[-1]['lr']
+                assert scheduler.get_last_lr()[-1] == current_lr, f'scheduler: {scheduler.get_last_lr()[-1]}, opt: {current_lr}'
             batch_start = time.perf_counter()
         if cfg.DEBUG and batch_idx == 1:
             xm.master_print(f"train inputs: {inputs.shape}, value range: {inputs.min():.2f} ... {inputs.max():.2f}")
