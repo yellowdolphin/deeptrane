@@ -403,27 +403,27 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics = [acc, map1, map5]
 
         # Compare against TF metrics
-        import tensorflow as tf
+        #import tensorflow as tf
         
-        sparse_categorical_acc = tf.keras.metrics.SparseCategoricalAccuracy(name='tf_acc')
-        sparse_categorical_top5 = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='tf_top5')
+        #sparse_categorical_acc = tf.keras.metrics.SparseCategoricalAccuracy(name='tf_acc')
+        #sparse_categorical_top5 = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='tf_top5')
 
-        def tf_acc(y_true, y_pred):
-            sparse_categorical_acc.reset_state()
-            sparse_categorical_acc.update_state(y_true, y_pred)
-            result = sparse_categorical_acc.result()
-            xm.master_print("tf_acc:", type(result))
-            return result
+        #def tf_acc(y_true, y_pred):
+        #    sparse_categorical_acc.reset_state()
+        #    sparse_categorical_acc.update_state(y_true, y_pred)
+        #    result = sparse_categorical_acc.result()
+        #    xm.master_print("tf_acc:", type(result))
+        #    return result
 
-        def tf_top5(y_true, y_pred):
-            sparse_categorical_top5.reset_state()
-            sparse_categorical_top5.update_state(y_true, y_pred)
-            result = sparse_categorical_top5.result()
-            xm.master_print("tf_top5:", type(result))
-            return result
+        #def tf_top5(y_true, y_pred):
+        #    sparse_categorical_top5.reset_state()
+        #    sparse_categorical_top5.update_state(y_true, y_pred)
+        #    result = sparse_categorical_top5.result()
+        #    xm.master_print("tf_top5:", type(result))
+        #    return result
 
-        metrics.append(tf_acc)
-        metrics.append(tf_top5)
+        #metrics.append(tf_acc)
+        #metrics.append(tf_top5)
 
     if cfg.negative_thres: metrics.append(pct_negatives)
 
