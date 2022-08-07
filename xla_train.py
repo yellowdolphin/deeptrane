@@ -404,7 +404,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         # Compare against TF metrics
         import tensorflow as tf
-        
+        tf.config.set_visible_devices([], 'GPU')  # prevent tf from allocating all GPU mem
+
         sparse_categorical_acc = tf.keras.metrics.SparseCategoricalAccuracy(name='tf_acc')
         sparse_categorical_top5 = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='tf_top5')
 
