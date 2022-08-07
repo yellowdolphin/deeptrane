@@ -410,7 +410,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         sparse_categorical_top5 = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='tf_top5')
 
         def tf_acc(y_true, y_pred):
-            sparse_categorical_acc.reset_state()
+            #sparse_categorical_acc.reset_state()  # AttributeError: 'SparseCategoricalAccuracy' object has no attribute 'reset_state'
             sparse_categorical_acc.update_state(y_true, y_pred)
             result = sparse_categorical_acc.result()
             xm.master_print("tf_acc:", type(result))
