@@ -409,9 +409,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         class TFSparseCategoricalAccuracy(tf.keras.metrics.SparseCategoricalAccuracy):
             __name__ = 'tf_acc'
             needs_scores = True
+            depth = cfg.n_classes
             def __call__(self, y_true, y_pred):
                 assert y_pred.ndim == 2, f'metrics needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
-                self.update_state(tf.one_hot(y_true), y_pred)
+                self.update_state(tf.one_hot(y_true, self.depth), y_pred)
                 result = self.result().numpy()
                 if hasattr(self, 'reset_state'): self.reset_state()
                 return result
@@ -419,9 +420,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         class TFSparseTopKCategoricalAccuracy(tf.keras.metrics.SparseTopKCategoricalAccuracy):
             __name__ = 'tf_top5'
             needs_scores = True
+            depth = cfg.n_classes
             def __call__(self, y_true, y_pred):
                 assert y_pred.ndim == 2, f'metrics needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
-                self.update_state(tf.one_hot(y_true), y_pred)
+                self.update_state(tf.one_hot(y_true, self.depth), y_pred)
                 result = self.result().numpy()
                 if hasattr(self, 'reset_state'): self.reset_state()
                 return result
