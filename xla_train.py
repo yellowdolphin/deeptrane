@@ -407,6 +407,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         tf.config.set_visible_devices([], 'GPU')  # prevent tf from allocating all GPU mem
 
         class TFSparseCategoricalAccuracy(tf.keras.metrics.SparseCategoricalAccuracy):
+            __name__ = 'tf_acc'
             needs_scores = True
             def __call__(self, y_true, y_pred):
                 assert y_pred.ndim == 2, f'metrics needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
@@ -416,6 +417,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                 return result
 
         class TFSparseTopKCategoricalAccuracy(tf.keras.metrics.SparseTopKCategoricalAccuracy):
+            __name__ = 'tf_top5'
             needs_scores = True
             def __call__(self, y_true, y_pred):
                 assert y_pred.ndim == 2, f'metrics needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
