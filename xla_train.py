@@ -406,26 +406,28 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         import tensorflow as tf
         tf.config.set_visible_devices([], 'GPU')  # prevent tf from allocating all GPU mem
 
-        sparse_categorical_acc = tf.keras.metrics.SparseCategoricalAccuracy(name='tf_acc')
-        sparse_categorical_top5 = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='tf_top5')
+        class TFSparseCategoricalAccuracy(tf.keras.metrics.SparseCategoricalAccuracy):
+            needs_scores = True
+            def __call__(self, y_true, y_pred):
+                assert y_pred.ndim == 2, f'metrics needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
+                self.update_state(tf.one_hot(y_true), y_pred)
+                result = self.result().numpy()
+                if hasattr(self, 'reset_state'): self.reset_state()
+                return result
 
-        def tf_acc(y_true, y_pred):
-            #sparse_categorical_acc.reset_state()  # AttributeError: 'SparseCategoricalAccuracy' object has no attribute 'reset_state'
-            xm.master_print("shapes:", y_true.shape, y_pred.shape)
-            sparse_categorical_acc.update_state(y_true, y_pred)
-            result = sparse_categorical_acc.result()
-            xm.master_print("tf_acc:", type(result))
-            return result
+        class TFSparseTopKCategoricalAccuracy(tf.keras.metrics.SparseTopKCategoricalAccuracy):
+            needs_scores = True
+            def __call__(self, y_true, y_pred):
+                assert y_pred.ndim == 2, f'metrics needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
+                self.update_state(tf.one_hot(y_true), y_pred)
+                result = self.result().numpy()
+                if hasattr(self, 'reset_state'): self.reset_state()
+                return result
 
-        def tf_top5(y_true, y_pred):
-            #sparse_categorical_top5.reset_state()
-            sparse_categorical_top5.update_state(y_true, y_pred)
-            result = sparse_categorical_top5.result()
-            xm.master_print("tf_top5:", type(result))
-            return result
+        sparse_categorical_acc = TFSparseCategoricalAccuracy(name='tf_acc')
+        sparse_categorical_top5 = TFSparseTopKCategoricalAccuracy(k=5, name='tf_top5')
 
-        metrics.append(tf_acc)
-        metrics.append(tf_top5)
+        metrics.extend([tf_acc, tf_top5])
 
     if cfg.negative_thres: metrics.append(pct_negatives)
 
