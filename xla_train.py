@@ -426,6 +426,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
         sparse_categorical_acc = TFSparseCategoricalAccuracy(name='tf_acc')
         sparse_categorical_top5 = TFSparseTopKCategoricalAccuracy(k=5, name='tf_top5')
+        assert sparse_categorical_acc.needs_scores
+        assert sparse_categorical_top5.needs_scores
 
         metrics.extend([tf_acc, tf_top5])
 
