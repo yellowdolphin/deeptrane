@@ -6,7 +6,11 @@ import math
 
 import pandas as pd
 import numpy as np
-from sklearn.metrics import f1_score, accuracy_score, top_k_accuracy_score
+from sklearn.metrics import f1_score, accuracy_score
+try:
+    from sklearn.metrics import top_k_accuracy_score  # requires sklearn 0.24.2 or higher (kaggle: 0.23.2)
+except ImportError:
+    pass
 from sklearn.metrics import label_ranking_average_precision_score
 from metrics import val_map, multiclass_average_precision_score
 from datasets import get_dataloaders, get_fakedata_loaders
@@ -377,8 +381,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     macro_f1.__name__ = 'F1'
     acc = accuracy_score
     acc.__name__ = 'acc'
-    top5 = partial(top_k_accuracy_score, k=5)
-    top5.__name__  = 'top5'
+    if 'top_k_accuracy_score' in globals():
+        top5 = partial(top_k_accuracy_score, k=5)
+        top5.__name__  = 'top5'
     ap = multiclass_average_precision_score
     ap.__name__ = 'acc'
     ap.needs_scores = True
