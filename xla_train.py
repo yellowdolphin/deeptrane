@@ -417,7 +417,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             return result
 
         def tf_top5(y_true, y_pred):
-            sparse_categorical_top5.reset_state()
+            #sparse_categorical_top5.reset_state()
             sparse_categorical_top5.update_state(y_true, y_pred)
             result = sparse_categorical_top5.result()
             xm.master_print("tf_top5:", type(result))
