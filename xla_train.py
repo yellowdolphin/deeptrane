@@ -6,7 +6,7 @@ import math
 
 import pandas as pd
 import numpy as np
-from sklearn.metrics import f1_score, accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, top_k_accuracy_score
 from sklearn.metrics import label_ranking_average_precision_score
 from metrics import val_map, multiclass_average_precision_score
 from datasets import get_dataloaders, get_fakedata_loaders
@@ -377,6 +377,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     macro_f1.__name__ = 'F1'
     acc = accuracy_score
     acc.__name__ = 'acc'
+    top5 = partial(top_k_accuracy_score, k=5)
+    top5.__name__  = 'top5'
     ap = multiclass_average_precision_score
     ap.__name__ = 'acc'
     ap.needs_scores = True
@@ -400,7 +402,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if 'happywhale' in cfg.tags:
         metrics = [acc, map5]  # map5 is macro, TPU issue
     elif 'cassava' in cfg.tags:
-        metrics = [acc, map1, map5]
+        metrics = [acc, top5, map1, map5]
 
         # Compare against TF metrics
         import tensorflow as tf
@@ -409,11 +411,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         class TFSparseCategoricalAccuracy(tf.keras.metrics.SparseCategoricalAccuracy):
             __name__ = 'tf_acc'
             needs_scores = True
-            depth = cfg.n_classes
 
             def __call__(self, y_true, y_pred):
                 assert y_pred.ndim == 2, f'{self.__name__} needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
-                #self.update_state(tf.one_hot(y_true, self.depth), y_pred)
                 self.update_state(y_true[:, None], y_pred)
                 result = self.result().numpy()
                 if hasattr(self, 'reset_state'): self.reset_state()
@@ -422,11 +422,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         class TFSparseTopKCategoricalAccuracy(tf.keras.metrics.SparseTopKCategoricalAccuracy):
             __name__ = 'tf_top5'
             needs_scores = True
-            depth = cfg.n_classes
 
             def __call__(self, y_true, y_pred):
                 assert y_pred.ndim == 2, f'{self.__name__} needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
-                #self.update_state(tf.one_hot(y_true, self.depth), y_pred)
                 self.update_state(y_true[:, None], y_pred)
                 result = self.result().numpy()
                 if hasattr(self, 'reset_state'): self.reset_state()
