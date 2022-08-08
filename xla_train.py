@@ -414,7 +414,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     tmf_map.__name__ = 'tmf.map'
     tmf_map.needs_scores = True
     #tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
-    tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=3)
+    tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=3, num_classes=cfg.n_classes)
     tmf_macro_top5.__name__ = 'tmf.macro_top5'
     tmf_macro_top5.needs_scores = True
     #tmf_lrap = tmf.label_ranking_average_precision
