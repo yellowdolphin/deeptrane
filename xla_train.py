@@ -385,7 +385,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     acc = accuracy_score
     acc.__name__ = 'acc'
     if 'top_k_accuracy_score' in globals():
-        top5 = partial(top_k_accuracy_score, k=5)
+        #top5 = partial(top_k_accuracy_score, k=5)
+        top5 = partial(top_k_accuracy_score, k=3)
         top5.__name__  = 'top5'
         top5.needs_scores = True
     ap = multiclass_average_precision_score
@@ -399,17 +400,20 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map.needs_scores = True
     if cfg.negative_class and cfg.vocab:
         pct_negatives = NegativeRate(negative_class=cfg.vocab.transform([cfg.negative_class])[0])
-    map5 = MAP(xm, k=5, name='mAP5')
+    #map5 = MAP(xm, k=5, name='mAP5')
+    map5 = MAP(xm, k=3, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
     tmf_acc = partial(tmf.accuracy, average='micro')
     tmf_acc.__name__ = 'tmf_acc'
-    tmf_top5 = partial(tmf.accuracy, average='micro', top_k=5)
+    #tmf_top5 = partial(tmf.accuracy, average='micro', top_k=5)
+    tmf_top5 = partial(tmf.accuracy, average='micro', top_k=3)
     tmf_top5.__name__ = 'tmf.top5'
     tmf_top5.needs_scores = True
     tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes, average='macro')
     tmf_map.__name__ = 'tmf.map'
     tmf_map.needs_scores = True
-    tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
+    #tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
+    tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=3)
     tmf_macro_top5.__name__ = 'tmf.macro_top5'
     tmf_macro_top5.needs_scores = True
     #tmf_lrap = tmf.label_ranking_average_precision
