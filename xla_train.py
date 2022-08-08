@@ -402,7 +402,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     tmf_top5 = partial(tmf.accuracy, average='micro', top_k=5)
     tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes, average='macro')
     tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
-    tmf_lrap = tmf.label_ranking_average_precision
+    #tmf_lrap = tmf.label_ranking_average_precision
 
     metrics = (
         []                     if cfg.NUM_VALIDATION_IMAGES == 0 else  # fix for sequential loaders!
@@ -414,7 +414,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics = [acc, map5]  # map5 is macro, TPU issue
     elif 'cassava' in cfg.tags:
         # compare with torchmetrics
-        metrics = [acc, top5, map1, map5, tmf_acc, tmf_top5, tfm_map, tmf_macro_top5, tmf_lrap]
+        metrics = [acc, top5, map1, map5, tmf_acc, tmf_top5, tfm_map, tmf_macro_top5]
 
     if cfg.negative_thres: metrics.append(pct_negatives)
 
