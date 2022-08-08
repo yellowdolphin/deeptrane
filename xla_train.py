@@ -329,9 +329,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         ## Or try put all metrics calc in a closure function?
         for m in metrics:
             avg_metrics.append(
-                m(scores, labels) if m.__name__.startswith('tmf') and getattr(m, 'needs_scores', False) else
+                m(scores.detach(), labels) if m.__name__.startswith('tmf') and getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
-                m(preds, labels) if m.__name__.startswith('tmf') else
+                m(preds.detach(), labels) if m.__name__.startswith('tmf') else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
         #wall_metrics = time.perf_counter() - metrics_start
@@ -414,7 +414,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     tmf_map.__name__ = 'tmf.map'
     tmf_map.needs_scores = True
     #tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
-    tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=3, num_classes=cfg.n_classes)
+    tmf_macro_top5 = partial(tmf.accuracy, average='macro', num_classes=cfg.n_classes, top_k=3)
     tmf_macro_top5.__name__ = 'tmf.macro_top5'
     tmf_macro_top5.needs_scores = True
     #tmf_lrap = tmf.label_ranking_average_precision
@@ -593,6 +593,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
         for val in valid_metrics:                                                         # metrics
+            if isinstance(val, list): xm.master_print(val)
             epoch_summary_strings.append(f'{val:7.5f}')
         epoch_summary_strings.append(f'{avg_lr:7.1e}')                                    # lr
         epoch_summary_strings.append(f'{(valid_start - epoch_start) / 60:7.2f}')          # Wall train
