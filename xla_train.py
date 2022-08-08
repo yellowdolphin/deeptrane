@@ -329,7 +329,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         ## Or try put all metrics calc in a closure function?
         for m in metrics:
             avg_metrics.append(
+                m(labels, scores) if m.__name__.startswith('tmf') and getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
+                m(labels, preds) if m.__name__.startswith('tmf') else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
         #wall_metrics = time.perf_counter() - metrics_start
