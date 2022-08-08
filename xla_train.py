@@ -12,6 +12,7 @@ try:
 except ImportError:
     pass
 from sklearn.metrics import label_ranking_average_precision_score
+import torchmetrics.functional as tmf
 from metrics import val_map, multiclass_average_precision_score
 from datasets import get_dataloaders, get_fakedata_loaders
 import torch
@@ -397,6 +398,11 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         pct_negatives = NegativeRate(negative_class=cfg.vocab.transform([cfg.negative_class])[0])
     map5 = MAP(xm, k=5, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
+    tmf_acc = partial(tmf.accuracy, average='micro')
+    tmf_top5 = partial(tmf.accuracy, average='micro', top_k=5)
+    tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes, average='macro')
+    tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
+    tmf_lrap = tmf.label_ranking_average_precision
 
     metrics = (
         []                     if cfg.NUM_VALIDATION_IMAGES == 0 else  # fix for sequential loaders!
@@ -407,38 +413,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if 'happywhale' in cfg.tags:
         metrics = [acc, map5]  # map5 is macro, TPU issue
     elif 'cassava' in cfg.tags:
-        metrics = [acc, top5, map1, map5]
-
-        # Compare against TF metrics
-        import tensorflow as tf
-        tf.config.set_visible_devices([], 'GPU')  # prevent tf from allocating all GPU mem
-
-        class TFSparseCategoricalAccuracy(tf.keras.metrics.SparseCategoricalAccuracy):
-            __name__ = 'tf_acc'
-            needs_scores = True
-
-            def __call__(self, y_true, y_pred):
-                assert y_pred.ndim == 2, f'{self.__name__} needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
-                self.update_state(y_true[:, None], y_pred)
-                result = self.result().numpy()
-                if hasattr(self, 'reset_state'): self.reset_state()
-                return result
-
-        class TFSparseTopKCategoricalAccuracy(tf.keras.metrics.SparseTopKCategoricalAccuracy):
-            __name__ = 'tf_top5'
-            needs_scores = True
-
-            def __call__(self, y_true, y_pred):
-                assert y_pred.ndim == 2, f'{self.__name__} needs scores: expected y_pred.ndim = 2, got {y_pred.ndim}'
-                self.update_state(y_true[:, None], y_pred)
-                result = self.result().numpy()
-                if hasattr(self, 'reset_state'): self.reset_state()
-                return result
-
-        tf_acc = TFSparseCategoricalAccuracy(name='tf_acc')
-        tf_top5 = TFSparseTopKCategoricalAccuracy(k=5, name='tf_top5')
-
-        metrics.extend([tf_acc, tf_top5])
+        # compare with torchmetrics
+        metrics = [acc, top5, map1, map5, tmf_acc, tmf_top5, tfm_map, tmf_macro_top5, tmf_lrap]
 
     if cfg.negative_thres: metrics.append(pct_negatives)
 
