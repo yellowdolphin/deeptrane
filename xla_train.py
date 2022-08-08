@@ -399,9 +399,13 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=5, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
     tmf_acc = partial(tmf.accuracy, average='micro')
+    tmf_acc.__name__ = 'tmf_acc'
     tmf_top5 = partial(tmf.accuracy, average='micro', top_k=5)
+    tmf_top5.__name__ = 'tmf.top5'
     tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes, average='macro')
+    tmf_map.__name__ = 'tmf.map'
     tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
+    tmf_macro_top5.__name__ = 'tmf.macro_top5'
     #tmf_lrap = tmf.label_ranking_average_precision
 
     metrics = (
