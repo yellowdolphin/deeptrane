@@ -326,7 +326,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     avg_metrics = metrics.compute()
     metrics.reset()
     if old_metrics and any_macro:
-        #metrics_start = time.perf_counter()
+        metrics_start = time.perf_counter()
         local_scores = torch.cat(all_scores)
         local_preds = torch.cat(all_preds)
         local_labels = torch.cat(all_labels)
