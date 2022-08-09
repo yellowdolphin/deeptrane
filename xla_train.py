@@ -604,9 +604,11 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
         epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
-        for val in valid_metrics:                                                         # metrics
-            if isinstance(val, list): xm.master_print(val)
-            epoch_summary_strings.append(f'{val:7.5f}')
+        for key, val in valid_metrics.items():                                            # metrics
+            if isinstance(val, list): 
+                xm.master_print(f"{key}: {val}")
+            else:
+                epoch_summary_strings.append(f'{val:7.5f}')
         epoch_summary_strings.append(f'{avg_lr:7.1e}')                                    # lr
         epoch_summary_strings.append(f'{(valid_start - epoch_start) / 60:7.2f}')          # Wall train
         epoch_summary_strings.append(f'{(time.perf_counter() - epoch_start) / 60:7.2f}')  # Wall total
