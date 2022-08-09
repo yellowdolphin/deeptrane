@@ -12,6 +12,7 @@ try:
 except ImportError:
     pass
 from sklearn.metrics import label_ranking_average_precision_score
+import torchmetrics as tm
 import torchmetrics.functional as tmf
 from metrics import val_map
 from datasets import get_dataloaders, get_fakedata_loaders
@@ -289,9 +290,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # torchmetrics
         for m in metrics:
-            if not m.__module__.startswith('torchmetrics'): 
+            if not getattr(m, '__module__', '').startswith('torchmetrics'): 
                 continue
-            if 'functional' in m.__module__:
+            if 'functional' in getattr(m, '__module__', ''):
                 continue
             if getattr(m, 'needs_preds', False):
                 # should be obsolete, logits are always fine
@@ -342,7 +343,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         for m in metrics:
             avg_metrics.append(
                 m.compute() if hasattr(m, 'compute') else
-                m(scores.detach(), labels) if m.__module__.startswith('torchmetrics') else
+                m(scores.detach(), labels) if getattr(m, '__module__', '').startswith('torchmetrics') else
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
@@ -417,19 +418,30 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map1 = MAP(xm, k=1, name='mAP')
     tmf_acc = partial(tmf.accuracy, average='micro')
     tmf_acc.__name__ = 'tmf_acc'
+    tmf_acc.__module__ = tmf.accuracy.__module__
     #tmf_top5 = partial(tmf.accuracy, average='micro', top_k=5)
     tmf_top5 = partial(tmf.accuracy, average='micro', top_k=3)
     tmf_top5.__name__ = 'tmf.top5'
+    tmf.__module__ = tmf.accuracy.__module__
     #tmf_map = partial(tmf.average_precision, average='macro', num_classes=cfg.n_classes)  # average needs newer version
     #tmf_map = partial(tmf.average_precision)  # class-wise AP (list) in version 0.5
     # mAP (macro) needs one-hot targets, version 0.5 returns list of class-APs
     #tmf_map = lambda scores, targets: torch.mean(torch.stack(tmf.average_precision(scores, targets, num_classes=cfg.n_classes)))  # v0.5.0
     tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes)
     tmf_map.__name__ = 'tmf.map'
+    tmf_map.__module__ = tmf.average_precision.__module__
     #tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
     tmf_macro_top5 = partial(tmf.accuracy, average='macro', num_classes=cfg.n_classes, top_k=3)
     tmf_macro_top5.__name__ = 'tmf.macro_top5'
+    tmf_macro_top5.__module__ = tmf.accuracy.__module__
     #tmf_lrap = tmf.label_ranking_average_precision
+
+    # torchmetrics
+    tm_acc = tm.Accuracy()
+    tm_top5 = tm.Accuracy(top_k=3)  ### change to 5
+    tm_f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro')
+    tm_f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0)
+    tm_map = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes)
 
     metrics = (
         []                     if cfg.NUM_VALIDATION_IMAGES == 0 else  # fix for sequential loaders!
@@ -441,7 +453,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics = [acc, map5]  # map5 is macro, TPU issue
     elif 'cassava' in cfg.tags:
         # compare with torchmetrics
-        metrics = [acc, top5, map1, map5, tmf_acc, tmf_top5, tmf_map, tmf_macro_top5]
+        metrics = [acc, top5, map1, map5, tmf_acc, tmf_top5, tmf_map, tm_acc, tm_top5, tm_map]
 
     if cfg.negative_thres: metrics.append(pct_negatives)
 
