@@ -456,7 +456,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics = [acc, map5]  # map5 is macro, TPU issue
     elif 'cassava' in cfg.tags:
         # compare with torchmetrics
-        metrics = [acc, top5, map1, map5, tmf_acc, tmf_top5, tmf_map, tm_acc, tm_top5, tm_map]
+        metrics = [acc, top5, map1, map5, tm_acc, tm_top5, tm_map]
 
     if cfg.negative_thres: metrics.append(pct_negatives)
 
