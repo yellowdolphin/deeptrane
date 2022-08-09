@@ -12,7 +12,7 @@ try:
 except ImportError:
     pass
 from sklearn.metrics import label_ranking_average_precision_score
-import torchmetrics as tm
+#import torchmetrics as tm  # namespace conflict
 import torchmetrics.functional as tmf
 from metrics import val_map
 from datasets import get_dataloaders, get_fakedata_loaders
