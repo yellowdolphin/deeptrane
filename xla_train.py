@@ -12,7 +12,8 @@ try:
 except ImportError:
     pass
 from sklearn.metrics import label_ranking_average_precision_score
-#import torchmetrics as tm  # namespace conflict
+#import torchmetrics as tm  # namespace conflict with datasets module!
+from torchmetrics import MetricCollection, Accuracy, F1Score, FBetaScore, AveragePrecision
 from metrics import val_map
 from datasets import get_dataloaders, get_fakedata_loaders
 import torch
@@ -413,7 +414,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     old_metrics = [acc, micro_f1, micro_f1, top5]
 
     # torchmetrics
-    from torchmetrics import MetricCollection, Accuracy, F1Score, FBetaScore, AveragePrecision
     metrics = MetricCollection(dict(
         acc = Accuracy(),
         top3 = Accuracy(top_k=3),  ### change to 5.to(device)
