@@ -409,8 +409,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     tmf_top5 = partial(tmf.accuracy, average='micro', top_k=3)
     tmf_top5.__name__ = 'tmf.top5'
     tmf_top5.needs_scores = True
-    #tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes, average='macro')  # average needs newer version
-    tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes)
+    #tmf_map = partial(tmf.average_precision, average='macro', num_classes=cfg.n_classes)  # average needs newer version
+    #tmf_map = partial(tmf.average_precision)  # class-wise AP (list) in version 0.5
+    # mAP (macro) needs one-hot targets, version 0.5 returns list of class-APs
+    tmf_map = lambda scores, targets: torch.mean(tmf.average_precision(scores, targets, num_classes=cfg.n_classes))
     tmf_map.__name__ = 'tmf.map'
     tmf_map.needs_scores = True
     #tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
