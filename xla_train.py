@@ -220,23 +220,22 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     return loss_meter.average
 
 
-def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None):
+def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=None, metrics=None):
 
     # initialize
     model.eval()
     if not cfg.pudae_valid:
         loss_meter = AverageMeter(xm)
-    #metrics = metrics or []
+    old_metrics = metrics or []
     metrics.to(device)
-    #any_macro = metrics and any(getattr(m, 'needs_scores', False) for m in metrics)
-    any_macro = False
-    #if any_macro:
-    #    # macro metrics need all predictions and labels
-    #    all_scores = []
-    #    all_preds = []
-    #    all_labels = []
-    #else:
-    #    metric_meters = [AverageMeter(xm) for m in metrics]
+    any_macro = old_metrics and any(getattr(m, 'needs_scores', False) for m in old_metrics)
+    if any_macro:
+        # macro metrics need all predictions and labels
+        all_scores = []
+        all_preds = []
+        all_labels = []
+    else:
+        metric_meters = [AverageMeter(xm) for m in old_metrics]
 
     # validation loop
     n_iter = len(dataloader)
@@ -292,38 +291,28 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # torchmetrics
         metrics.update(preds.detach(), labels)
-        #for m in metrics:
-        #    if not getattr(m, '__module__', '').startswith('torchmetrics'): 
-        #        continue
-        #    if 'functional' in getattr(m, '__module__', ''):
-        #        continue
-        #    if getattr(m, 'needs_preds', False):
-        #        # should be obsolete, logits are always fine
-        #        m.update(preds.detach().argmax(dim=1), labels)
-        #    else:
-        #        m.update(preds.detach(), labels)
 
         # locally keep preds, labels for metrics (needs only device memory)
-        #if any_macro and cfg.multilabel:
-        #    all_scores.append(preds.detach().sigmoid())
-        #    all_preds.append((all_scores[-1] > 0.5).to(int))
-        #    all_labels.append(labels)
-        #elif any_macro:
-        #    all_scores.append(preds.detach().softmax(dim=1))  # for mAP
-        #    all_preds.append(preds.detach().argmax(dim=1))
-        #    all_labels.append(labels)
-        #else:
-        #    top5_scores, top5 = torch.topk(preds.detach(), 5)
-        #    if cfg.negative_thres:
-        #        # prepend negative_class if top prediction is below negative_thres
-        #        negatives = top5_scores[:, 0] < cfg.negative_thres
-        #        top5[negatives, 1:] = top5[negatives, :-1]
-        #        top5[negatives, 0] = cfg.vocab.transform([cfg.negative_class])[0]
+        if any_macro and cfg.multilabel:
+            all_scores.append(preds.detach().sigmoid())
+            all_preds.append((all_scores[-1] > 0.5).to(int))
+            all_labels.append(labels)
+        elif any_macro:
+            all_scores.append(preds.detach().softmax(dim=1))  # for mAP
+            all_preds.append(preds.detach().argmax(dim=1))
+            all_labels.append(labels)
+        else:
+            top5_scores, top5 = torch.topk(preds.detach(), 5)
+            if cfg.negative_thres:
+                # prepend negative_class if top prediction is below negative_thres
+                negatives = top5_scores[:, 0] < cfg.negative_thres
+                top5[negatives, 1:] = top5[negatives, :-1]
+                top5[negatives, 0] = cfg.vocab.transform([cfg.negative_class])[0]
 
-        #    for m, meter in zip(metrics, metric_meters):
-        #        top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
-        #        # If RuntimeError: Numpy is not available => check for numpy init errors, install other version
-        #        meter.update(m(labels.cpu().numpy(), top.cpu().numpy()), inputs.size(0))
+            for m, meter in zip(old_metrics, metric_meters):
+                top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
+                # If RuntimeError: Numpy is not available => check for numpy init errors, install other version
+                meter.update(m(labels.cpu().numpy(), top.cpu().numpy()), inputs.size(0))
 
     # mesh_reduce loss
     if cfg.pudae_valid:
@@ -332,34 +321,30 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         avg_loss = loss_meter.average
 
     # mesh_reduce metrics
-    #avg_metrics = []
+    old_avg_metrics = []
     avg_metrics = metrics.compute()
     metrics.reset()
-    #if metrics and any_macro:
-    #    #metrics_start = time.perf_counter()
-    #    local_scores = torch.cat(all_scores)
-    #    local_preds = torch.cat(all_preds)
-    #    local_labels = torch.cat(all_labels)
-    #    scores = xm.mesh_reduce('reduce_scores', local_scores, torch.cat)
-    #    preds = xm.mesh_reduce('reduce_preds', local_preds, torch.cat)
-    #    labels = xm.mesh_reduce('reduce_labels', local_labels, torch.cat)
-    #    ## todo: try avoid lowering by using torch metrics instead of sklearn
-    #    ## Or try put all metrics calc in a closure function?
-    #    for m in metrics:
-    #        avg_metrics.append(
-    #            m.compute() if hasattr(m, 'compute') else
-    #            m(scores.detach(), labels) if getattr(m, '__module__', '').startswith('torchmetrics') else
-    #            m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
-    #            m(labels.cpu().numpy(), preds.cpu().numpy())
-    #        )
-    #        if hasattr(m, 'reset'):
-    #            m.reset()
-    #    #wall_metrics = time.perf_counter() - metrics_start
-    #    #xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
-    #elif metrics:
-    #    avg_metrics = [meter.average for meter in metric_meters]
+    if old_metrics and any_macro:
+        #metrics_start = time.perf_counter()
+        local_scores = torch.cat(all_scores)
+        local_preds = torch.cat(all_preds)
+        local_labels = torch.cat(all_labels)
+        scores = xm.mesh_reduce('reduce_scores', local_scores, torch.cat)
+        preds = xm.mesh_reduce('reduce_preds', local_preds, torch.cat)
+        labels = xm.mesh_reduce('reduce_labels', local_labels, torch.cat)
+        ## todo: try avoid lowering by using torch metrics instead of sklearn
+        ## Or try put all metrics calc in a closure function?
+        for m in old_metrics:
+            old_avg_metrics.append(
+                m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
+                m(labels.cpu().numpy(), preds.cpu().numpy())
+            )
+        wall_metrics = time.perf_counter() - metrics_start
+        xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
+    elif old_metrics:
+        old_avg_metrics = [meter.average for meter in metric_meters]
 
-    return avg_loss, avg_metrics
+    return avg_loss, old_avg_metrics, avg_metrics
 
 
 def get_valid_labels(cfg, metadata):
@@ -424,12 +409,14 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=3, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
 
+    old_metrics = [acc, micro_f1, map, top5]
+
     # torchmetrics
     metrics = tm.MetricCollection(dict(
         acc = tm.Accuracy(),
         top3 = tm.Accuracy(top_k=3),  ### change to 5.to(device)
         f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro'),
-        f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0),
+        #f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0),
         mAP = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes),
         ))
 
@@ -447,7 +434,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     #    if skipped_metrics: xm.master_print("skippinging macro metrics:", *skipped_metrics)
     #    metrics = [m for m in metrics if not getattr(m, 'needs_scores', False)]
 
-    #xm.master_print('Metrics:', *[m.__name__ for m in metrics])
+    xm.master_print('Metrics:', *[m.__name__ for m in old_metrics])
     xm.master_print('Metrics:', metrics)
 
     # Don't Scale LRs (optimal lrs don't scale linearly with step size)
@@ -527,8 +514,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     ### Training Loop ---------------------------------------------------------
 
     lrs = []
-    #train_losses = []
-    #valid_losses = []
     metrics_dicts = []
     minutes = []
     best_model_score = -np.inf
@@ -586,19 +571,30 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             else:
                 dataloader = valid_loader
 
-            valid_loss, valid_metrics = valid_fn(model, cfg, xm,
+            valid_loss, old_valid_metrics, valid_metrics = valid_fn(model, cfg, xm,
                                                  epoch       = epoch + 1,
                                                  dataloader  = dataloader,
                                                  criterion   = criterion,
                                                  device      = device,
+                                                 old_metrics = old_metrics,
                                                  metrics     = metrics)
 
+        old_metrics_dict = {'train_loss': train_loss, 'valid_loss': valid_loss}
         metrics_dict = {'train_loss': train_loss, 'valid_loss': valid_loss}
-        #metrics_dict.update({m.__name__: val for m, val in zip(metrics, valid_metrics)})
+        old_metrics_dict.update({m.__name__: val for m, val in zip(old_metrics, old_valid_metrics)})
         metrics_dict.update(valid_metrics)
         last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else current_lr
         #avg_lr = 0.5 * (current_lr + last_lr) / cfg.n_replicas
         avg_lr = 0.5 * (current_lr + last_lr)
+
+        # Old epoch summary
+        epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
+        epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
+        epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
+        for val in valid_metrics:                                                         # metrics
+            if isinstance(val, list): xm.master_print(val)
+            epoch_summary_strings.append(f'{val:7.5f}')
+        xm.master_print('  '.join(epoch_summary_strings))
 
         # Print epoch summary
         epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
