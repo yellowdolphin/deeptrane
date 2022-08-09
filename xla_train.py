@@ -312,6 +312,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
             for m, meter in zip(old_metrics, metric_meters):
                 top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
                 # If RuntimeError: Numpy is not available => check for numpy init errors, install other version
+                xm.master_print("m:", type(m), "meter:", type(meter))
                 meter.update(m(labels.cpu().numpy(), top.cpu().numpy()), inputs.size(0))
 
     # mesh_reduce loss
