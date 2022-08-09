@@ -321,11 +321,11 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
         avg_loss = loss_meter.average
 
     # mesh_reduce metrics
+    metrics_start = time.perf_counter()
     old_avg_metrics = []
     avg_metrics = metrics.compute()
     metrics.reset()
     if old_metrics and any_macro:
-        metrics_start = time.perf_counter()
         local_scores = torch.cat(all_scores)
         local_preds = torch.cat(all_preds)
         local_labels = torch.cat(all_labels)
@@ -409,7 +409,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=3, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
 
-    old_metrics = [acc, micro_f1, map, top5]
+    # old + torchmetrics: 0.04 - 0.05 min
+
+    old_metrics = [acc, micro_f1, micro_f1, top5]
 
     # torchmetrics
     metrics = tm.MetricCollection(dict(
