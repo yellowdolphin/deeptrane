@@ -347,6 +347,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
+            if hasattr(m, 'reset'):
+                m.reset()
         #wall_metrics = time.perf_counter() - metrics_start
         #xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
     elif metrics:
@@ -442,7 +444,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     tm_top5 = tm.Accuracy(top_k=3).to(device)  ### change to 5.to(device)
     tm_top5.__name__ = 'tm_top5'
     tm_f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro').to(device)
+    tm_f1.__name__ = 'tm_f1'
     tm_f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0).to(device)
+    tm_f2.__name__ = 'tm_f2'
     tm_map = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes).to(device)
     tm_map.__name__ = 'tm_mAP'
 
