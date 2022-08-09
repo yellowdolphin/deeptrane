@@ -226,7 +226,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     model.eval()
     if not cfg.pudae_valid:
         loss_meter = AverageMeter(xm)
-    old_metrics = metrics or []
+    old_metrics = old_metrics or []
     metrics.to(device)
     any_macro = old_metrics and any(getattr(m, 'needs_scores', False) for m in old_metrics)
     if any_macro:
