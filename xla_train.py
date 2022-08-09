@@ -6,14 +6,14 @@ import math
 
 import pandas as pd
 import numpy as np
-from sklearn.metrics import f1_score, accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, average_precision_score
 try:
     from sklearn.metrics import top_k_accuracy_score  # requires sklearn 0.24.2 or higher (kaggle: 0.23.2)
 except ImportError:
     pass
 from sklearn.metrics import label_ranking_average_precision_score
 import torchmetrics.functional as tmf
-from metrics import val_map, multiclass_average_precision_score
+from metrics import val_map
 from datasets import get_dataloaders, get_fakedata_loaders
 import torch
 from torch import nn
@@ -287,6 +287,16 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
 
+        # torchmetrics
+        for m in metrics:
+            if not m.__module__.startswith('torchmetrics'): 
+                continue
+            if getattr(m, 'needs_preds', False):
+                # should be obsolete, logits are always fine
+                m.update(preds.detach().argmax(dim=1), labels)
+            else:
+                m.update(preds.detach(), labels)
+
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
             all_scores.append(preds.detach().sigmoid())
@@ -329,6 +339,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         ## Or try put all metrics calc in a closure function?
         for m in metrics:
             avg_metrics.append(
+                m.compute() if hasattr(m, 'compute') else
                 m(scores.detach(), labels) if m.__name__.startswith('tmf') and getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
                 m(preds.detach(), labels) if m.__name__.startswith('tmf') else
@@ -389,7 +400,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         top5 = partial(top_k_accuracy_score, k=3)
         top5.__name__  = 'top5'
         top5.needs_scores = True
-    ap = multiclass_average_precision_score
+    ap = average_precision_score
     ap.__name__ = 'acc'
     ap.needs_scores = True
     lap = label_ranking_average_precision_score

@@ -323,11 +323,13 @@ def val_map(gt_labels, pred_scores, score_thresh=1e-5, classwise=False, xm=None)
     return ap_list if classwise else map
 
 
-def multiclass_average_precision_score(y_true, y_score):
-    "Return class-mean of single-class AP scores"
-    n_classes = y_true.shape[1]
-    class_aps = [average_precision_score(y_true[:, i], y_score[:, i]) for i in range(n_classes)]
-    return np.mean(class_aps)
+#def multiclass_average_precision_score(y_true, y_score):
+#    """Return class-mean of single-class AP scores (obsolete)
+#
+#    Same as average_precision_score(y_true, y_score)"""
+#    n_classes = y_true.shape[1]
+#    class_aps = [average_precision_score(y_true[:, i], y_score[:, i]) for i in range(n_classes)]
+#    return np.mean(class_aps)
 
 
 # mAP metric implementations --------------------------------------------------
