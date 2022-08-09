@@ -312,7 +312,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
             for m, meter in zip(old_metrics, metric_meters):
                 top = top5 if getattr(m, 'needs_topk', False) else top5[:, 0]
                 # If RuntimeError: Numpy is not available => check for numpy init errors, install other version
-                xm.master_print("m:", type(m), "meter:", type(meter))
                 meter.update(m(labels.cpu().numpy(), top.cpu().numpy()), inputs.size(0))
 
     # mesh_reduce loss
@@ -592,7 +591,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
         epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
-        for val in valid_metrics:                                                         # metrics
+        for val in old_valid_metrics:                                                     # metrics
             if isinstance(val, list): xm.master_print(val)
             epoch_summary_strings.append(f'{val:7.5f}')
         xm.master_print('  '.join(epoch_summary_strings))
