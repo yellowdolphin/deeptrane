@@ -291,6 +291,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         for m in metrics:
             if not m.__module__.startswith('torchmetrics'): 
                 continue
+            if 'functional' in m.__module__:
+                continue
             if getattr(m, 'needs_preds', False):
                 # should be obsolete, logits are always fine
                 m.update(preds.detach().argmax(dim=1), labels)
