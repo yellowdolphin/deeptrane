@@ -342,9 +342,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         for m in metrics:
             avg_metrics.append(
                 m.compute() if hasattr(m, 'compute') else
-                m(scores.detach(), labels) if m.__name__.startswith('tmf') and getattr(m, 'needs_scores', False) else
+                m(scores.detach(), labels) if m.__module__.startswith('torchmetrics') else
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
-                m(preds.detach(), labels) if m.__name__.startswith('tmf') else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
         #wall_metrics = time.perf_counter() - metrics_start
@@ -421,17 +420,15 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     #tmf_top5 = partial(tmf.accuracy, average='micro', top_k=5)
     tmf_top5 = partial(tmf.accuracy, average='micro', top_k=3)
     tmf_top5.__name__ = 'tmf.top5'
-    tmf_top5.needs_scores = True
     #tmf_map = partial(tmf.average_precision, average='macro', num_classes=cfg.n_classes)  # average needs newer version
     #tmf_map = partial(tmf.average_precision)  # class-wise AP (list) in version 0.5
     # mAP (macro) needs one-hot targets, version 0.5 returns list of class-APs
-    tmf_map = lambda scores, targets: torch.mean(torch.stack(tmf.average_precision(scores, targets, num_classes=cfg.n_classes)))
+    #tmf_map = lambda scores, targets: torch.mean(torch.stack(tmf.average_precision(scores, targets, num_classes=cfg.n_classes)))  # v0.5.0
+    tmf_map = partial(tmf.average_precision, num_classes=cfg.n_classes)
     tmf_map.__name__ = 'tmf.map'
-    tmf_map.needs_scores = True
     #tmf_macro_top5 = partial(tmf.accuracy, average='macro', top_k=5)
     tmf_macro_top5 = partial(tmf.accuracy, average='macro', num_classes=cfg.n_classes, top_k=3)
     tmf_macro_top5.__name__ = 'tmf.macro_top5'
-    tmf_macro_top5.needs_scores = True
     #tmf_lrap = tmf.label_ranking_average_precision
 
     metrics = (
