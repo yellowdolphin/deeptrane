@@ -439,7 +439,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     # torchmetrics
     tm_acc = tm.Accuracy().to(device)
     tm_acc.__name__ = 'tm_acc'
-    tm_top5 = tm.Accuracy(top_k=3)  ### change to 5.to(device)
+    tm_top5 = tm.Accuracy(top_k=3).to(device)  ### change to 5.to(device)
     tm_top5.__name__ = 'tm_top5'
     tm_f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro').to(device)
     tm_f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0).to(device)
