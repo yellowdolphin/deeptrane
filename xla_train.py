@@ -438,10 +438,13 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     # torchmetrics
     tm_acc = tm.Accuracy()
+    tm_acc.__name__ = 'tm_acc'
     tm_top5 = tm.Accuracy(top_k=3)  ### change to 5
+    tm_top5.__name__ = 'tm_top5'
     tm_f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro')
     tm_f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0)
     tm_map = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes)
+    tm_map.__name__ = 'tm_mAP'
 
     metrics = (
         []                     if cfg.NUM_VALIDATION_IMAGES == 0 else  # fix for sequential loaders!
