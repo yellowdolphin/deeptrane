@@ -414,12 +414,13 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     old_metrics = [acc, micro_f1, micro_f1, top5]
 
     # torchmetrics
-    metrics = tm.MetricCollection(dict(
-        acc = tm.Accuracy(),
-        top3 = tm.Accuracy(top_k=3),  ### change to 5.to(device)
-        f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro'),
-        #f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0),
-        mAP = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes),
+    from torchmetrics import MetricCollection, Accuracy, F1Score, FBetaScore, AveragePrecision
+    metrics = MetricCollection(dict(
+        acc = Accuracy(),
+        top3 = Accuracy(top_k=3),  ### change to 5.to(device)
+        f1 = F1Score(num_classes=cfg.n_classes, average='micro'),
+        #f2 = FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0),
+        mAP = AveragePrecision(average='macro', num_classes=cfg.n_classes),
         ))
 
     if 'happywhale' in cfg.tags:
