@@ -594,7 +594,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                                                  metrics     = metrics)
 
         metrics_dict = {'train_loss': train_loss, 'valid_loss': valid_loss}
-        metrics_dict.update({m.__name__: val for m, val in zip(metrics, valid_metrics)})
+        #metrics_dict.update({m.__name__: val for m, val in zip(metrics, valid_metrics)})
+        metrics_dict.update(valid_metrics)
         last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else current_lr
         #avg_lr = 0.5 * (current_lr + last_lr) / cfg.n_replicas
         avg_lr = 0.5 * (current_lr + last_lr)
