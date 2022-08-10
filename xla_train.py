@@ -325,7 +325,11 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     metrics_start = time.perf_counter()
     old_avg_metrics = []
     avg_metrics = metrics.compute()
-    xm.master_print(avg_metrics)
+
+    counters = 'tp fp tn fn'.split()
+    vals = [getattr(metrics['acc'], a).item() for a in counters]
+    xm.master_print(f'metrics.acc {counters}: {vals}, sum: {sum(vals)}')
+
     metrics.reset()
     if old_metrics and any_macro:
         local_scores = torch.cat(all_scores)
@@ -346,6 +350,11 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
         xm.master_print(f"Wall metrics: {xm.mesh_reduce('avg_wall_metrics', wall_metrics, max) / 60:.2f} min")
     elif old_metrics:
         old_avg_metrics = [meter.average for meter in metric_meters]
+
+    acc_debug = tm.Accuracy().to(device)
+    acc_debug.update(scores.detach(), labels)
+    vals = [getattr(metrics['acc'], a).item() for a in counters]
+    xm.master_print(f'acc_debug {counters}: {vals}, sum: {sum(vals)}')
 
     return avg_loss, old_avg_metrics, avg_metrics
 
@@ -668,7 +677,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
 def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
     df = pd.DataFrame(metrics_dicts)
-    print("metrics_dicts:", type(metrics_dicts))
+    print("metrics_dicts:", len(metrics_dicts), type(metrics_dicts[0]))
+    val = metrics_dicts[0]['acc']
+    print("acc:", type(val), (val.dtype if hasattr(val, 'dtype') else val), (val.device if hasattr(val, 'device')))
+    print('metrics_dict has', dir(metrics_dicts[0]))
     df['lr'] = lrs
     df['Wall'] = minutes
     df['epoch'] = df.index + rst_epoch + 1
