@@ -325,6 +325,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     metrics_start = time.perf_counter()
     old_avg_metrics = []
     avg_metrics = metrics.compute()
+    avg_metrics = [{k: v.item() for k, v in d.items()} for d in avg_metrics]
 
     counters = 'tp fp tn fn'.split()
     vals = [getattr(metrics['acc'], a).item() for a in counters]
@@ -353,7 +354,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
 
     acc_debug = tm.Accuracy().to(device)
     acc_debug.update(scores.detach(), labels)
-    vals = [getattr(metrics['acc'], a).item() for a in counters]
+    vals = [getattr(acc_debug, a).item() for a in counters]
     xm.master_print(f'acc_debug {counters}: {vals}, sum: {sum(vals)}')
 
     return avg_loss, old_avg_metrics, avg_metrics
