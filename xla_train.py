@@ -676,11 +676,12 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
 
 def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
+    metrics_dicts = [{k: v.item() for k, v in d.items()} for d in metrics_dicts]
     df = pd.DataFrame(metrics_dicts)
-    print("metrics_dicts:", len(metrics_dicts), type(metrics_dicts[0]))
-    val = metrics_dicts[0]['acc']
-    print("acc:", type(val), (val.dtype if hasattr(val, 'dtype') else val), (val.device if hasattr(val, 'device')))
-    print('metrics_dict has', dir(metrics_dicts[0]))
+    #print("metrics_dicts:", len(metrics_dicts), type(metrics_dicts[0]))
+    #val = metrics_dicts[0]['acc']
+    #print("acc:", type(val), (val.dtype if hasattr(val, 'dtype') else val), (val.device if hasattr(val, 'device')))
+    #print('metrics_dict has', dir(metrics_dicts[0]))
     df['lr'] = lrs
     df['Wall'] = minutes
     df['epoch'] = df.index + rst_epoch + 1
