@@ -325,7 +325,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     metrics_start = time.perf_counter()
     old_avg_metrics = []
     avg_metrics = metrics.compute()
-    avg_metrics = [{k: v.item() for k, v in d.items()} for d in avg_metrics]
+    avg_metrics = {k: v.item() for k, v in average_metrics.items()}
 
     counters = 'tp fp tn fn'.split()
     vals = [getattr(metrics['acc'], a).item() for a in counters]
