@@ -44,4 +44,10 @@ def add_category_id(df, cfg):
 
 def add_image_id(df, cfg):
     df['image_id'] = df.image_id.str.split('.').str[0]
+
+    # DEBUG: truncate data to multiple of TPU global_batch_size * num_folds
+    n_replicas = cfg.n_replicas or 1
+    new_len = len(df) - len(df) % (cfg.num_folds * cfg.bs * n_replicas)
+    df = df.iloc[:new_len].copy()
+
     return df
