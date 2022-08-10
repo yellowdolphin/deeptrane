@@ -390,7 +390,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     #acc = accuracy_score
     acc = tmf.accuracy
     acc.__name__ = 'acc'
-    macro_acc = partial(tmf.accuracy, average='macro')
+    macro_acc = partial(tmf.accuracy, average='macro', num_classes=cfg.n_classes)
     macro_acc.__name__ = 'macro_acc'
     #if 'top_k_accuracy_score' in globals():
     #    #top5 = partial(top_k_accuracy_score, k=5)
@@ -421,7 +421,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     # torchmetrics
     metrics = tm.MetricCollection(dict(
         acc = tm.Accuracy(),
-        macro_acc = tm.Accuracy(average='macro'),
+        macro_acc = tm.Accuracy(average='macro', num_classes=cfg.n_classes),
         top3 = tm.Accuracy(top_k=3),  ### change to 5.to(device)
         #f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro'),
         #f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0),
