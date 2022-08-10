@@ -668,8 +668,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
 def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
     df = pd.DataFrame(metrics_dicts)
+    print("metrics_dicts:", type(metrics_dicts))
     df['lr'] = lrs
     df['Wall'] = minutes
     df['epoch'] = df.index + rst_epoch + 1
     df.set_index('epoch', inplace=True)
+    print(df.dtypes)
     df.to_json(Path(out_dir) / f'metrics_fold{fold}.json')
