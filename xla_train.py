@@ -290,7 +290,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
 
         # torchmetrics
-        metrics.update(preds.detach(), labels)
+        #metrics.update(preds.detach(), labels)
+        _ = metrics(preds.detach(), labels)
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
@@ -324,6 +325,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     metrics_start = time.perf_counter()
     old_avg_metrics = []
     avg_metrics = metrics.compute()
+    xm.master_print(avg_metrics)
     metrics.reset()
     if old_metrics and any_macro:
         local_scores = torch.cat(all_scores)
