@@ -391,13 +391,16 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     acc = tmf.accuracy
     acc.__name__ = 'acc'
     macro_acc = partial(tmf.accuracy, average='macro', num_classes=cfg.n_classes)
+    macro_acc.__module__ = tmf.accuracy.__module__
     macro_acc.__name__ = 'macro_acc'
+    macro_acc.needs_scores = True
     #if 'top_k_accuracy_score' in globals():
     #    #top5 = partial(top_k_accuracy_score, k=5)
     #    top5 = partial(top_k_accuracy_score, k=3)
     #    top5.__name__  = 'top5'
     #    top5.needs_scores = True
     top3 = partial(tmf.accuracy, top_k=3)
+    top3.__module__ = tmf.accuracy.__module__
     top3.__name__ = 'top3'
     ap = average_precision_score
     ap.__name__ = 'acc'
