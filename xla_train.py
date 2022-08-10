@@ -336,6 +336,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
         ## Or try put all metrics calc in a closure function?
         for m in old_metrics:
             old_avg_metrics.append(
+                m(scores.detach(), labels).cpu().numpy() if getattr(m, '__module__', '').startswith('torchmetrics') else
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
