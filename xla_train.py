@@ -435,7 +435,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     old_metrics = [acc, macro_acc, top3]
 
     # torchmetrics
-    kwargs = dict(dist_sync_fn=xm.gather_all) if cfg.xla else {}
+    kwargs = dict(dist_sync_fn=xm.all_gather) if cfg.xla else {}
     metrics = tm.MetricCollection(dict(
         acc = tm.Accuracy(**kwargs),
         macro_acc = tm.Accuracy(average='macro', num_classes=cfg.n_classes, **kwargs),
