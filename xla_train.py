@@ -435,13 +435,14 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     old_metrics = [acc, macro_acc, top3]
 
     # torchmetrics
+    kwargs = dict(dist_sync_fn=xm.gather_all) if cfg.xla else {}
     metrics = tm.MetricCollection(dict(
-        acc = tm.Accuracy(),
-        macro_acc = tm.Accuracy(average='macro', num_classes=cfg.n_classes),
-        top3 = tm.Accuracy(top_k=3),  ### change to 5.to(device)
-        #f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro'),
-        #f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0),
-        #mAP = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes),
+        acc = tm.Accuracy(**kwargs),
+        macro_acc = tm.Accuracy(average='macro', num_classes=cfg.n_classes, **kwargs),
+        top3 = tm.Accuracy(top_k=3, **kwargs),  ### change to 5.to(device)
+        #f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro', **kwargs),
+        #f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, **kwargs),
+        #mAP = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, **kwargs),
         ))
 
     if 'happywhale' in cfg.tags:
@@ -677,12 +678,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
 
 def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
-    metrics_dicts = [{k: v.item() for k, v in d.items()} for d in metrics_dicts]
     df = pd.DataFrame(metrics_dicts)
-    #print("metrics_dicts:", len(metrics_dicts), type(metrics_dicts[0]))
-    #val = metrics_dicts[0]['acc']
-    #print("acc:", type(val), (val.dtype if hasattr(val, 'dtype') else val), (val.device if hasattr(val, 'device')))
-    #print('metrics_dict has', dir(metrics_dicts[0]))
     df['lr'] = lrs
     df['Wall'] = minutes
     df['epoch'] = df.index + rst_epoch + 1
