@@ -229,7 +229,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
         loss_meter = AverageMeter(xm)
     old_metrics = old_metrics or []
     metrics.to(device)
-    n_updates = 0
     any_macro = old_metrics and any(getattr(m, 'needs_scores', False) for m in old_metrics)
     if any_macro:
         # macro metrics need all predictions and labels
@@ -293,7 +292,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
 
         # torchmetrics
         metrics.update(preds.detach(), labels)
-        n_updates += 1
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
@@ -326,13 +324,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     # mesh_reduce metrics
     metrics_start = time.perf_counter()
     old_avg_metrics = []
-    xm.master_print(f"calling metrics.compute() afer {n_updates} updates")
     avg_metrics = metrics.compute()
     avg_metrics = {k: v.item() for k, v in avg_metrics.items()}
 
-    counters = 'tp fp tn fn'.split()
-    vals = [getattr(metrics['acc'], a).item() for a in counters]
-    xm.master_print(f'metrics.acc {counters}: {vals}, sum: {sum(vals)}')
+    if cfg.DEBUG:
+        counters = 'tp fp tn fn'.split()
+        vals = [getattr(metrics['acc'], a).item() for a in counters]
+        xm.master_print(f'metrics.acc {counters}: {vals}, sum: {sum(vals)}')
 
     metrics.reset()
 
@@ -433,7 +431,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
-    #metrics = tm.MetricCollection({})
     metrics = {}
     if 'acc' in cfg.metrics or 'micro_acc' in cfg.metrics:
         metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
@@ -449,7 +446,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
     if 'map' in cfg.metrics or 'mAP' in cfg.metrics:
         metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
-    metrics = tm.MetricCollection(metrics)
+    metrics = tm.MetricCollection(metrics)  # MetricCollection.__setitem__ is broken (only first update works?)
 
 
     #if cfg.negative_thres: metrics['pct_N'] = pct_negatives
