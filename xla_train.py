@@ -291,8 +291,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
 
         # torchmetrics
-        #metrics.update(preds.detach(), labels)
-        _ = metrics(preds.detach(), labels)
+        metrics.update(preds.detach(), labels)
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
