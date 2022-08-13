@@ -433,7 +433,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
-    metrics = tm.MetricCollection({})
+    #metrics = tm.MetricCollection({})
+    metrics = {}
     if 'acc' in cfg.metrics or 'micro_acc' in cfg.metrics:
         metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
     if 'macro_acc' in cfg.metrics:
@@ -448,6 +449,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
     if 'map' in cfg.metrics or 'mAP' in cfg.metrics:
         metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
+    metrics = tm.MetricCollection(metrics)
 
 
     #if cfg.negative_thres: metrics['pct_N'] = pct_negatives
