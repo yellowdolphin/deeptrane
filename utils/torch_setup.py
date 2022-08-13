@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+
+
 def torchmetrics_fork():
     "Check if torchmetrics is installed and if it is xla-compatible"
     install_dirs = [Path(p) / 'torchmetrics' for p in sys.path if (Path(p) / 'torchmetrics').exists()]
