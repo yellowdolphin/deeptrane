@@ -13,6 +13,7 @@ except ImportError:
     pass
 from sklearn.metrics import label_ranking_average_precision_score
 import torchmetrics as tm
+print("[ √ ] torchmetrics:", tm.__version__)
 import torchmetrics.functional as tmf
 from metrics import val_map
 from torch_data import get_dataloaders, get_fakedata_loaders
@@ -24,7 +25,7 @@ from torch.optim import lr_scheduler
 from utils.schedulers import get_one_cycle_scheduler, maybe_step
 from utils.general import listify
 from models import is_bn
-from metrics import NegativeRate, MAP, AverageMeter
+from metrics import get_dist_sync_fn, NegativeRate, MAP, AverageMeter
 from torch import FloatTensor, LongTensor
 
 torch.set_default_tensor_type('torch.FloatTensor')
@@ -352,11 +353,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     elif old_metrics:
         old_avg_metrics = [meter.average for meter in metric_meters]
 
-    acc_debug = tm.Accuracy().to(device)
-    acc_debug.update(scores.detach(), labels)
-    vals = [getattr(acc_debug, a).item() for a in counters]
-    xm.master_print(f'acc_debug {counters}: {vals}, sum: {sum(vals)}')
-
     return avg_loss, old_avg_metrics, avg_metrics
 
 
@@ -430,27 +426,26 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=3, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
 
-    # TPU: f1 and top3 differ
-
     old_metrics = [acc, macro_acc, top3]
 
     # torchmetrics
-    kwargs = dict(dist_sync_fn=xm.all_gather) if cfg.xla else {}
-    metrics = tm.MetricCollection(dict(
-        acc = tm.Accuracy(**kwargs),
-        macro_acc = tm.Accuracy(average='macro', num_classes=cfg.n_classes, **kwargs),
-        top3 = tm.Accuracy(top_k=3, **kwargs),  ### change to 5.to(device)
-        #f1 = tm.F1Score(num_classes=cfg.n_classes, average='micro', **kwargs),
-        #f2 = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, **kwargs),
-        #mAP = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, **kwargs),
-        ))
+    dist_sync_fn = get_dist_sync_fn(xm)
+    metrics = tm.MetricCollection({})
+    if 'acc' in cfg.metrics or 'micro_acc' in cfg.metrics:
+        metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
+    if 'macro_acc' in cfg.metrics:
+        metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
+    if 'top5' in cfg.metrics: 
+        metrics['top5'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)
+    if 'top3' in cfg.metrics:
+        metrics['top3'] = tm.Accuracy(top_k=3, dist_sync_fn=dist_sync_fn)
+    if 'f1' in cfg.metrics or 'F1' in cfg.metrics:
+        metrics['F1'] = tm.F1Score(num_classes=cfg.n_classes, average='micro', dist_sync_fn=dist_sync_fn)
+    if 'f2' in cfg.metrics or 'F2' in cfg.metrics:
+        metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
+    if 'map' in cfg.metrics or 'mAP' in cfg.metrics:
+        metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
 
-    if 'happywhale' in cfg.tags:
-        metrics = tm.MetricCollection(dict(
-            acc = tm.Accuracy(),
-            mAP = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes),
-            # map5 is macro, TPU issue, convert into torchmetrics module!
-            ))
 
     #if cfg.negative_thres: metrics['pct_N'] = pct_negatives
 
@@ -683,5 +678,4 @@ def save_metrics(metrics_dicts, lrs, minutes, rst_epoch, fold, out_dir):
     df['Wall'] = minutes
     df['epoch'] = df.index + rst_epoch + 1
     df.set_index('epoch', inplace=True)
-    print(df.dtypes)
     df.to_json(Path(out_dir) / f'metrics_fold{fold}.json')

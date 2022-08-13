@@ -9,6 +9,27 @@ import torch
 import torch.nn as nn
 
 
+def get_dist_sync_fn(xm):
+    "Enables xla syncronization of torchmetrics classes"
+    if xm.xrt_world_size() <= 1:
+        return None
+
+    def dist_sync_fn(data, group=None):
+        assert group is None, f'group not None: {group}'
+        local_data = data
+        ordinal = xm.get_ordinal()
+        assert isinstance(data, torch.Tensor), f'{type(data)} is not a Tensor'
+        data = xm.mesh_reduce('metric_sync', data, list)
+        assert type(data) is list
+        assert len(data) == xm.xrt_world_size()
+        assert isinstance(data[ordinal], torch.Tensor), f'{type(data[ordinal])} is not a Tensor'
+        assert data[ordinal].dtype == local_data.dtype, f'dtype changed to {data[ordinal].dtype}'
+        assert data[ordinal].shape == local_data.shape, f'shape changed to {data[ordinal].shape}'
+        return data
+
+    return dist_sync_fn
+
+
 def reduce(values):
     if isinstance(values, torch.Tensor):
         return torch.mean(values)

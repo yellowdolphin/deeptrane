@@ -10,6 +10,7 @@ from multiprocessing import cpu_count
 
 from config import Config, parser
 from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
+from utils.torch_setup import torchmetrics_fork
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -92,6 +93,12 @@ if 'TPU_NAME' in os.environ:
     print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ.get('XLA_USE_BF16', None)})")
 import torch
 print("[ √ ] torch:", torch.__version__)
+
+# Install (xla compatible) torchmetrics
+if cfg.xla and torchmetrics_fork() != 'xla_fork':
+    quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git')
+elif not cfg.xla and not torchmetrics_fork():
+    quietly_run('pip install torchmetrics')
 
 # Install timm
 if cfg.use_timm:
