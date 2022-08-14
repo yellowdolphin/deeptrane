@@ -325,7 +325,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     metrics_start = time.perf_counter()
     old_avg_metrics = []
     avg_metrics = metrics.compute()
-    avg_metrics = {k: v.item() if v.dims == 0 else v.numpy() for k, v in avg_metrics.items()}
+    for k, v in avg_metrics.items():
+        xm.master_print(k, v.ndim, v.shape, v.device, hasattr(v, numpy), hasattr(v, cpu))
+    avg_metrics = {k: v.item() if v.ndim == 0 else v.numpy() for k, v in avg_metrics.items()}
 
     if cfg.DEBUG:
         counters = 'tp fp tn fn'.split()
