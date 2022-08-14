@@ -326,7 +326,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     old_avg_metrics = []
     avg_metrics = metrics.compute()
     for k, v in avg_metrics.items():
-        xm.master_print(k, v.ndim, v.shape, v.device, hasattr(v, 'numpy'), hasattr(v, 'cpu'))
+        xm.master_print(k, v.ndim, v.shape, v.device, hasattr(v, 'tolist'))
     avg_metrics = {k: v.item() if v.ndim == 0 else v.numpy() for k, v in avg_metrics.items()}
 
     if cfg.DEBUG:
@@ -399,7 +399,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     f1.__name__ = 'F1'
     macro_f1 = partial(f1_score, average='macro', labels=get_valid_labels(cfg, metadata))
     macro_f1.__name__ = 'macro_F1'
-    macro_f1.needs_scores = True
     #acc = accuracy_score
     acc = tmf.accuracy
     acc.__name__ = 'acc'
