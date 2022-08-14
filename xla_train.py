@@ -427,7 +427,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=3, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
 
-    old_metrics = [f1, macro_f1, ap] # OK: [acc, macro_acc, top3]
+    old_metrics = [f1, macro_f1] # OK: [acc, macro_acc, top3]
 
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
