@@ -393,10 +393,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if cfg.use_aux_loss:
         from segmentation_models_pytorch.losses.dice import DiceLoss
     seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
-    micro_f1 = partial(f1_score, average='micro')
-    micro_f1.__name__ = 'F1'
+    f1 = partial(f1_score, average='micro')
+    f1.__name__ = 'F1'
     macro_f1 = partial(f1_score, average='macro', labels=get_valid_labels(cfg, metadata))
-    macro_f1.__name__ = 'F1'
+    macro_f1.__name__ = 'macro_F1'
     #acc = accuracy_score
     acc = tmf.accuracy
     acc.__name__ = 'acc'
@@ -427,7 +427,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=3, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
 
-    old_metrics = [acc, macro_acc, top3]
+    old_metrics = [f1, macro_f1, ap] # OK: [acc, macro_acc, top3]
 
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
@@ -442,6 +442,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['top3'] = tm.Accuracy(top_k=3, dist_sync_fn=dist_sync_fn)
     if 'f1' in cfg.metrics or 'F1' in cfg.metrics:
         metrics['F1'] = tm.F1Score(num_classes=cfg.n_classes, average='micro', dist_sync_fn=dist_sync_fn)
+    if 'macro_f1' in cfg.metrics or 'macro_F1' in cfg.metrics:
+        metrics['macro_F1'] = tm.F1Score(num_classes=cfg.n_classes, average='macro', dist_sync_fn=dist_sync_fn)
     if 'f2' in cfg.metrics or 'F2' in cfg.metrics:
         metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
     if 'map' in cfg.metrics or 'mAP' in cfg.metrics:
