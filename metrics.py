@@ -745,6 +745,11 @@ class MAP(nn.Module):
 
 
 class EmbeddingAveragePrecision(tm.Metric):
+
+    is_differentiable = False
+    higher_is_better = True
+    full_state_update: bool = False
+
     def __init__(self, xm, k=0):
         super().__init__()
         self.xm = xm
@@ -754,7 +759,7 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def update(self, labels: torch.LongTensor, embeddings: torch.FloatTensor):
-        labels, embeddings = self._input_format(labels, embeddings)
+        #labels, embeddings = self._input_format(labels, embeddings)  # outdated doc?
         assert embeddings.size(0) == labels.size(0), f'len mismatch between labels ' \
             f'({labels.size(0)}) and embeddings ({embeddings.size(0)})'
         self.embeddings = torch.cat([self.embeddings, embeddings])
