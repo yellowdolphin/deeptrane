@@ -664,10 +664,12 @@ class MAP(nn.Module):
         self.xm = xm
         self.k = k
         self.needs_scores = True
+        self.macro = True
         self.__name__ = name
 
 
     def forward(self, labels, features):
+        self.xm.master_print("labels:", labels.dtype, "features:", features.dtype)
         m = np.matmul(features, np.transpose(features))  # similarity matrix
         for i in range(features.shape[0]):
             m[i,i] = -1000.0  # avoid self-reckognition
