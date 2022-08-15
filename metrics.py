@@ -762,7 +762,7 @@ class EmbeddingAveragePrecision(tm.Metric):
         self.add_state('labels', default=torch.LongTensor(), dist_reduce_fx='cat')
 
 
-    def update(self, labels: torch.LongTensor, embeddings: torch.FloatTensor):
+    def update(self, embeddings: torch.FloatTensor, labels: torch.LongTensor):
         #labels, embeddings = self._input_format(labels, embeddings)  # outdated doc?
         assert embeddings.size(0) == labels.size(0), f'len mismatch between labels ' \
             f'({labels.size(0)}) and embeddings ({embeddings.size(0)})'
