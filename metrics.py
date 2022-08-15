@@ -783,10 +783,10 @@ class EmbeddingAveragePrecision(tm.Metric):
         #self.xm.master_print("predict_sorted:", predict_sorted.shape)  # torch.Size([10207, 10207])
 
         map5_list = []
-        for threshold in np.arange(1, 0, -0.05):
+        for threshold in torch.arange(start=1, end=0, step=-0.05, dtype=torch.float32):
             top5s = []
             for l, scores, indices in zip(labels, m, predict_sorted):  # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
-                top5_labels = self.get_top5(scores, indices, labels, threshold)  # -> tensor
+                top5_labels = self.get_top5(scores, indices, labels, threshold)  # -> tensor (cpu)
                 top5s.append(top5_labels)
             map5_list.append((threshold, self.mapk(labels, top5s)))
         map5_list = list(sorted(map5_list, key=lambda x: x[1], reverse=True))
@@ -798,6 +798,10 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def get_top5(self, scores, indices, labels, threshold):
+        self.xm.master_print("scores:", scores.device)
+        self.xm.master_print("indices:", indices.device)
+        self.xm.master_print("labels:", labels.device)
+        self.xm.master_print("threshold:", threshold.device)
         # TODO: vectorize, use torch functions
         used = set()
         ret_labels = []
@@ -818,17 +822,18 @@ class EmbeddingAveragePrecision(tm.Metric):
             ret_labels.append(l)
             if len(ret_labels) >= self.k:
                 break
-        return torch.LongTensor(ret_labels[:5])
+        return torch.LongTensor(ret_labels[:5]).to(labels.device)
 
 
     def mapk(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
-        self.xm.master_print("mapk:", labels.shape, len(preds), preds[0].shape)  # torch.Size([10207]) 10207 torch.Size([5])
+        self.xm.master_print("mapk labels:", labels.shape, labeld.dtype, labels.device)
+        self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # torch.Size([10207]) 10207 torch.Size([5])
         return torch.mean([self.apk(l, p) for l, p in zip(labels, preds)])
 
 
     def apk(self, labels, preds):
         self.xm.master_print("apk labels:", labels.shape, labels.device)  # torch.Size([])
-        self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5])
+        self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5]) cpu
         k = self.k
         if not labels:
             return 0.0
