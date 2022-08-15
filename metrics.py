@@ -798,10 +798,10 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def get_top5(self, scores, indices, labels, threshold):
-        #self.xm.master_print("scores:", scores.device)
-        #self.xm.master_print("indices:", indices.device)
-        #self.xm.master_print("labels:", labels.device)
-        self.xm.master_print("threshold:", threshold.device)  # cpu
+        #self.xm.master_print("scores:", scores.device)  # cuda
+        #self.xm.master_print("indices:", indices.device)  # cuda
+        #self.xm.master_print("labels:", labels.device)  # cuda
+        #self.xm.master_print("threshold:", threshold.device)  # cuda
         # TODO: vectorize, use torch functions
         used = set()
         ret_labels = []
@@ -826,14 +826,14 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def mapk(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
-        self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)
-        self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # torch.Size([10207]) 10207 torch.Size([5])
-        return torch.mean([self.apk(l, p) for l, p in zip(labels, preds)])
+        self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)  # torch.Size([10207]) torch.int64 cuda:0
+        self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # 10207 torch.Size([5]) torch.int64 cuda:0
+        return torch.mean(torch.FloatTensor([self.apk(l, p) for l, p in zip(labels, preds)]))
 
 
     def apk(self, labels, preds):
-        self.xm.master_print("apk labels:", labels.shape, labels.device)  # torch.Size([])
-        self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5]) cpu
+        #self.xm.master_print("apk labels:", labels.shape, labels.device)  # torch.Size([]) cuda:0
+        #self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5]) cuda:0
         k = self.k
         if not labels:
             return 0.0
