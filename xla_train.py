@@ -229,10 +229,12 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
         loss_meter = AverageMeter(xm)
     old_metrics = old_metrics or []
     metrics.to(device)
-    any_macro = old_metrics and any(getattr(m, 'needs_scores', False) for m in old_metrics)
+    any_scores = old_metrics and any(getattr(m, 'needs_scores', False) for m in old_metrics)
+    any_macro = old_metrics and any(getattr(m, 'macro', False) for m in old_metrics)
     if any_macro:
         # macro metrics need all predictions and labels
-        all_scores = []
+        if any_scores:
+            all_scores = []
         all_preds = []
         all_labels = []
     else:
@@ -295,11 +297,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
 
         # locally keep preds, labels for metrics (needs only device memory)
         if any_macro and cfg.multilabel:
-            all_scores.append(preds.detach().sigmoid())
+            if any_scores:
+                all_scores.append(preds.detach().sigmoid())
             all_preds.append((all_scores[-1] > 0.5).to(int))
             all_labels.append(labels)
         elif any_macro:
-            all_scores.append(preds.detach().softmax(dim=1))  # for mAP
+            if any_scores:
+                all_scores.append(preds.detach().softmax(dim=1))  # for mAP
             all_preds.append(preds.detach().argmax(dim=1))
             all_labels.append(labels)
         else:
@@ -335,17 +339,17 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     metrics.reset()
 
     if old_metrics and any_macro:
-        local_scores = torch.cat(all_scores)
+        if any_scores:
+            local_scores = torch.cat(all_scores)
+            scores = xm.mesh_reduce('reduce_scores', local_scores, torch.cat)
         local_preds = torch.cat(all_preds)
         local_labels = torch.cat(all_labels)
-        scores = xm.mesh_reduce('reduce_scores', local_scores, torch.cat)
         preds = xm.mesh_reduce('reduce_preds', local_preds, torch.cat)
         labels = xm.mesh_reduce('reduce_labels', local_labels, torch.cat)
         ## todo: try avoid lowering by using torch metrics instead of sklearn
         ## Or try put all metrics calc in a closure function?
         for m in old_metrics:
             old_avg_metrics.append(
-                m(scores.detach(), labels).cpu().numpy() if getattr(m, '__module__', '').startswith('torchmetrics') else
                 m(labels.cpu().numpy(), scores.cpu().numpy()) if getattr(m, 'needs_scores', False) else
                 m(labels.cpu().numpy(), preds.cpu().numpy())
             )
@@ -397,6 +401,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     f1.__name__ = 'F1'
     macro_f1 = partial(f1_score, average='macro', labels=get_valid_labels(cfg, metadata))
     macro_f1.__name__ = 'macro_F1'
+    macro_f1.macro = True
     #acc = accuracy_score
     acc = tmf.accuracy
     acc.__name__ = 'acc'
@@ -404,6 +409,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     macro_acc.__module__ = tmf.accuracy.__module__
     macro_acc.__name__ = 'macro_acc'
     macro_acc.needs_scores = True
+    macro_acc.macro = True
     #if 'top_k_accuracy_score' in globals():
     #    #top5 = partial(top_k_accuracy_score, k=5)
     #    top5 = partial(top_k_accuracy_score, k=3)
@@ -545,7 +551,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     best_model_score = -np.inf
     epoch_summary_header = ''.join([
         #'epoch   ', ' train_loss ', ' valid_loss ', ' '.join([f'{m.__name__:^8}' for m in metrics]),
-        'epoch   ', ' train_loss ', ' valid_loss ', ' '.join([f'{key:^8}' for key in metrics.keys()]),
+        'epoch   ', ' train_loss ', ' valid_loss ', 
+        ' '.join([f'{k:^8}' for k, v in metrics.items() if not isinstance(v, list)]),
         '   lr    ', 'min_train  min_total'])
     xm.master_print("\n", epoch_summary_header)
     xm.master_print("=" * (len(epoch_summary_header) + 2))
