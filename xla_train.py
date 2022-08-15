@@ -635,7 +635,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
         for key, val in valid_metrics.items():                                            # metrics
             if isinstance(val, list): 
-                xm.master_print(f"{key}: {val}")
+                xm.master_print(key + ':', "\t".join(f'{v:.5f}' for v in val))
             else:
                 epoch_summary_strings.append(f'{val:7.5f}')
         epoch_summary_strings.append(f'{avg_lr:7.1e}')                                    # lr
