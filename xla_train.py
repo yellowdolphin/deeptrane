@@ -331,7 +331,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     avg_metrics = metrics.compute()
     avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
-    if cfg.DEBUG:
+    if cfg.DEBUG and 'acc' in metrics:
         counters = 'tp fp tn fn'.split()
         vals = [getattr(metrics['acc'], a).item() for a in counters]
         xm.master_print(f'metrics.acc {counters}: {vals}, sum: {sum(vals)}')

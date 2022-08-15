@@ -773,7 +773,7 @@ class EmbeddingAveragePrecision(tm.Metric):
 
     def compute(self):
         labels, embeddings = self.labels, self.embeddings
-        self.xm.master_print("labels:", labels.shape, labels.dtype)  # 
+        self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
         #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
         m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
         #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
@@ -822,17 +822,18 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def mapk(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
-        self.xm.master_print("mapk:", labels.shape, len(preds), preds[0].shape)
+        self.xm.master_print("mapk:", labels.shape, len(preds), preds[0].shape)  # torch.Size([10207]) 10207 torch.Size([5])
         return torch.mean([self.apk(l, p) for l, p in zip(labels, preds)])
 
 
     def apk(self, labels, preds):
-        self.xm.master_print("apk:", labels.shape, preds.shape)
+        self.xm.master_print("apk labels:", labels.shape, labels.device)  # torch.Size([])
+        self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5])
         k = self.k
         if not labels:
             return 0.0
         if len(preds) > k:
-                preds = preds[:k]
+            preds = preds[:k]
 
         #if not hasattr(labels, '__len__') or len(labels) == 1:
         if labels.ndim == 0:
