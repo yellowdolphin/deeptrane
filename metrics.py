@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import math
+from typing import List
 import numpy as np
 import torchmetrics as tm
 from sklearn.metrics import average_precision_score
@@ -820,7 +821,7 @@ class EmbeddingAveragePrecision(tm.Metric):
         return torch.LongTensor(ret_labels[:5])
 
 
-    def mapk(self, labels: torch.LongTensor, preds: list[torch.FloatTensor]):
+    def mapk(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
         self.xm.master_print("mapk:", labels.shape, len(preds), preds[0].shape)
         return torch.mean([self.apk(l, p) for l, p in zip(labels, preds)])
 
