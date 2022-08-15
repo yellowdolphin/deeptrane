@@ -399,7 +399,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
     f1 = partial(f1_score, average='micro')
     f1.__name__ = 'F1'
-    macro_f1 = partial(f1_score, average='macro', labels=get_valid_labels(cfg, metadata))
+    macro_f1 = partial(f1_score, average='macro')
     macro_f1.__name__ = 'macro_F1'
     macro_f1.macro = True
     #acc = accuracy_score
@@ -552,7 +552,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     epoch_summary_header = ''.join([
         #'epoch   ', ' train_loss ', ' valid_loss ', ' '.join([f'{m.__name__:^8}' for m in metrics]),
         'epoch   ', ' train_loss ', ' valid_loss ', 
-        ' '.join([f'{k:^8}' for k, v in metrics.items() if not isinstance(v, list)]),
+        ' '.join([f'{key:^8}' for key in metrics if 'class' not in key]),
         '   lr    ', 'min_train  min_total'])
     xm.master_print("\n", epoch_summary_header)
     xm.master_print("=" * (len(epoch_summary_header) + 2))
