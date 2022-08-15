@@ -744,7 +744,7 @@ class MAP(nn.Module):
         return score / min(len(labels), k)
 
 
-class EmbeddingAveragePrecision(nn.Module):
+class EmbeddingAveragePrecision(tm.Metric):
     def __init__(self, xm, k=0):
         super().__init__()
         self.xm = xm
