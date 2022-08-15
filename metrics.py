@@ -834,7 +834,8 @@ class EmbeddingAveragePrecision(tm.Metric):
         if len(preds) > k:
                 preds = preds[:k]
 
-        if not hasattr(labels, '__len__') or len(labels) == 1:
+        #if not hasattr(labels, '__len__') or len(labels) == 1:
+        if labels.ndim == 0:
             for i, p in enumerate(preds):
                 if p == labels:
                     return 1.0 / (i + 1)
