@@ -4,6 +4,7 @@ import os
 import shutil
 import math
 import numpy as np
+import torchmetrics as tm
 from sklearn.metrics import average_precision_score
 import torch
 import torch.nn as nn
@@ -644,7 +645,6 @@ class VinBigDataEval:
 
 # Metrics for image recognition -----------------------------------------------
 
-
 class NegativeRate(nn.Module):
     def __init__(self, negative_class=0, name='neg_rate'):
         super().__init__()
@@ -663,7 +663,6 @@ class MAP(nn.Module):
         super().__init__()
         self.xm = xm
         self.k = k
-        #self.needs_topk = True
         self.needs_scores = True
         self.__name__ = name
 
@@ -722,6 +721,98 @@ class MAP(nn.Module):
 
 
     def apk(self, labels, preds):
+        k = self.k
+        if not labels:
+            return 0.0
+        if len(preds) > k:
+                preds = preds[:k]
+
+        if not hasattr(labels, '__len__') or len(labels) == 1:
+            for i, p in enumerate(preds):
+                if p == labels:
+                    return 1.0 / (i + 1)
+            return 0.0
+
+        score = 0.0
+        num_hits = 0.0
+
+        for i, p in enumerate(preds):
+            if p in labels and p not in preds[:i]:
+                num_hits += 1.0
+                score += num_hits / (i + 1.0)
+
+        return score / min(len(labels), k)
+
+
+class EmbeddingAveragePrecision(nn.Module):
+    def __init__(self, xm, k=0):
+        super().__init__()
+        self.xm = xm
+        self.k = k
+        self.add_state('embeddings', default=torch.FloatTensor(), dist_reduce_fx='cat')
+        self.add_state('labels', default=torch.LongTensor(), dist_reduce_fx='cat')
+
+
+    def update(self, labels: torch.LongTensor, embeddings: torch.FloatTensor):
+        labels, embeddings = self._input_format(labels, embeddings)
+        assert embeddings.size(0) == labels.size(0), f'len mismatch between labels '
+            f'({labels.size(0)}) and embeddings ({embeddings.size(0)})'
+        self.embeddings = torch.cat([self.embeddings, embeddings])
+        self.labels = torch.cat([self.labels, labels])
+
+
+    def compute(self):
+        labels, embeddings = self.labels, self.embeddings
+        m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
+        m.diagonal = -1000.0  # penalize self-reckognition
+        predict_sorted = torch.argsort(m, dim=-1)[:,::-1]  # most similar other examples
+
+        map5_list = []
+        for threshold in np.arange(1, 0, -0.05):
+            top5s = []
+            for l, scores, indices in zip(labels, m, predict_sorted):  # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
+                top5_labels = self.get_top5(scores, indices, labels, threshold)
+                top5s.append(top5_labels)
+            map5_list.append((threshold, self.mapk(labels, top5s)))
+        map5_list = list(sorted(map5_list, key=lambda x: x[1], reverse=True))
+        best_thres = map5_list[0][0]
+        best_score = map5_list[0][1]
+        self.xm.master_print(f"best_thres: {best_thres:.2f}")
+
+        return torch.tensor(best_score)
+
+
+    def get_top5(self, scores, indices, labels, threshold):
+        # TODO: vectorize, use torch functions
+        used = set()
+        ret_labels = []
+
+        for index in indices:
+            l = labels[index]
+            s = scores[index]
+            if l in used:
+                continue
+
+            if 0 not in used and s < threshold:
+                used.add(0)
+                ret_labels.append(0)
+            if l in used:
+                continue
+
+            used.add(l)
+            ret_labels.append(l)
+            if len(ret_labels) >= self.k:
+                break
+        return torch.LongTensor(ret_labels[:5])
+
+
+    def mapk(self, labels, preds):
+        self.xm.master_print("mapk:", labels.shape, preds.shape)
+        return torch.mean([self.apk(l, p) for l, p in zip(labels, preds)])
+
+
+    def apk(self, labels, preds):
+        self.xm.master_print("apk:", labels.shape, preds.shape)
         k = self.k
         if not labels:
             return 0.0
