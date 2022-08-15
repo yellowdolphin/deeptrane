@@ -755,7 +755,7 @@ class EmbeddingAveragePrecision(nn.Module):
 
     def update(self, labels: torch.LongTensor, embeddings: torch.FloatTensor):
         labels, embeddings = self._input_format(labels, embeddings)
-        assert embeddings.size(0) == labels.size(0), f'len mismatch between labels '
+        assert embeddings.size(0) == labels.size(0), f'len mismatch between labels ' \
             f'({labels.size(0)}) and embeddings ({embeddings.size(0)})'
         self.embeddings = torch.cat([self.embeddings, embeddings])
         self.labels = torch.cat([self.labels, labels])
