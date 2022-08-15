@@ -783,7 +783,7 @@ class EmbeddingAveragePrecision(tm.Metric):
         #self.xm.master_print("predict_sorted:", predict_sorted.shape)  # torch.Size([10207, 10207])
 
         map5_list = []
-        for threshold in torch.arange(start=1, end=0, step=-0.05, dtype=torch.float32):
+        for threshold in torch.arange(start=1, end=0, step=-0.05, dtype=torch.float32, device=labels.device):
             top5s = []
             for l, scores, indices in zip(labels, m, predict_sorted):  # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
                 top5_labels = self.get_top5(scores, indices, labels, threshold)  # -> tensor (cpu)
@@ -798,10 +798,10 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def get_top5(self, scores, indices, labels, threshold):
-        self.xm.master_print("scores:", scores.device)
-        self.xm.master_print("indices:", indices.device)
-        self.xm.master_print("labels:", labels.device)
-        self.xm.master_print("threshold:", threshold.device)
+        #self.xm.master_print("scores:", scores.device)
+        #self.xm.master_print("indices:", indices.device)
+        #self.xm.master_print("labels:", labels.device)
+        self.xm.master_print("threshold:", threshold.device)  # cpu
         # TODO: vectorize, use torch functions
         used = set()
         ret_labels = []
@@ -826,7 +826,7 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def mapk(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
-        self.xm.master_print("mapk labels:", labels.shape, labeld.dtype, labels.device)
+        self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)
         self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # torch.Size([10207]) 10207 torch.Size([5])
         return torch.mean([self.apk(l, p) for l, p in zip(labels, preds)])
 
