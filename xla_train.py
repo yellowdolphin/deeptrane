@@ -25,7 +25,7 @@ from torch.optim import lr_scheduler
 from utils.schedulers import get_one_cycle_scheduler, maybe_step
 from utils.general import listify
 from models import is_bn
-from metrics import get_dist_sync_fn, NegativeRate, MAP, AverageMeter
+from metrics import get_dist_sync_fn, NegativeRate, MAP, AverageMeter, EmbeddingAveragePrecision
 from torch import FloatTensor, LongTensor
 
 torch.set_default_tensor_type('torch.FloatTensor')
@@ -457,7 +457,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if 'map' in cfg.metrics or 'mAP' in cfg.metrics:
         metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
     if 'eap5' in cfg.metrics or 'eAP5' in cfg.metrics:
-        metrics['eAP5'] = metrics.EmbeddingAveragePrecision(xm, k=5)  # happywhale
+        metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
     metrics = tm.MetricCollection(metrics)  # MetricCollection.__setitem__ is broken (only first update works?)
 
 
