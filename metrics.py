@@ -772,6 +772,7 @@ class EmbeddingAveragePrecision(tm.Metric):
 
     def compute(self):
         labels, embeddings = self.labels, self.embeddings
+        self.xm.master_print("labels:", labels.shape, labels.dtype)  # 
         #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
         m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
         #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
@@ -784,7 +785,7 @@ class EmbeddingAveragePrecision(tm.Metric):
         for threshold in np.arange(1, 0, -0.05):
             top5s = []
             for l, scores, indices in zip(labels, m, predict_sorted):  # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
-                top5_labels = self.get_top5(scores, indices, labels, threshold)
+                top5_labels = self.get_top5(scores, indices, labels, threshold)  # -> tensor
                 top5s.append(top5_labels)
             map5_list.append((threshold, self.mapk(labels, top5s)))
         map5_list = list(sorted(map5_list, key=lambda x: x[1], reverse=True))
@@ -819,8 +820,8 @@ class EmbeddingAveragePrecision(tm.Metric):
         return torch.LongTensor(ret_labels[:5])
 
 
-    def mapk(self, labels, preds):
-        self.xm.master_print("mapk:", labels.shape, preds.shape)
+    def mapk(self, labels: torch.LongTensor, preds: list[torch.FloatTensor]):
+        self.xm.master_print("mapk:", labels.shape, len(preds), preds[0].shape)
         return torch.mean([self.apk(l, p) for l, p in zip(labels, preds)])
 
 
