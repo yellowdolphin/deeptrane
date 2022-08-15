@@ -807,7 +807,7 @@ class EmbeddingAveragePrecision(tm.Metric):
         ret_labels = []
 
         for index in indices:
-            l = labels[index]
+            l = labels[index].item()
             s = scores[index]
             if l in used:
                 continue
