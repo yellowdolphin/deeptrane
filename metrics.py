@@ -772,14 +772,13 @@ class EmbeddingAveragePrecision(tm.Metric):
 
     def compute(self):
         labels, embeddings = self.labels, self.embeddings
-        self.xm.master_print("embeddings:", embeddings.shape)
+        #self.xm.master_print("embeddings:", embeddings.shape)
         m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
-        self.xm.master_print("m:", m.shape)
+        #self.xm.master_print("m:", m.shape)
         m.diagonal = -1000.0  # penalize self-reckognition
-        self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
-        predict_sorted = torch.argsort(m, dim=-1)
-        self.xm.master_print("predict_sorted:", predict_sorted.shape)
-        predict_sorted = predict_sorted[:,::-1]  # most similar other examples
+        #self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
+        predict_sorted = torch.argsort(m, dim=-1, descending=True)
+        #self.xm.master_print("predict_sorted:", predict_sorted.shape)
 
         map5_list = []
         for threshold in np.arange(1, 0, -0.05):
