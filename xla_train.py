@@ -328,6 +328,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     # mesh_reduce metrics
     metrics_start = time.perf_counter()
     old_avg_metrics = []
+    xm.master_print("metrics.compute...")
     avg_metrics = metrics.compute()
     avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
@@ -339,6 +340,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     metrics.reset()
 
     if old_metrics and any_macro:
+        xm.master_print("old_metrics...")
         if any_scores:
             local_scores = torch.cat(all_scores)
             scores = xm.mesh_reduce('reduce_scores', local_scores, torch.cat)

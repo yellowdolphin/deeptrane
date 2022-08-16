@@ -670,7 +670,7 @@ class MAP(nn.Module):
 
 
     def forward(self, labels, features):
-        #self.xm.master_print("labels:", labels.dtype, "features:", features.dtype)
+        self.xm.master_print("labels:", labels.shape, "features:", features.shape)
         m = np.matmul(features, np.transpose(features))  # similarity matrix
         for i in range(features.shape[0]):
             m[i,i] = -1000.0  # avoid self-reckognition
@@ -775,8 +775,8 @@ class EmbeddingAveragePrecision(tm.Metric):
 
     def compute(self):
         labels, embeddings = self.labels, self.embeddings
-        #self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
-        #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
+        self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
+        self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
         m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
         #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
         m.fill_diagonal_(-1000.0)  # penalize self-reckognition
