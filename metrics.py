@@ -783,14 +783,23 @@ class EmbeddingAveragePrecision(tm.Metric):
         #self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
         predict_sorted = torch.argsort(m, dim=-1, descending=True)
 
-        # the rest is much faster on CPU
+        # debug: do all on cpu
         labels = labels.cpu().numpy()
-        m = m.cpu().numpy()
-        predict_sorted = predict_sorted.cpu().numpy()
-        #print(labels.shape, m.shape, predict_sorted.shape)  # ok
+        embeddings = embeddings.cpu().numpy()
+        m = np.matmul(embeddings, np.transpose(embeddings))  # similarity matrix
+        for i in range(embeddings.shape[0]):
+            m[i,i] = -1000.0  # avoid self-reckognition
+        #self.xm.master_print("MAP.m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
+        predict_sorted = np.argsort(m, axis=-1)[:,::-1]  # most similar other examples
+
+        ## the rest is much faster on CPU
+        #labels = labels.cpu().numpy()
+        #m = m.cpu().numpy()
+        #predict_sorted = predict_sorted.cpu().numpy()
+        ##print(labels.shape, m.shape, predict_sorted.shape)  # ok
 
         map5_list = []
-        for threshold in np.arange(1.0, 0.0, -0.05):
+        for threshold in np.arange(1, 0, -0.05):
             top5s = []
             for l, scores, indices in zip(labels, m, predict_sorted):  
                 # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
