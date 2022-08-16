@@ -13,7 +13,7 @@ cfg = dict(
     num_folds = 4,
     use_folds = [0],
     train_on_all = False,
-    size = (256, 256),
+    size = (128, 128),
     multilabel = False,
     use_albumentations = True,
     augmentation = 'cassava_aug2',  # aug2 removes Normalize => much better!
