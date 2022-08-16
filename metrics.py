@@ -779,11 +779,11 @@ class EmbeddingAveragePrecision(tm.Metric):
         labels, embeddings = self.labels, self.embeddings
         #self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
         #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
-        m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
-        #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
-        m.fill_diagonal_(-1000.0)  # penalize self-reckognition
-        #self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
-        predict_sorted = torch.argsort(m, dim=-1, descending=True)
+        #m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
+        ##self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
+        #m.fill_diagonal_(-1000.0)  # penalize self-reckognition
+        ##self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
+        #predict_sorted = torch.argsort(m, dim=-1, descending=True)
 
         # debug: do all on cpu
         labels = labels.cpu().numpy()
