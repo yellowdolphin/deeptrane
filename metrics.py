@@ -787,7 +787,7 @@ class EmbeddingAveragePrecision(tm.Metric):
 
         # debug: do all on cpu
         labels = labels.cpu().numpy()
-        embeddings = embeddings.cpu().numpy()
+        embeddings = embeddings.softmax(dim=1).cpu().numpy()  # softmax is wrong but also done on map5 "features"!
         self.xm.master_print("labels:", labels)  # torch.Size([10207]) torch.int64
         self.xm.master_print("embeddings:", embeddings)  # torch.Size([10207, 15587])
         m = np.matmul(embeddings, np.transpose(embeddings))  # similarity matrix
