@@ -381,7 +381,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         loader_prefetch_size = 1
         device_prefetch_size = 1
         cfg.deviceloader = cfg.deviceloader or 'mp'  # 'mp' performs better than 'pl' on kaggle
-        xm.master_print("deviceloader:", cfg.deviceloader)
 
     # Dataloaders
     if cfg.fake_data == 'on_device':
@@ -393,8 +392,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     else:
         train_loader, valid_loader = get_dataloaders(cfg, use_fold, metadata, xm)
 
-    batch = next(iter(valid_loader))
-    xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
+    #batch = next(iter(valid_loader))  # OK
+    #xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
 
     # Send model to device
     model = wrapped_model.to(device)
@@ -440,7 +439,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=5, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
 
-    old_metrics = [map5] # OK: [acc, macro_acc, top3, f1, macro_f1]
+    old_metrics = [] #[map5] # OK: [acc, macro_acc, top3, f1, macro_f1]
 
     # cfg.metrics and metrics need to have identical keys: replace aliases in cfg.metrics
     aliases = {
