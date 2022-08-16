@@ -779,8 +779,6 @@ class EmbeddingAveragePrecision(tm.Metric):
         labels, embeddings = self.labels, self.embeddings
         #self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
         #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
-        self.xm.master_print("labels:", labels)  # torch.Size([10207]) torch.int64
-        self.xm.master_print("embeddings:", embeddings)  # torch.Size([10207, 15587])
         m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
         #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
         m.fill_diagonal_(-1000.0)  # penalize self-reckognition
@@ -790,6 +788,8 @@ class EmbeddingAveragePrecision(tm.Metric):
         # debug: do all on cpu
         labels = labels.cpu().numpy()
         embeddings = embeddings.cpu().numpy()
+        self.xm.master_print("labels:", labels)  # torch.Size([10207]) torch.int64
+        self.xm.master_print("embeddings:", embeddings)  # torch.Size([10207, 15587])
         m = np.matmul(embeddings, np.transpose(embeddings))  # similarity matrix
         for i in range(embeddings.shape[0]):
             m[i,i] = -1000.0  # avoid self-reckognition
