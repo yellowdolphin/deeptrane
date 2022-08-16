@@ -245,7 +245,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, old_metrics=N
     iterable = range(n_iter) if cfg.use_batch_tfms or (cfg.fake_data == 'on_device') else dataloader
 
     for batch_idx, batch in enumerate(iterable, start=1):
-        print(f"got batch {batch_idx}")
 
         # extract inputs and labels
         if cfg.fake_data == 'on_device':
