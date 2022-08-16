@@ -49,7 +49,7 @@ def add_image_id(df, cfg):
     print("DEBUG: truncating train+valid data to full batches!")
     n_replicas = cfg.n_replicas or 1
     #new_len = len(df) - len(df) % (cfg.num_folds * cfg.bs * n_replicas)
-    new_len = cfg.num_folds * cfg.bs * n_replicas  # minimal training
+    new_len = 2 * cfg.num_folds * cfg.bs * n_replicas  # minimal training
     df = df.iloc[:new_len].copy()
 
     return df
