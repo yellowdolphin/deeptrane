@@ -380,6 +380,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         loader_prefetch_size = 1
         device_prefetch_size = 1
         cfg.deviceloader = cfg.deviceloader or 'mp'  # 'mp' performs better than 'pl' on kaggle
+        xm.master_print("deviceloader:", cfg.deviceloader)
 
     # Dataloaders
     if cfg.fake_data == 'on_device':
@@ -452,7 +453,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
     metrics = {}
-    if 'acc' in cfg.metrics or 'micro_acc' in cfg.metrics:
+    if 'acc' in cfg.metrics:
         metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
     if 'macro_acc' in cfg.metrics:
         metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
@@ -460,17 +461,17 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['top5'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)
     if 'top3' in cfg.metrics:
         metrics['top3'] = tm.Accuracy(top_k=3, dist_sync_fn=dist_sync_fn)
-    if 'f1' in cfg.metrics or 'F1' in cfg.metrics:
+    if 'F1' in cfg.metrics:
         metrics['F1'] = tm.F1Score(num_classes=cfg.n_classes, average='micro', dist_sync_fn=dist_sync_fn)
-    if 'macro_f1' in cfg.metrics or 'macro_F1' in cfg.metrics:
+    if 'macro_F1' in cfg.metrics:
         metrics['macro_F1'] = tm.F1Score(num_classes=cfg.n_classes, average='macro', dist_sync_fn=dist_sync_fn)
-    if 'class_f1' in cfg.metrics or 'class_F1' in cfg.metrics:
+    if 'class_F1' in cfg.metrics:
         metrics['class_F1'] = tm.F1Score(num_classes=cfg.n_classes, average=None, dist_sync_fn=dist_sync_fn)
-    if 'f2' in cfg.metrics or 'F2' in cfg.metrics:
+    if 'F2' in cfg.metrics:
         metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
-    if 'map' in cfg.metrics or 'mAP' in cfg.metrics:
+    if 'mAP' in cfg.metrics:
         metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
-    if 'eap5' in cfg.metrics or 'eAP5' in cfg.metrics:
+    if 'eAP5' in cfg.metrics:
         metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
     metrics = tm.MetricCollection(metrics)  # MetricCollection.__setitem__ is broken (only first update works?)
 
