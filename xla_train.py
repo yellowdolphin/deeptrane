@@ -447,7 +447,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         'map': 'mAP',
         'eap5': 'eAP5',
         }
-    cfg.metrics = {k.replace(k, aliases[k]): v for k, v in cfg.metrics.items()}
+    cfg.metrics = [k.replace(k, aliases[k]) for k in cfg.metrics]
 
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
