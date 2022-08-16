@@ -548,6 +548,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     #
     #
     ### Training Loop ---------------------------------------------------------
+    xm.master_print('Metrics:', list(metrics.keys()))
 
     lrs = []
     metrics_dicts = []
