@@ -776,31 +776,31 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def compute(self):
-        labels, embeddings = self.labels, self.embeddings
+        labels, embeddings = self.labels, self.embeddings.softmax(dim=1)  # softmax is wrong but also done on map5 "features"!
         #self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
         #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
-        #m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
-        ##self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
-        #m.fill_diagonal_(-1000.0)  # penalize self-reckognition
-        ##self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
-        #predict_sorted = torch.argsort(m, dim=-1, descending=True)
+        m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
+        #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
+        m.fill_diagonal_(-1000.0)  # penalize self-reckognition
+        #self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
+        predict_sorted = torch.argsort(m, dim=-1, descending=True)
 
         # debug: do all on cpu
-        labels = labels.cpu().numpy()
-        embeddings = embeddings.softmax(dim=1).cpu().numpy()  # softmax is wrong but also done on map5 "features"!
-        self.xm.master_print("labels:", labels)  # torch.Size([10207]) torch.int64
-        self.xm.master_print("embeddings:", embeddings)  # torch.Size([10207, 15587])
-        m = np.matmul(embeddings, np.transpose(embeddings))  # similarity matrix
-        for i in range(embeddings.shape[0]):
-            m[i,i] = -1000.0  # avoid self-reckognition
-        #self.xm.master_print("MAP.m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
-        predict_sorted = np.argsort(m, axis=-1)[:,::-1]  # most similar other examples
-
-        ## the rest is much faster on CPU
         #labels = labels.cpu().numpy()
-        #m = m.cpu().numpy()
-        #predict_sorted = predict_sorted.cpu().numpy()
-        ##print(labels.shape, m.shape, predict_sorted.shape)  # ok
+        #embeddings = embeddings.softmax(dim=1).cpu().numpy()  # softmax is wrong but also done on map5 "features"!
+        #self.xm.master_print("labels:", labels)  # torch.Size([10207]) torch.int64
+        #self.xm.master_print("embeddings:", embeddings)  # torch.Size([10207, 15587])
+        #m = np.matmul(embeddings, np.transpose(embeddings))  # similarity matrix
+        #for i in range(embeddings.shape[0]):
+        #    m[i,i] = -1000.0  # avoid self-reckognition
+        ##self.xm.master_print("MAP.m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
+        #predict_sorted = np.argsort(m, axis=-1)[:,::-1]  # most similar other examples
+
+        # the rest is much faster on CPU
+        labels = labels.cpu().numpy()
+        m = m.cpu().numpy()
+        predict_sorted = predict_sorted.cpu().numpy()
+        #print(labels.shape, m.shape, predict_sorted.shape)  # ok
 
         map5_list = []
         for threshold in np.arange(1, 0, -0.05):
