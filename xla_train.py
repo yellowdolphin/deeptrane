@@ -393,7 +393,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     else:
         train_loader, valid_loader = get_dataloaders(cfg, use_fold, metadata, xm)
 
-    batch = iter(next(valid_loader))
+    batch = next(iter(valid_loader))
     xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
 
     # Send model to device
