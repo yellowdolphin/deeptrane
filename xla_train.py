@@ -439,7 +439,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     map5 = MAP(xm, k=5, name='mAP5')
     map1 = MAP(xm, k=1, name='mAP')
 
-    old_metrics = [] #[map5] # OK: [acc, macro_acc, top3, f1, macro_f1]
+    old_metrics = [map5] # OK: [acc, macro_acc, top3, f1, macro_f1]
 
     # cfg.metrics and metrics need to have identical keys: replace aliases in cfg.metrics
     aliases = {
