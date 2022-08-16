@@ -437,6 +437,18 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     old_metrics = [map5] # OK: [acc, macro_acc, top3, f1, macro_f1]
 
+    # cfg.metrics and metrics need to have identical keys: replace aliases in cfg.metrics
+    aliases = {
+        'micro_acc': 'acc',
+        'f1': 'F1',
+        'macro_f1': 'macro_F1',
+        'class_f1': 'class_F1',
+        'f2': 'F2',
+        'map': 'mAP',
+        'eap5': 'eAP5',
+        }
+    cfg.metrics = {k.replace(k, aliases[k]): v for k, v in cfg.metrics.items()}
+
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
     metrics = {}
@@ -461,16 +473,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if 'eap5' in cfg.metrics or 'eAP5' in cfg.metrics:
         metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
     metrics = tm.MetricCollection(metrics)  # MetricCollection.__setitem__ is broken (only first update works?)
-    aliases = {
-        'micro_acc': 'acc',
-        'f1': 'F1',
-        'macro_f1': 'macro_F1',
-        'class_f1': 'class_F1',
-        'f2': 'F2',
-        'map': 'mAP',
-        'eap5': 'eAP5',
-        }
-    cfg.metrics = {k.replace(k, aliases[k]): v for k, v in cfg.metric.items()}
+
 
     #if cfg.negative_thres: metrics['pct_N'] = pct_negatives
 
