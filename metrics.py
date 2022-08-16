@@ -670,13 +670,13 @@ class MAP(nn.Module):
 
 
     def forward(self, labels, features):
-        self.xm.master_print("labels:", labels.dtype, "features:", features.dtype)
+        #self.xm.master_print("labels:", labels.dtype, "features:", features.dtype)
         m = np.matmul(features, np.transpose(features))  # similarity matrix
         for i in range(features.shape[0]):
             m[i,i] = -1000.0  # avoid self-reckognition
-        self.xm.master_print("MAP.m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
+        #self.xm.master_print("MAP.m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
         predict_sorted = np.argsort(m, axis=-1)[:,::-1]  # most similar other examples
-        self.xm.master_print("MAP.predict_sorted:", predict_sorted.shape)
+        #self.xm.master_print("MAP.predict_sorted:", predict_sorted.shape)
 
         #thresholds = np.arange(0.4, 0.3, -0.02)
         thresholds = np.arange(1, 0, -0.05)
@@ -722,6 +722,8 @@ class MAP(nn.Module):
 
 
     def mapk(self, labels, preds):
+        #self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)  # torch.Size([10207]) torch.int64 cuda:0
+        #self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # 10207 torch.Size([5]) torch.int64 cuda:0
         return np.mean([self.apk(l, p) for l, p in zip(labels, preds)])
 
 
@@ -773,21 +775,29 @@ class EmbeddingAveragePrecision(tm.Metric):
 
     def compute(self):
         labels, embeddings = self.labels, self.embeddings
-        self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
+        #self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
         #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
         m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
         #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
-        m.diagonal = -1000.0  # penalize self-reckognition
+        m.fill_diagonal_(-1000.0)  # penalize self-reckognition
         #self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
         predict_sorted = torch.argsort(m, dim=-1, descending=True)
-        #self.xm.master_print("predict_sorted:", predict_sorted.shape)  # torch.Size([10207, 10207])
+
+        # the rest is much faster on CPU
+        labels = labels.cpu().numpy()
+        m = m.cpu().numpy()
+        predict_sorted = predict_sorted.cpu().numpy()
+        #print(labels.shape, m.shape, predict_sorted.shape)  # ok
 
         map5_list = []
-        for threshold in torch.arange(start=1, end=0, step=-0.05, dtype=torch.float32, device=labels.device):
+        for threshold in np.arange(1.0, 0.0, -0.05):
             top5s = []
-            for l, scores, indices in zip(labels, m, predict_sorted):  # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
+            for l, scores, indices in zip(labels, m, predict_sorted):  
+                # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
                 top5_labels = self.get_top5(scores, indices, labels, threshold)  # -> tensor (cpu)
-                top5s.append(top5_labels)
+                top5s.append(np.array(top5_labels))
+            assert isinstance(top5s[0], np.ndarray)
+            assert top5s[0].shape == (5,)
             map5_list.append((threshold, self.mapk(labels, top5s)))
         map5_list = list(sorted(map5_list, key=lambda x: x[1], reverse=True))
         best_thres = map5_list[0][0]
@@ -798,6 +808,33 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def get_top5(self, scores, indices, labels, threshold):
+        used = set()
+        ret_labels = []
+        ret_scores = []
+
+        for index in indices:
+            l = labels[index]
+            s = scores[index]
+            if l in used:
+                continue
+
+            if 0 not in used and s < threshold:
+                used.add(0)
+                ret_labels.append(0)
+                ret_scores.append(-2.0)
+            if l in used:
+                continue
+
+            used.add(l)
+            ret_labels.append(l)
+            ret_scores.append(s)
+            if len(ret_labels) >= self.k:
+                break
+        return ret_labels[:5]
+
+
+    def get_top5_2(self, scores, indices, labels, threshold):
+        # slow
         #self.xm.master_print("scores:", scores.device)  # cuda
         #self.xm.master_print("indices:", indices.device)  # cuda
         #self.xm.master_print("labels:", labels.device)  # cuda
@@ -825,23 +862,33 @@ class EmbeddingAveragePrecision(tm.Metric):
         return torch.LongTensor(ret_labels[:5]).to(labels.device)
 
 
-    def mapk(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
-        self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)  # torch.Size([10207]) torch.int64 cuda:0
-        self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # 10207 torch.Size([5]) torch.int64 cuda:0
-        return torch.mean(torch.FloatTensor([self.apk(l, p) for l, p in zip(labels, preds)]))
+    def mapk(self, labels: np.array, preds: List[np.array]):
+        #labels, preds = labels.cpu().numpy(), [p.cpu().numpy() for p in preds]
+        assert isinstance(labels, np.ndarray)
+        assert isinstance(preds, list)
+        assert isinstance(preds[0], np.ndarray)
+        assert preds[0].shape == (5,)
+        return np.mean([self.apk(l, p) for l, p in zip(labels, preds)])
+
+
+    def mapk2(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
+        # slow
+        #self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)  # torch.Size([10207]) torch.int64 cuda:0
+        #self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # 10207 torch.Size([5]) torch.int64 cuda:0
+        return torch.mean(torch.FloatTensor([self.apk2(l, p) for l, p in zip(labels, preds)]))
 
 
     def apk(self, labels, preds):
-        #self.xm.master_print("apk labels:", labels.shape, labels.device)  # torch.Size([]) cuda:0
-        #self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5]) cuda:0
+        assert isinstance(labels, np.int64)
+        assert isinstance(preds, np.ndarray)
+        assert preds.shape == (5,)
         k = self.k
         if not labels:
             return 0.0
         if len(preds) > k:
-            preds = preds[:k]
+                preds = preds[:k]
 
-        #if not hasattr(labels, '__len__') or len(labels) == 1:
-        if labels.ndim == 0:
+        if not hasattr(labels, '__len__') or len(labels) == 1:
             for i, p in enumerate(preds):
                 if p == labels:
                     return 1.0 / (i + 1)
@@ -856,3 +903,31 @@ class EmbeddingAveragePrecision(tm.Metric):
                 score += num_hits / (i + 1.0)
 
         return score / min(len(labels), k)
+
+
+    def apk2(self, labels, preds):
+        # slow
+        #self.xm.master_print("apk labels:", labels.shape, labels.device)  # torch.Size([]) cuda:0
+        #self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5]) cuda:0
+        k = self.k
+        if not labels:
+            return torch.tensor(0.0)
+        if len(preds) > k:
+            preds = preds[:k]
+
+        #if not hasattr(labels, '__len__') or len(labels) == 1:
+        if labels.ndim == 0:
+            for i, p in enumerate(preds):
+                if p == labels:
+                    return torch.tensor(1.0 / (i + 1))
+            return torch.tensor(0.0)
+
+        score = 0.0
+        num_hits = 0.0
+
+        for i, p in enumerate(preds):
+            if p in labels and p not in preds[:i]:
+                num_hits += 1.0
+                score += num_hits / (i + 1.0)
+
+        return torch.tensor(score / min(len(labels), k))
