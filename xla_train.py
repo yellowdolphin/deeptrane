@@ -556,7 +556,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     epoch_summary_header = ''.join([
         #'epoch   ', ' train_loss ', ' valid_loss ', ' '.join([f'{m.__name__:^8}' for m in metrics]),
         'epoch   ', ' train_loss ', ' valid_loss ', 
-        ' '.join([f'{key:^8}' for key in metrics if 'class' not in key]),
+        ' '.join([f'{key:^8}' for key in cfg.metrics if getattr(metrics[key], 'average', '') is not None]),
         '   lr    ', 'min_train  min_total'])
     xm.master_print("\n", epoch_summary_header)
     xm.master_print("=" * (len(epoch_summary_header) + 2))
@@ -637,8 +637,12 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
         epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
-        for key, val in valid_metrics.items():                                            # metrics
-            if isinstance(val, list): 
+        for key in cfg.metrics:                                                           # metrics
+            # cannot use valid_metric.items() because MetricCollection re-orders keys alphabetically
+            val = valid_metrics[key]
+            if isinstance(val, list):
+                if getattr(metrics[key], 'average', '') is not None:
+                    xm.master_print(f'Warning: metric {key} returned list but "average" attribute is not None')
                 xm.master_print(key + ':\t' + "\t".join(f'{v:.5f}' for v in val))
             else:
                 epoch_summary_strings.append(f'{val:7.5f}')

@@ -22,7 +22,7 @@ def init(cfg):
 
     cfg.meta_csv = cfg.competition_path / 'train.csv'  # label
     cfg.gcs_filter = 'train_tfrecords/*.tfrec'
-    cfg.n_classes = 5
+    cfg.n_classes = 6
     cfg.gcs_paths = gcs_paths
 
     # Customize data pipeline (see tf_data for definition and defaults)
