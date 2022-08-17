@@ -667,6 +667,7 @@ class NegativeRate(tm.StatScores):
         assert class_stats.ndim == 2, f'expected class_stats.ndim 2 got {class_stats.ndim}'
         neg_stats = class_stats[self.negative_class]
         tp, fp, tn, fn, sup = neg_stats
+        print("negative_class:", self.negative_class)
         print("tp fp tn fn total:", tp, fp, tn, fn, tp + fp + tn + fn)
         return (tp + fp) / (tp + fp + tn + fn)
 
