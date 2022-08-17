@@ -321,10 +321,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         #        meter.update(m(labels.cpu().numpy(), top.cpu().numpy()), inputs.size(0))
 
     # mesh_reduce loss
-    #if cfg.pudae_valid:
-    #    avg_loss = 0
-    #else:
-    #    avg_loss = loss_meter.average
+    if cfg.pudae_valid:
+        avg_loss = 0
+    else:
+        avg_loss = loss_meter.average
 
     # mesh_reduce metrics
     metrics_start = time.perf_counter()
