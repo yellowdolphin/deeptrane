@@ -446,7 +446,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         negative_class = (
             0 if cfg.negative_class is None else
             cfg.negative_class if isinstance(cfg.negative_class, int) else
-            cfg.vocab.transform([cfg.negative_class])[0] if hasattr(cfg, 'vocab'))
+            cfg.vocab.transform([cfg.negative_class])[0])
         metrics['pct_N'] = NegativeRate(num_classes=cfg.n_classes, negative_class=negative_class, 
                                         threshold=cfg.negative_thres or 0.5)
     if 'mAP' in cfg.metrics:
