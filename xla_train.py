@@ -444,8 +444,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
     if 'pct_N' in cfg.metrics:
         negative_class = (
+            0 if cfg.negative_class is None else
             cfg.negative_class if isinstance(cfg.negative_class, int) else
-            cfg.vocab.transform([cfg.negative_class])[0] if hasattr(cfg, 'vocab') else 0)
+            cfg.vocab.transform([cfg.negative_class])[0] if hasattr(cfg, 'vocab'))
         metrics['pct_N'] = NegativeRate(num_classes=cfg.n_classes, negative_class=negative_class, 
                                         threshold=cfg.negative_thres or 0.5)
     if 'mAP' in cfg.metrics:
