@@ -404,8 +404,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
 
     negative_class = (
+        0 if cfg.negative_class is None else
         cfg.negative_class if isinstance(cfg.negative_class, int) else
-        cfg.vocab.transform([cfg.negative_class])[0] if hasattr(cfg, 'vocab') else 0)
+        cfg.vocab.transform([cfg.negative_class])[0])
     pct_negatives = OldNegativeRate(negative_class=negative_class)
 
     old_metrics = [pct_negatives] # OK: [eap5, acc, macro_acc, top3, f1, macro_f1]
