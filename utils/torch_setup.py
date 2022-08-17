@@ -20,7 +20,7 @@ def torchmetrics_fork():
         if about_file.exists():
             with open(about_file, 'r') as f:
                 code = f.readlines()
-            for l in lines:
+            for l in code:
                 if l.startswith('__version__ ='):
                     version = l.split('=')[1].strip(' \'"\n')
                     return version
