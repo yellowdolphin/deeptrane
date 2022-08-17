@@ -20,6 +20,7 @@ cfg = dict(
     use_batch_tfms = False,
     n_replicas = 8,
     metrics = ['neg_rate'],
+    negative_class = 1,
     bs = 128,
     n_acc = 1,
     epochs = 10,
