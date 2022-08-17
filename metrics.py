@@ -6,8 +6,11 @@ import math
 from typing import List
 import numpy as np
 import torchmetrics as tm
+from torchmetrics.utilities.checks import _input_format_classification
+from torchmetrics.utilities.enums import DataType
 from sklearn.metrics import average_precision_score
 import torch
+from torch import Tensor
 import torch.nn as nn
 
 
@@ -20,11 +23,11 @@ def get_dist_sync_fn(xm):
         assert group is None, f'group not None: {group}'
         local_data = data
         ordinal = xm.get_ordinal()
-        assert isinstance(data, torch.Tensor), f'{type(data)} is not a Tensor'
+        assert isinstance(data, Tensor), f'{type(data)} is not a Tensor'
         data = xm.mesh_reduce('metric_sync', data, list)
         assert type(data) is list
         assert len(data) == xm.xrt_world_size()
-        assert isinstance(data[ordinal], torch.Tensor), f'{type(data[ordinal])} is not a Tensor'
+        assert isinstance(data[ordinal], Tensor), f'{type(data[ordinal])} is not a Tensor'
         assert data[ordinal].dtype == local_data.dtype, f'dtype changed to {data[ordinal].dtype}'
         assert data[ordinal].shape == local_data.shape, f'shape changed to {data[ordinal].shape}'
         return data
@@ -33,7 +36,7 @@ def get_dist_sync_fn(xm):
 
 
 def reduce(values):
-    if isinstance(values, torch.Tensor):
+    if isinstance(values, Tensor):
         return torch.mean(values)
     return sum(values) / len(values)
 
@@ -646,7 +649,7 @@ class VinBigDataEval:
 
 # Metrics for image recognition -----------------------------------------------
 
-class NegativeRate(nn.Module):
+class OldNegativeRate(nn.Module):
     def __init__(self, negative_class=0, name='neg_rate'):
         super().__init__()
         self.negative_class = negative_class
@@ -659,101 +662,32 @@ class NegativeRate(nn.Module):
         return (preds == self.negative_class).sum() / len(preds)
 
 
-class MAP(nn.Module):
-    def __init__(self, xm, k=0, name='mAP'):
-        super().__init__()
-        self.xm = xm
-        self.k = k
-        self.needs_scores = True
-        self.macro = True
-        self.__name__ = name
+class NegativeRate(tm.StatScores):
+    """This metric monitors the rate at which `negative_class` is predicted.summarize.
 
+    All input formats are supported, but num_classes must be specified.
+    kwargs are passed to the StatScores parent class."""
+    is_differentiable = False
+    full_state_update: bool = False
 
-    def forward(self, labels, features):
-        #self.xm.master_print("labels:", labels.shape, "features:", features.shape)
-        self.xm.master_print("labels:", labels)
-        self.xm.master_print("features:", features)
-        m = np.matmul(features, np.transpose(features))  # similarity matrix
-        for i in range(features.shape[0]):
-            m[i,i] = -1000.0  # avoid self-reckognition
-        #self.xm.master_print("MAP.m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
-        predict_sorted = np.argsort(m, axis=-1)[:,::-1]  # most similar other examples
-        #self.xm.master_print("MAP.predict_sorted:", predict_sorted.shape)
+    def __init__(self, num_classes, negative_class=0, **kwargs):
+        kwargs.update(dict(reduce='macro', num_classes=num_classes))
+        super().__init__(**kwargs)
+        self.negative_class = negative_class
 
-        #thresholds = np.arange(0.4, 0.3, -0.02)
-        thresholds = np.arange(1, 0, -0.05)
-        map5_list = []
-        for threshold in thresholds:
-            top5s = []
-            for l, scores, indices in zip(labels, m, predict_sorted):  # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
-                top5_labels, top5_scores = self.get_top5(scores, indices, labels, threshold)
-                top5s.append(np.array(top5_labels))
-            map5_list.append((threshold, self.mapk(labels, top5s)))
-        map5_list = list(sorted(map5_list, key=lambda x: x[1], reverse=True))
-        best_thres = map5_list[0][0]
-        best_score = map5_list[0][1]
-        self.xm.master_print(f"best_thres: {best_thres:.2f}")
-
-        return best_score
-
-
-    def get_top5(self, scores, indices, labels, threshold):
-        used = set()
-        ret_labels = []
-        ret_scores = []
-
-        for index in indices:
-            l = labels[index]
-            s = scores[index]
-            if l in used:
-                continue
-
-            if 0 not in used and s < threshold:
-                used.add(0)
-                ret_labels.append(0)
-                ret_scores.append(-2.0)
-            if l in used:
-                continue
-
-            used.add(l)
-            ret_labels.append(l)
-            ret_scores.append(s)
-            if len(ret_labels) >= self.k:
-                break
-        return ret_labels[:5], ret_scores[:5]
-
-
-    def mapk(self, labels, preds):
-        #self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)  # torch.Size([10207]) torch.int64 cuda:0
-        #self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # 10207 torch.Size([5]) torch.int64 cuda:0
-        return np.mean([self.apk(l, p) for l, p in zip(labels, preds)])
-
-
-    def apk(self, labels, preds):
-        k = self.k
-        if not labels:
-            return 0.0
-        if len(preds) > k:
-                preds = preds[:k]
-
-        if not hasattr(labels, '__len__') or len(labels) == 1:
-            for i, p in enumerate(preds):
-                if p == labels:
-                    return 1.0 / (i + 1)
-            return 0.0
-
-        score = 0.0
-        num_hits = 0.0
-
-        for i, p in enumerate(preds):
-            if p in labels and p not in preds[:i]:
-                num_hits += 1.0
-                score += num_hits / (i + 1.0)
-
-        return score / min(len(labels), k)
+    def compute(self) -> Tensor:
+        class_stats = super().compute()
+        assert class_stats.ndim == 2, f'expected class_stats.ndim 2 got {class_stats.ndim}'
+        neg_stats = class_stats[self.negative_class]
+        tp, fp, tn, fn, sup = neg_stats
+        return (tp + fp) / (tp + fp + tn + fn)
 
 
 class EmbeddingAveragePrecision(tm.Metric):
+    """This metric calculates cos similarity scores for `embeddings`, generates predictions for
+    a range of negative/new thresholds and calculates the top5 AP score for the best threshold.
+
+    It requires embeddings instead of classifier logits/scores."""
 
     is_differentiable = False
     higher_is_better = True
@@ -776,7 +710,7 @@ class EmbeddingAveragePrecision(tm.Metric):
 
 
     def compute(self):
-        labels, embeddings = self.labels, self.embeddings.softmax(dim=1)  # softmax is wrong but also done on map5 "features"!
+        labels, embeddings = self.labels, self.embeddings
         #self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
         #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
         m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
@@ -784,17 +718,6 @@ class EmbeddingAveragePrecision(tm.Metric):
         m.fill_diagonal_(-1000.0)  # penalize self-reckognition
         #self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
         predict_sorted = torch.argsort(m, dim=-1, descending=True)
-
-        # debug: do all on cpu
-        #labels = labels.cpu().numpy()
-        #embeddings = embeddings.softmax(dim=1).cpu().numpy()  # softmax is wrong but also done on map5 "features"!
-        #self.xm.master_print("labels:", labels)  # torch.Size([10207]) torch.int64
-        #self.xm.master_print("embeddings:", embeddings)  # torch.Size([10207, 15587])
-        #m = np.matmul(embeddings, np.transpose(embeddings))  # similarity matrix
-        #for i in range(embeddings.shape[0]):
-        #    m[i,i] = -1000.0  # avoid self-reckognition
-        ##self.xm.master_print("MAP.m:", m.shape, [m[i, i] for i in range(0, 5, 10)])
-        #predict_sorted = np.argsort(m, axis=-1)[:,::-1]  # most similar other examples
 
         # the rest is much faster on CPU
         labels = labels.cpu().numpy()

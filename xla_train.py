@@ -25,7 +25,7 @@ from torch.optim import lr_scheduler
 from utils.schedulers import get_one_cycle_scheduler, maybe_step
 from utils.general import listify
 from models import is_bn
-from metrics import get_dist_sync_fn, NegativeRate, MAP, AverageMeter, EmbeddingAveragePrecision
+from metrics import get_dist_sync_fn, NegativeRate, AverageMeter, EmbeddingAveragePrecision
 from torch import FloatTensor, LongTensor
 
 torch.set_default_tensor_type('torch.FloatTensor')
@@ -402,43 +402,14 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if cfg.use_aux_loss:
         from segmentation_models_pytorch.losses.dice import DiceLoss
     seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
-    f1 = partial(f1_score, average='micro')
-    f1.__name__ = 'F1'
-    macro_f1 = partial(f1_score, average='macro')
-    macro_f1.__name__ = 'macro_F1'
-    macro_f1.macro = True
-    #acc = accuracy_score
-    acc = tmf.accuracy
-    acc.__name__ = 'acc'
-    macro_acc = partial(tmf.accuracy, average='macro', num_classes=cfg.n_classes)
-    macro_acc.__module__ = tmf.accuracy.__module__
-    macro_acc.__name__ = 'macro_acc'
-    macro_acc.needs_scores = True
-    macro_acc.macro = True
-    #if 'top_k_accuracy_score' in globals():
-    #    #top5 = partial(top_k_accuracy_score, k=5)
-    #    top5 = partial(top_k_accuracy_score, k=3)
-    #    top5.__name__  = 'top5'
-    #    top5.needs_scores = True
-    top3 = partial(tmf.accuracy, top_k=3)
-    top3.__module__ = tmf.accuracy.__module__
-    top3.__name__ = 'top3'
-    ap = average_precision_score
-    ap.__name__ = 'acc'
-    ap.needs_scores = True
-    lap = label_ranking_average_precision_score
-    lap.__name__ = 'lAP'
-    lap.needs_scores = True
-    map = partial(val_map, xm=xm)
-    map.__name__ = 'mAP'
-    map.needs_scores = True
-    if cfg.negative_class and cfg.vocab:
-        pct_negatives = NegativeRate(negative_class=cfg.vocab.transform([cfg.negative_class])[0])
-    #map5 = MAP(xm, k=5, name='mAP5')
-    map5 = MAP(xm, k=5, name='mAP5')
-    map1 = MAP(xm, k=1, name='mAP')
 
-    old_metrics = [map5] # OK: [acc, macro_acc, top3, f1, macro_f1]
+    if cfg.negative_class:
+        negative_class = (
+            cfg.negative_class if isinstance(cfg.negative_class, int) else
+            cfg.vocab.transform([cfg.negative_class])[0] if hasattr(cfg, 'vocab') else 0)
+        pct_negatives = OldNegativeRate(negative_class=negative_class)
+
+    old_metrics = [pct_negatives] # OK: [eap5, acc, macro_acc, top3, f1, macro_f1]
 
     # cfg.metrics and metrics need to have identical keys: replace aliases in cfg.metrics
     aliases = {
@@ -447,6 +418,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         'macro_f1': 'macro_F1',
         'class_f1': 'class_F1',
         'f2': 'F2',
+        'neg_rate': 'pct_N',
         'map': 'mAP',
         'eap5': 'eAP5',
         }
@@ -471,14 +443,18 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['class_F1'] = tm.F1Score(num_classes=cfg.n_classes, average=None, dist_sync_fn=dist_sync_fn)
     if 'F2' in cfg.metrics:
         metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
+    if 'pct_N' in cfg.metrics:
+        negative_class = (
+            cfg.negative_class if isinstance(cfg.negative_class, int) else
+            cfg.vocab.transform([cfg.negative_class])[0] if hasattr(cfg, 'vocab') else 0)
+        metrics['pct_N'] = NegativeRate(num_classes=cfg.n_classes, negative_class=negative_class, 
+                                        threshold=cfg.negative_thres or 0.5)
     if 'mAP' in cfg.metrics:
         metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
     if 'eAP5' in cfg.metrics:
         metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
     metrics = tm.MetricCollection(metrics)  # MetricCollection.__setitem__ is broken (only first update works?)
 
-
-    #if cfg.negative_thres: metrics['pct_N'] = pct_negatives
 
     #if cfg.no_macro_metrics:
     #    skipped_metrics = [m.__name__ for m in metrics if getattr(m, 'needs_scores', False)]
