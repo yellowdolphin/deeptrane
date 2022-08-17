@@ -100,10 +100,11 @@ if cfg.xla and torchmetrics_fork() != 'xla_fork':
     quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git')
 elif not cfg.xla and not torchmetrics_fork():
     quietly_run('pip install torchmetrics')
-#elif set(cfg.metrics).intersection('f1 F1 class_f1 class_F1 macro_f1 macro_F1 f2 F2'):
-#    tm_version = torchmetrics_fork().split('.')
-#    if tm_version[0] == '0' and int(tm_version[1]) < 8:
-#        quietly_run('pip install -U torchmetrics')
+elif set(cfg.metrics).intersection('f1 F1 class_f1 class_F1 macro_f1 macro_F1 f2 F2 map mAP'):
+    # require 0.8.0+
+    tm_version = torchmetrics_fork().split('.')
+    if tm_version[0] == '0' and int(tm_version[1]) < 8:
+        quietly_run('pip install -U torchmetrics')
 
 # Install timm
 if cfg.use_timm:
