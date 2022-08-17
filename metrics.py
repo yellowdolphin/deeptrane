@@ -649,19 +649,6 @@ class VinBigDataEval:
 
 # Metrics for image recognition -----------------------------------------------
 
-class OldNegativeRate(nn.Module):
-    def __init__(self, negative_class=0, name='neg_rate'):
-        super().__init__()
-        self.negative_class = negative_class
-        self.needs_top5 = False
-        self.needs_scores = False
-        self.__name__ = name
-
-    def forward(self, labels, preds):
-        preds = preds[:, 0] if preds.ndim > 1 else preds
-        return (preds == self.negative_class).sum() / len(preds)
-
-
 class NegativeRate(tm.StatScores):
     """This metric monitors the rate at which `negative_class` is predicted.summarize.
 
@@ -680,6 +667,7 @@ class NegativeRate(tm.StatScores):
         assert class_stats.ndim == 2, f'expected class_stats.ndim 2 got {class_stats.ndim}'
         neg_stats = class_stats[self.negative_class]
         tp, fp, tn, fn, sup = neg_stats
+        print("tp fp tn fn total:", tp, fp, tn, fn, tp + fp + tn + fn)
         return (tp + fp) / (tp + fp + tn + fn)
 
 
