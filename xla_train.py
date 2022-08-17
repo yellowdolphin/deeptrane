@@ -25,7 +25,7 @@ from torch.optim import lr_scheduler
 from utils.schedulers import get_one_cycle_scheduler, maybe_step
 from utils.general import listify
 from models import is_bn
-from metrics import get_dist_sync_fn, NegativeRate, AverageMeter, EmbeddingAveragePrecision
+from metrics import get_dist_sync_fn, NegativeRate, OldNegativeRate, AverageMeter, EmbeddingAveragePrecision
 from torch import FloatTensor, LongTensor
 
 torch.set_default_tensor_type('torch.FloatTensor')
