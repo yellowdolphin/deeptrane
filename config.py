@@ -64,6 +64,7 @@ parser.add_argument("-f", "--use_folds", nargs="+", type=int, help="cfg.use_fold
 parser.add_argument("-v", "--batch_verbose", help="mbatch frequency of progress outputs")
 parser.add_argument("--epochs", type=int)
 parser.add_argument("--size", nargs="+", type=int, help="model input size (int) or (height, width)")
+parser.add_argument("--metrics", nargs="+", type=str, help="metrics (str) keywords or aliases")
 parser.add_argument("--dropout_ps", nargs="+", type=float, help="Dropout probabilities for head Dropout layers")
 parser.add_argument("--lin_ftrs", nargs="+", type=int, help="None|output dims of linear (FC) head layers before output layer")
 parser.add_argument("--betas", nargs=2, type=float, help="Adam (β1, β2) or SGD (μ, 1 - τ) parameters")
