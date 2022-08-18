@@ -356,7 +356,7 @@ def get_pretrained_model(cfg):
                     print(f'Pretrained weights: skipping {key}')
                     _ = state_dict.pop(key)
             keys = list(state_dict.keys())
-        if 'pretrained' in cfg.rst_path:
+        if 'pretrained' in str(cfg.rst_path):
             for k in keys:
                 if k.startswith('head') and (k.endswith('weight') or k.endswith('bias')):
                     v = state_dict.pop(k)
