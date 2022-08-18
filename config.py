@@ -10,8 +10,7 @@ import yaml
 def construct_python_tuple(loader, node):
     return tuple(loader.construct_sequence(node))
 
-yaml.SafeLoader.add_constructor(u'!python/tuple', construct_python_tuple)
-#yaml.SafeLoader.add_constructor(u'tag:yaml.org,2002:python/tuple', construct_python_tuple)
+yaml.SafeLoader.add_constructor(u'tag:yaml.org,2002:python/tuple', construct_python_tuple)
 
 class DotDict(dict):
     """dot.notation access to dictionary attributes
