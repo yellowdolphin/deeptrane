@@ -100,6 +100,7 @@ def get_metadata(cfg, project):
 
 
 def add_image_path(df, image_root, subdirs, filetype='png', xla=False):
+    print("add_image_path.filetype:", filetype)
     # Copy data (colab) and set image_root path
     if xla and False:  # dataloader.show_batch() hangs
         from kaggle_datasets import KaggleDatasets
