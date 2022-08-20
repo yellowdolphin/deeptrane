@@ -24,7 +24,7 @@ def show_image(image):
 class ImageDataset(Dataset):
     """Dataset for test images (no targets needed)"""
 
-    def __init__(self, df, cfg, mode='train', transform=None, tensor_transform=None,
+    def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
                  class_column='category_id'):
         """
         Args:
@@ -39,7 +39,7 @@ class ImageDataset(Dataset):
         self.tensor_transform = tensor_transform
         self.albu = transform and transform.__module__.startswith('albumentations')
         self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
-        self.labeled = (mode in ['train', 'valid'])
+        self.labeled = labeled
         self.multilabel = cfg.multilabel
         if self.labeled:
             n_classes = cfg.n_classes
@@ -208,7 +208,7 @@ def get_fakedata_loaders(cfg, device):
     return train_loader, valid_loader
 
 
-def get_dataloaders(cfg, use_fold, metadata, xm):
+def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
 
     if cfg.filetype == 'wds':
         from experimental import web_datasets
@@ -231,11 +231,11 @@ def get_dataloaders(cfg, use_fold, metadata, xm):
     test_tfms = get_tfms(cfg, mode='test')
     tensor_tfms = None
 
-    ds_train = ImageDataset(meta_train, cfg, mode='train',
-                            transform=train_tfms, tensor_transform=tensor_tfms,
+    ds_train = ImageDataset(meta_train, cfg, labeled=True,
+                            transform=train_tfms if augment else test_tfms, tensor_transform=tensor_tfms,
                             class_column=class_column)
     
-    ds_valid = ImageDataset(meta_valid, cfg, mode='valid',
+    ds_valid = ImageDataset(meta_valid, cfg, labeled=True,
                             transform=test_tfms, tensor_transform=tensor_tfms,
                             class_column=class_column)
 
