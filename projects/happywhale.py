@@ -43,7 +43,7 @@ def init(cfg):
                         f'train_images-{scaled_size}-{scaled_size}')]
         if max(cfg.size) > 384:
             cfg.subdirs = ['happy-whale-and-dolphin/train_images']
-        cfg.filetype = 'jpg'
+        cfg.filetype = cfg.filetype or 'jpg'
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         #cfg.dims_csv = None
     else:
