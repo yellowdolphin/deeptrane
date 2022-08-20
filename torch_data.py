@@ -221,7 +221,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
     xm.master_print("Using class labels from column", class_column)
 
-    is_valid = metadata.is_valid
+    is_valid = metadata.is_valid if hasattr(metadata, 'is_valid') else (metadata.fold == use_fold)
     is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
     meta_train = metadata.loc[~ is_valid]
     meta_valid = metadata.loc[is_valid | is_shared]
