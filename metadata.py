@@ -107,7 +107,7 @@ def add_image_path(df, image_root, subdirs, filetype='png', xla=False):
         gcs_path = KaggleDatasets().get_gcs_path(image_root.parent.name)
         image_root = f'{gcs_path}/{image_root.name}'
 
-    # Add image_path above image_root to df
+    # Add image_path above image_root to df (cfg.image_root is prepended by ImageDataset)
     assert image_root.exists(), f'image_root not found: {image_root}'
     if len(subdirs) == 1 and subdirs[0] == '.':
         df['image_path'] = df.image_id + f'.{filetype}'
