@@ -330,14 +330,11 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
 
 
 def get_test_loader(cfg, metadata, xm, return_path_attr=None):
-    class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
-    xm.master_print("Using class labels from column", class_column)
 
     test_tfms = get_tfms(cfg, mode='test')
 
     ds_test = ImageDataset(metadata, cfg, labeled=False, return_path_attr='stem',
-                           transform=test_tfms, tensor_transform=None,
-                           class_column=class_column)
+                           transform=test_tfms, tensor_transform=None)
 
     xm.master_print("ds_test:", len(ds_test))
     if cfg.DEBUG:
