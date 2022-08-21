@@ -25,13 +25,16 @@ class ImageDataset(Dataset):
     """Dataset for test images (no targets needed)"""
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
-                 class_column='category_id'):
+                 class_column='category_id', return_path_attr=None):
         """
         Args:
-            df (pd.DataFrame): First row must contain the image file paths
-            image_root (string, Path): Root directory for df.image_path
-            transform (callable, optional): Optional transform to be applied
-                on the first element (image) of a sample.
+            df (pd.DataFrame):                First row must contain the image file paths
+            image_root (string, Path):        Root directory for df.image_path
+            transform (callable, optional):   Optional transform to be applied on the first
+                                              element (image) of a sample.
+            labeled (bool, optional):         return `class_column` of `df`
+            return_path_attr (str, optional): return Path attribute `return_path_attr`
+
         """
         self.df = df.reset_index(drop=True)
         self.image_root = cfg.image_root
@@ -40,7 +43,9 @@ class ImageDataset(Dataset):
         self.albu = transform and transform.__module__.startswith('albumentations')
         self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
         self.labeled = labeled
+        self.return_path_attr = return_path_attr
         self.multilabel = cfg.multilabel
+
         if self.labeled:
             n_classes = cfg.n_classes
             if self.multilabel:
@@ -60,9 +65,8 @@ class ImageDataset(Dataset):
                         assert max_label < n_classes, f"largest label {max_label} >= n_classes {n_classes}"
                     else:
                         n_classes = max_label + 1
-        if DEBUG: print(f"Image paths from column {self.df.columns[0]}")
-        if self.labeled:
             if DEBUG: print(f"Labels from column {oh_columns if self.multilabel else class_column}")
+        if DEBUG: print(f"Image paths from column {self.df.columns[0]}")
 
         if cfg.xla and False:
             # Try GCS paths... fixme!
@@ -102,9 +106,16 @@ class ImageDataset(Dataset):
         if self.tensor_transform:
             image = self.tensor_transform(image)
 
+        labels = []
         if self.labeled:
-            label = self.labels[index]
-            return (image, label)
+            labels.append(self.labels[index])
+        if self.return_path_attr:
+            labels.append(getattr(Path(fn), self.return_path_attr))
+
+        if len(labels) > 1:
+            return image, tuple(labels)
+        elif len(labels) == 1:
+            return (image, labels[0])
         else:
             return image
 
@@ -299,7 +310,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
                               batch_size  = cfg.bs,
                               sampler     = train_sampler,
                               num_workers = 1 if cfg.n_replicas > 1 else cpu_count(),
-                              #pin_memory  = True,
+                              pin_memory  = True if cfg.gpu else False,
                               drop_last   = True,
                               shuffle     = False if train_sampler else True)
 
@@ -307,8 +318,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
                               batch_size  = cfg.bs,
                               sampler     = valid_sampler,
                               num_workers = 1 if cfg.n_replicas > 1 else cpu_count(),
-                              #pin_memory  = True,
-                              )
+                              pin_memory  = True if cfg.gpu else False)
 
     if cfg.xla and (cfg.deviceloader == 'mp'):
         from torch_xla.distributed.parallel_loader import MpDeviceLoader
@@ -317,3 +327,43 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
         valid_loader = MpDeviceLoader(valid_loader, device)
 
     return train_loader, valid_loader
+
+
+def get_test_loader(cfg, metadata, xm, return_path_attr='stem'):
+    class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
+    xm.master_print("Using class labels from column", class_column)
+
+    test_tfms = get_tfms(cfg, mode='test')
+
+    ds_test = ImageDataset(metadata, cfg, labeled=False, return_path_attr='stem',
+                           transform=test_tfms, tensor_transform=None,
+                           class_column=class_column)
+
+    xm.master_print("ds_test:", len(ds_test))
+    if cfg.DEBUG:
+        xm.master_print("test_tfms:")
+        xm.master_print(ds_test.transform)
+
+    # Create samplers for distributed shuffling or class-balancing
+    if cfg.xla:
+        from torch.utils.data.distributed import DistributedSampler
+
+    test_sampler = DistributedSampler(ds_test,
+                                      num_replicas = cfg.n_replicas,
+                                      rank         = xm.get_ordinal(),
+                                      shuffle      = False,
+                                      ) if cfg.n_replicas > 1 else None
+
+    # Create dataloader
+    test_loader = DataLoader(ds_test,
+                             batch_size  = cfg.bs,
+                             sampler     = test_sampler,
+                             num_workers = 1 if cfg.n_replicas > 1 else cpu_count(),
+                             pin_memory  = True if cfg.gpu else False)
+
+    if cfg.xla and (cfg.deviceloader == 'mp'):
+        from torch_xla.distributed.parallel_loader import MpDeviceLoader
+        device = xm.xla_device()
+        test_loader = MpDeviceLoader(test_loader, device)
+
+    return test_loader
