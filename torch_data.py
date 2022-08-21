@@ -111,7 +111,8 @@ class ImageDataset(Dataset):
         if self.labeled:
             labels.append(self.labels[index])
         if self.return_path_attr:
-            labels.append(np.str_(getattr(Path(fn), self.return_path_attr)))
+            labels.append(getattr(Path(fn), self.return_path_attr))  # colates to tuple of str
+            #labels.append(np.str_(getattr(Path(fn), self.return_path_attr)))
 
         if len(labels) > 1:
             return image, tuple(labels)
