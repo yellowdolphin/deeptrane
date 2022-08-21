@@ -329,7 +329,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     return train_loader, valid_loader
 
 
-def get_test_loader(cfg, metadata, xm, return_path_attr='stem'):
+def get_test_loader(cfg, metadata, xm, return_path_attr=None):
     class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
     xm.master_print("Using class labels from column", class_column)
 
