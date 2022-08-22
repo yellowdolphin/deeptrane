@@ -229,7 +229,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if not cfg.pudae_valid:
         loss_meter = AverageMeter(xm)
     #old_metrics = old_metrics or []
-    metrics.to(device)
+    if metrics: 
+        metrics.to(device)
     #any_scores = old_metrics and any(getattr(m, 'needs_scores', False) for m in old_metrics)
     #any_macro = old_metrics and any(getattr(m, 'macro', False) for m in old_metrics)
     #if any_macro:
@@ -294,7 +295,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
 
         # torchmetrics
-        metrics.update(preds.detach(), labels)
+        if metrics:
+            metrics.update(preds.detach(), labels)
 
         # for old_metrics: locally keep preds, labels for metrics (needs only device memory)
         #if any_macro and cfg.multilabel:
@@ -327,17 +329,21 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         avg_loss = loss_meter.average
 
     # mesh_reduce metrics
-    metrics_start = time.perf_counter()
-    #old_avg_metrics = []
-    avg_metrics = metrics.compute()
-    avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
+    if metrics:
+        metrics_start = time.perf_counter()
+        #old_avg_metrics = []
+        avg_metrics = metrics.compute()
+        if True:
+            xm.master_print("DEBUG1:", avg_metrics['acc'], avg_metrics['top5'])
+            xm.master_print("DEBUG2:", metrics['acc'].compute(), metrics['top5'].compute())
+        avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
-    if cfg.DEBUG and 'acc' in metrics:
-        counters = 'tp fp tn fn'.split()
-        vals = [getattr(metrics['acc'], a).item() for a in counters]
-        xm.master_print(f'metrics.acc {counters}: {vals}, sum: {sum(vals)}')
+        if cfg.DEBUG and 'acc' in metrics:
+            counters = 'tp fp tn fn'.split()
+            vals = [getattr(metrics['acc'], a).item() for a in counters]
+            xm.master_print(f'metrics.acc {counters}: {vals}, sum: {sum(vals)}')
 
-    metrics.reset()
+        metrics.reset()
 
     #if old_metrics and any_macro:
     #    if any_scores:
