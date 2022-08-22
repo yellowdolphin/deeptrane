@@ -146,6 +146,7 @@ def maybe_drop_bg_images(df, cfg, project):
 
 
 def maybe_encode_labels(df, cfg):
+    print("maybe_encode_labels:", cfg.n_classes)
     if cfg.multilabel:
         assert cfg.classes, 'no multilabel class names found in cfg'
         return df, len(cfg.classes), cfg.classes
