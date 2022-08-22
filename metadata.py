@@ -146,12 +146,16 @@ def maybe_drop_bg_images(df, cfg, project):
 
 
 def maybe_encode_labels(df, cfg):
-    print("maybe_encode_labels:", cfg.n_classes)
     if cfg.multilabel:
         assert cfg.classes, 'no multilabel class names found in cfg'
         return df, len(cfg.classes), cfg.classes
 
     max_label, min_label = df.category_id.max(), df.category_id.min()
+    if cfg.n_classes and not any((cfg.multilabel, cfg.classes, df.category_id.dtype == 'O')) \
+                     and not any((max_label + 1 > cfg.n_classes, min_label < 0)):
+        # allow cfg.n_classes > df.category_id.nunique()
+        return df, cfg.n_classes, list(range(cfg.n_classes))
+
     cfg.n_classes = cfg.n_classes or max_label
 
     if df.category_id.dtype == 'O' or any((max_label + 1 > cfg.n_classes, min_label < 0)):
