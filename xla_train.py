@@ -297,7 +297,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # torchmetrics
         if metrics:
+            xm.master_print("metrics._groups (before update): ", metrics._groups)
             metrics.update(preds.detach(), labels)
+            xm.master_print("metrics._groups (after  update): ", metrics._groups)
 
         # for old_metrics: locally keep preds, labels for metrics (needs only device memory)
         #if any_macro and cfg.multilabel:
@@ -333,8 +335,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if metrics:
         metrics_start = time.perf_counter()
         #old_avg_metrics = []
-        xm.master_print("metrics._groups:", metrics._groups)
+        xm.master_print("metrics._groups (before compute):", metrics._groups)
         avg_metrics = metrics.compute()  # DEBUG
+        xm.master_print("metrics._groups (after  compute):", metrics._groups)
         avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
         if cfg.DEBUG and 'acc' in metrics:
