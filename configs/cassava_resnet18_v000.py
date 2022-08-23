@@ -19,7 +19,7 @@ cfg = dict(
     augmentation = 'cassava_aug2',  # aug2 removes Normalize => much better!
     use_batch_tfms = False,
     n_replicas = 8,
-    n_classes = 5057,
+    n_classes = 6,
     metrics = ['acc', 'top5'],
     bs = 128,
     n_acc = 1,
