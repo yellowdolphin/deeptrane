@@ -333,7 +333,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if metrics:
         metrics_start = time.perf_counter()
         #old_avg_metrics = []
-        xm.master_print(metrics._groups)
+        xm.master_print("metrics._groups:", metrics._groups)
         avg_metrics = metrics.compute()  # DEBUG
         avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
