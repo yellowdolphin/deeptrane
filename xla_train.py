@@ -334,10 +334,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         metrics_start = time.perf_counter()
         #old_avg_metrics = []
         avg_metrics = metrics.compute()
-        if True:
-            xm.master_print("DEBUG0: top_k(acc, top5):", metrics['acc'].top_k, metrics['top5'].top_k)
-            xm.master_print("DEBUG1:", avg_metrics['acc'], avg_metrics['top5'])
-            xm.master_print("DEBUG2:", metrics['acc'].compute(), metrics['top5'].compute())
         avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
         if cfg.DEBUG and 'acc' in metrics:
