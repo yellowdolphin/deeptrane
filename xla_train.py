@@ -431,13 +431,13 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     dist_sync_fn = get_dist_sync_fn(xm)
     metrics = {}
     if 'acc' in cfg.metrics:
-        #metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
-        metrics['acc'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)  # DEBUG
+        metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
+        #metrics['acc'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)  # DEBUG
     if 'macro_acc' in cfg.metrics:
         metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
     if 'top5' in cfg.metrics:
-        #metrics['top5'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)
-        metrics['top5'] = tm.Accuracy(top_k=1, dist_sync_fn=dist_sync_fn)  # DEBUG
+        metrics['top5'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)
+        #metrics['top5'] = tm.Accuracy(top_k=1, dist_sync_fn=dist_sync_fn)  # DEBUG
     if 'top3' in cfg.metrics:
         metrics['top3'] = tm.Accuracy(top_k=3, dist_sync_fn=dist_sync_fn)
     if 'F1' in cfg.metrics:
