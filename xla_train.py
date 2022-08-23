@@ -297,9 +297,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # torchmetrics
         if metrics:
-            xm.master_print("metrics._groups (before update): ", metrics._groups)
+            xm.master_print("metrics._groups (before update): ", metrics._groups, "checked:", metrics._groups_checked)
+            xm.master_print("preds:", preds.detach().shape, preds.detach().dtype, preds.detach().min(), preds.detach().max())
             metrics.update(preds.detach(), labels)
-            xm.master_print("metrics._groups (after  update): ", metrics._groups)
+            xm.master_print("metrics._groups (after  update): ", metrics._groups, "checked:", metrics._groups_checked)
 
         # for old_metrics: locally keep preds, labels for metrics (needs only device memory)
         #if any_macro and cfg.multilabel:
@@ -432,12 +433,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     metrics = {}
     if 'acc' in cfg.metrics:
         metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
-        #metrics['acc'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)  # DEBUG
     if 'macro_acc' in cfg.metrics:
         metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
     if 'top5' in cfg.metrics:
         metrics['top5'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)
-        #metrics['top5'] = tm.Accuracy(top_k=1, dist_sync_fn=dist_sync_fn)  # DEBUG
     if 'top3' in cfg.metrics:
         metrics['top3'] = tm.Accuracy(top_k=3, dist_sync_fn=dist_sync_fn)
     if 'F1' in cfg.metrics:
@@ -460,7 +459,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if 'eAP5' in cfg.metrics:
         metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
     metrics = tm.MetricCollection(metrics, compute_groups=True)  # MetricCollection.__setitem__ is broken (only first update works?)
-    xm.master_print(metrics.__dict__)
 
     #xm.master_print('Metrics:', *[m.__name__ for m in old_metrics])
     xm.master_print('Metrics:', metrics)
