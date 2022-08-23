@@ -302,7 +302,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             #xm.master_print("labels:", labels.detach().shape[1], labels.detach().dtype, labels.detach().min().item(), labels.detach().max().item())
             metrics.update(preds.detach(), labels)
             xm.master_print("                                                 metrics._groups has len 2 (after  update): ", len(metrics._groups) == 2)
-            xm.master_print("_enable_compute_groups:", _enable_compute_groups)
+            xm.master_print("_enable_compute_groups:", metrics._enable_compute_groups)
 
         # for old_metrics: locally keep preds, labels for metrics (needs only device memory)
         #if any_macro and cfg.multilabel:
