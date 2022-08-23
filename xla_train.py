@@ -297,11 +297,11 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # torchmetrics
         if metrics:
-            xm.master_print("metrics._groups (before update): ", metrics._groups, "checked:", metrics._groups_checked)
-            xm.master_print("preds: ", preds.detach().shape, preds.detach().dtype, preds.detach().min().item(), preds.detach().max().item())
-            xm.master_print("labels:", labels.detach().shape, labels.detach().dtype, labels.detach().min().item(), labels.detach().max().item())
+            xm.master_print("metrics._groups has len 2 (before update): ", len(metrics._groups) == 2)
+            xm.master_print("preds: ", preds.detach().shape[1])#, preds.detach().dtype, preds.detach().min().item(), preds.detach().max().item())
+            #xm.master_print("labels:", labels.detach().shape[1], labels.detach().dtype, labels.detach().min().item(), labels.detach().max().item())
             metrics.update(preds.detach(), labels)
-            xm.master_print("metrics._groups (after  update): ", metrics._groups, "checked:", metrics._groups_checked)
+            xm.master_print("metrics._groups has len 2 (after  update): ", len(metrics._groups) == 2)
 
         # for old_metrics: locally keep preds, labels for metrics (needs only device memory)
         #if any_macro and cfg.multilabel:
@@ -337,9 +337,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if metrics:
         metrics_start = time.perf_counter()
         #old_avg_metrics = []
-        xm.master_print("metrics._groups (before compute):", metrics._groups, metrics._enable_compute_groups)
-        avg_metrics = metrics.compute()  # DEBUG
-        xm.master_print("metrics._groups (after  compute):", metrics._groups, metrics._enable_compute_groups)
+        #xm.master_print("metrics._groups (before compute):", metrics._groups, metrics._enable_compute_groups)
+        avg_metrics = metrics.compute()
+        #xm.master_print("metrics._groups (after  compute):", metrics._groups, metrics._enable_compute_groups)
         avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
         if cfg.DEBUG and 'acc' in metrics:
