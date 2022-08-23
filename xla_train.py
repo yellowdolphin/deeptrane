@@ -297,11 +297,11 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # torchmetrics
         if metrics:
-            xm.master_print("metrics._groups has len 2 (before update): ", len(metrics._groups) == 2)
-            xm.master_print("preds (n_classes): ", preds.detach().shape[1])#, preds.detach().dtype, preds.detach().min().item(), preds.detach().max().item())
+            xm.master_print("                     metrics._groups has len 2 (before update): ", len(metrics._groups) == 2)
+            xm.master_print("                               preds (n_classes): ", preds.detach().shape[1])#, preds.detach().dtype, preds.detach().min().item(), preds.detach().max().item())
             #xm.master_print("labels:", labels.detach().shape[1], labels.detach().dtype, labels.detach().min().item(), labels.detach().max().item())
             metrics.update(preds.detach(), labels)
-            xm.master_print("metrics._groups has len 2 (after  update): ", len(metrics._groups) == 2)
+            xm.master_print("                     metrics._groups has len 2 (after  update): ", len(metrics._groups) == 2)
 
         # for old_metrics: locally keep preds, labels for metrics (needs only device memory)
         #if any_macro and cfg.multilabel:
