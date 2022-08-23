@@ -430,7 +430,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     dist_sync_fn = get_dist_sync_fn(xm)
     metrics = {}
     if 'acc' in cfg.metrics:
-        metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
+        #metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
+        metrics['acc'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)
     if 'macro_acc' in cfg.metrics:
         metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
     if 'top5' in cfg.metrics: 
