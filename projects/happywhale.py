@@ -144,7 +144,7 @@ def add_image_id(df, cfg):
 
     #return df
     print(cfg.bs, cfg.n_acc, cfg.num_folds)
-    return df.iloc[:cfg.bs * (cfg.n_acc or 2) * cfg.num_folds * 96]  # DEBUG
+    return df.iloc[:cfg.bs * (cfg.n_acc or 2) * cfg.num_folds * 80]  # DEBUG
 
 
 def add_category_id(df, cfg):
