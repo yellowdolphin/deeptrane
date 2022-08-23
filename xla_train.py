@@ -298,7 +298,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         # torchmetrics
         if metrics:
             xm.master_print("metrics._groups (before update): ", metrics._groups, "checked:", metrics._groups_checked)
-            xm.master_print("preds:", preds.detach().shape, preds.detach().dtype, preds.detach().min(), preds.detach().max())
+            xm.master_print("preds: ", preds.detach().shape, preds.detach().dtype, preds.detach().min().item(), preds.detach().max().item())
+            xm.master_print("labels:", labels.detach().shape, labels.detach().dtype, labels.detach().min().item(), labels.detach().max().item())
             metrics.update(preds.detach(), labels)
             xm.master_print("metrics._groups (after  update): ", metrics._groups, "checked:", metrics._groups_checked)
 
