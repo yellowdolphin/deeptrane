@@ -247,7 +247,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     iterable = range(n_iter) if cfg.use_batch_tfms or (cfg.fake_data == 'on_device') else dataloader
 
     for batch_idx, batch in enumerate(iterable, start=1):
-        xm.master_print("batch", batch_idx)
 
         # extract inputs and labels
         if cfg.fake_data == 'on_device':
@@ -333,9 +332,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if metrics:
         metrics_start = time.perf_counter()
         #old_avg_metrics = []
-        #xm.master_print("metrics._groups (before compute):", metrics._groups, metrics._enable_compute_groups)
         avg_metrics = metrics.compute()
-        #xm.master_print("metrics._groups (after  compute):", metrics._groups, metrics._enable_compute_groups)
         avg_metrics = {k: v.item() if v.ndim == 0 else v.tolist() for k, v in avg_metrics.items()}
 
         if cfg.DEBUG and 'acc' in metrics:
