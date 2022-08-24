@@ -142,8 +142,9 @@ def add_image_id(df, cfg):
                             'pilot_whale': 'short_finned_pilot_whale'}, inplace=True)
     print(f"{n_species} species merged into {df.species.nunique()} unique")
 
-    #return df
-    return df.iloc[:cfg.bs * (cfg.n_acc or 2) * cfg.num_folds * 80]  # DEBUG
+    #df = df.iloc[:cfg.bs * (cfg.n_acc or 2) * cfg.num_folds * 80]  # DEBUG
+
+    return df
 
 
 def add_category_id(df, cfg):
