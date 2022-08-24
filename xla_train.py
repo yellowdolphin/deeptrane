@@ -297,12 +297,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # torchmetrics
         if metrics:
-            xm.master_print("                                                 metrics._groups has len 2 (before update): ", len(metrics._groups) == 2)
-            xm.master_print("                                                                         preds (n_classes): ", preds.detach().shape[1])#, preds.detach().dtype, preds.detach().min().item(), preds.detach().max().item())
-            #xm.master_print("labels:", labels.detach().shape[1], labels.detach().dtype, labels.detach().min().item(), labels.detach().max().item())
             metrics.update(preds.detach(), labels)
-            xm.master_print("                                                 metrics._groups has len 2 (after  update): ", len(metrics._groups) == 2)
-            xm.master_print("_enable_compute_groups:", metrics._enable_compute_groups)
 
         # for old_metrics: locally keep preds, labels for metrics (needs only device memory)
         #if any_macro and cfg.multilabel:
@@ -460,7 +455,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
     if 'eAP5' in cfg.metrics:
         metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
-    metrics = tm.MetricCollection(metrics, compute_groups=True)  # MetricCollection.__setitem__ is broken (only first update works?)
+    metrics = tm.MetricCollection(metrics, compute_groups=cfg.metric_compute_groups)
+    # metric_compute_groups: don't use if metrics use modifying kwargs like 'num_classes', 'threshold', 'top_k'
+    # Issue: If different metrics yield same values, set compute_groups=False!
+    # MetricCollection.__setitem__ is broken (only first update works?)
 
     #xm.master_print('Metrics:', *[m.__name__ for m in old_metrics])
     xm.master_print('Metrics:', metrics)
