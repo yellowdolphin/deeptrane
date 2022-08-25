@@ -13,6 +13,15 @@ from future import removesuffix
 DEBUG = False
 
 
+class AdaptiveCatPool2d(nn.Module):
+    "Layer that concatenates `AdaptiveAvgPool2d` and `AdaptiveMaxPool2d`"
+    def __init__(self, output_size=None):
+        self.output_size = output_size or 1
+        self.ap = nn.AdaptiveAvgPool2d(self.output_size)
+        self.mp = nn.AdaptiveMaxPool2d(self.output_size)
+    def forward(self, x): return torch.cat([self.mp(x), self.ap(x)], 1)
+
+
 def gem(x, p=1.5, eps=1e-6):
     return nn.functional.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1. / p)
 
@@ -286,19 +295,58 @@ def get_pretrained_model(cfg):
     n_features = get_n_features(body)
     body = skip_head(body)
     print(n_features, "features after last Conv")
-    pooling_layer = GeM() if cfg.use_gem else cfg.pooling(cfg, n_features) if cfg.pooling else None
+
+    # Pooling
+    if cfg.get_pooling is not None:
+        pooling_layer = cfg.get_pooling(cfg, n_features)
+    elif cfg.pool == 'flatten':
+        pooling_layer = []
+    elif cfg.pool == 'fc':
+        assert cfg.feature_size, 'cfg.pool=fc needs cfg.feature_size'
+        pooling_layer = nn.Sequential(
+            nn.Dropout2d(p=0.1, inplace=True),
+            nn.Flatten(),
+            nn.Linear(n_features * cfg.feature_size, n_features),
+            nn.BatchNorm1d(n_features))
+    elif cfg.pool == 'gem':
+        pooling_layer = GeM()
+    elif cfg.pool in ['cat', 'concat']:
+        pooling_layer = AdaptiveCatPool2d(output_size=1)
+    elif cfg.pool == 'max':
+        pooling_layer = nn.AdaptiveMaxPool2d(output_size=1)
+    else:
+        pooling_layer = nn.AdaptiveAvgPool2d(output_size=1)
+    if cfg.pool in ['max', 'concat'] and cfg.xla:
+        print("WARNING: MaxPool not supported by torch_xla")
     n_features = get_last_out_features(pooling_layer, None) or n_features
     print(n_features, "features after pooling")
-    pooling_layer = pooling_layer or nn.AdaptiveAvgPool2d(output_size=1)
-    bottleneck = cfg.bottleneck(cfg, n_features) or [] if cfg.bottleneck else []
+
+    # Bottleneck(s)
+    if cfg.get_bottleneck is not None:
+        bottleneck = cfg.get_bottleneck(cfg, n_features)
+    else:
+        bottleneck = []
+        for p, out_features in zip(cfg.dropout_ps, cfg.lin_ftrs):
+            bottleneck.append(nn.Dropout(p=p))
+            bottleneck.append(nn.Linear(n_features, out_features))
+            n_features = out_features
+            if cfg.head_bn:
+                bottleneck.append(nn.BatchNorm1d(n_features))
+        bottleneck = nn.Sequential(*bottleneck)
     n_features = get_last_out_features(bottleneck, None) or n_features
     print(n_features, "features after bottleneck")
+
+    if cfg.fastai_head:
+        cfg.pool = 'cat'
+
+
 
     if cfg.deotte:
         # Happywhale model used in my final TF notebooks
         head = nn.Sequential(nn.AdaptiveAvgPool2d(output_size=1),
-                             nn.BatchNorm2d(n_features),   # also try BN1d after Flatten
+                             #nn.BatchNorm2d(n_features),   # also try BN1d after Flatten
                              nn.Flatten(),
+                             nn.BatchNorm1d(n_features),
                              )
         cfg.channel_size = n_features
     elif cfg.feature_size:
