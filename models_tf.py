@@ -447,6 +447,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
             embed = tf.keras.layers.Dropout(p)(embed)
             embed = tf.keras.layers.Dense(out_channels)(embed)
             embed = BatchNorm(cfg.bn_head) if cfg.head_bn else embed
+        if not cfg.lin_ftrs:
+            embed = BatchNorm(cfg.bn_head) if cfg.head_bn else embed  # does this always help?
 
         # Output layer or Margin
         if cfg.arcface and inference:
@@ -458,7 +460,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         else:
             assert cfg.n_classes, 'set cfg.n_classes in project or config file!'
             features = tf.keras.layers.Dense(cfg.n_classes)(embed)
-            output = tf.keras.layers.Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
+            output = tf.keras.layers.Softmax(dtype='float32')(features)
         
         if cfg.aux_loss:
             assert cfg.n_aux_classes, 'set cfg.n_aux_classes in project or config file!'
