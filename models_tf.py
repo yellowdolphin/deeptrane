@@ -446,9 +446,10 @@ def get_pretrained_model(cfg, strategy, inference=False):
         for p, out_channels in zip(cfg.dropout_ps, cfg.lin_ftrs):
             embed = tf.keras.layers.Dropout(p)(embed)
             embed = tf.keras.layers.Dense(out_channels)(embed)
-            embed = BatchNorm(cfg.bn_head)(embed) if cfg.head_bn else embed
-        if cfg.head_bn and not cfg.lin_ftrs:
-            embed = BatchNorm(cfg.bn_head)(embed)  # does this help?
+            embed = BatchNorm(bn_type=cfg.bn_head)(embed) if cfg.head_bn is not None else embed
+        if (cfg.head_bn is not None) and not cfg.lin_ftrs:
+            embed = BatchNorm(bn_type=cfg.bn_head)(embed)  # does this help?
+            #embed = tf.keras.layers.BatchNormalization()(embed)
 
         # Output layer or Margin
         if cfg.arcface and inference:
