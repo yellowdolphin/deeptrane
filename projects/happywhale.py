@@ -67,6 +67,7 @@ def init(cfg):
         if cfg.adaptive_margin: cfg.adaptive_margin = get_adaptive_margin(cfg)
         cfg.gcs_paths = gcs_paths
 
+
     if cfg.dataset or cfg.filetype in ['wds', 'tfds']:
         cfg.splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
             '/kaggle/input/lextoumbourou' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-private2') else
@@ -77,6 +78,7 @@ def init(cfg):
         # TFRecords dataset for TF training
         import tensorflow as tf
         cfg.n_classes = 15587
+        cfg.n_aux_classes = 28
         cfg.gcs_filter = 'train-*.tfrec' if cfg.mode == 'train' else 'test-*.tfrec'  # unsubmerged
 
         # Customize data pipeline (see tf_data for definition and defaults)
