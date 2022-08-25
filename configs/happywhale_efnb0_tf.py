@@ -46,7 +46,7 @@ cfg = dict(
     arcface_m = 0.3,
     bn_head = 'batch_norm',
     bn_eps = 1e-5,
-    aux_loss = 0,
+    aux_loss = 0.0,
 
 # Restart
     rst_path = '/kaggle/input/happywhale-deeptrane-classifier-rst',
