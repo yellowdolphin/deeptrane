@@ -44,6 +44,7 @@ cfg = dict(
     #channel_size = 2048,  # embedding size (set automatically if deotte)
     arcface_s = 30,
     arcface_m = 0.3,
+    head_bn = True,
     bn_eps = 1e-5,
 
 # Restart
