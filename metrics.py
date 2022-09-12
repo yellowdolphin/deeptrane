@@ -35,6 +35,11 @@ def get_dist_sync_fn(xm):
     return dist_sync_fn
 
 
+def is_listmetric(metric):
+    # torchmetric metrics w/o "average" attribute yield lists
+    return getattr(metric, 'average', '') is None
+
+
 def reduce(values):
     if isinstance(values, Tensor):
         return torch.mean(values)
