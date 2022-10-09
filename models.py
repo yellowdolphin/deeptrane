@@ -357,13 +357,13 @@ def get_pretrained_model(cfg):
                              nn.Linear(n_features * cfg.feature_size, cfg.channel_size),
                              nn.BatchNorm1d(cfg.channel_size))
     elif cfg.arch_name.startswith('cait'):
-        dropout = nn.Dropout(p=cfg.dropout_ps[0]) if cfg.dropout_ps else []
+        dropout = [nn.Dropout(p=cfg.dropout_ps[0])] if cfg.dropout_ps else []
         head = nn.Sequential(*dropout,
                              *bottleneck,
                              nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
     else:
         print(f"building output layer {n_features, cfg.channel_size or cfg.n_classes}")
-        dropout = nn.Dropout(p=cfg.dropout_ps[0]) if cfg.dropout_ps else []
+        dropout = [nn.Dropout(p=cfg.dropout_ps[0])] if cfg.dropout_ps else []
         head = nn.Sequential(pooling_layer,
                              nn.Flatten(),
                              *dropout,
