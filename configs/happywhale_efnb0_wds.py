@@ -20,7 +20,6 @@ cfg = dict(
     negative_thres = 0.0,
     size = (384, 384),
     multilabel = False,
-    use_albumentations = True,
     augmentation = 'tfms_008',  # albumentation
     #augmentation = 'aug_008',   # torchvision
     use_batch_tfms = False,

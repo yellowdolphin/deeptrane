@@ -32,7 +32,6 @@ cfg = dict(
 
 # Augmentation
     normalize = None,
-    use_albumentations = True,
     augmentation = 'cassava_tf_aug',
     use_batch_tfms = False,
 

@@ -117,7 +117,6 @@ def get_tfms(cfg, mode='train'):
             if hasattr(t, 'width'): t.width = cfg.size[1]
         return flags.test_tfms
 
-    assert not cfg.use_albumentations, 'define albumentations tfms in cfg.augmentation'
     return get_torchvision_tfms(cfg, flags, mode, cfg.use_batch_tfms)
 
 

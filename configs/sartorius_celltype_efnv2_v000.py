@@ -11,7 +11,6 @@ cfg = {
     "use_folds": [0,1,2,3,4],
     "size": (260, 352),
     "multilabel": False,
-    "use_albumentations": True,
     "n_replicas": 8,
     "bs": 32,
     "n_acc": 1,

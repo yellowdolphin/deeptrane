@@ -21,7 +21,6 @@ cfg = dict(
     negative_thres = 0.0,
     size = (384, 384),
     multilabel = False,
-    use_albumentations = True,
     augmentation = 'tfms_015',
     n_replicas = 8,
     metrics = ['acc', 'top5'],  # otherwise slow valid + 8-TPU-issue

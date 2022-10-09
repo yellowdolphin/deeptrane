@@ -20,7 +20,6 @@ cfg = dict(
     negative_thres = 0.0,
     size = (384, 384),
     multilabel = False,
-    use_albumentations = False,
     #augmentation = 'tfms_015',
     use_batch_tfms = True,
     n_replicas = 8,

@@ -21,7 +21,6 @@ cfg = dict(
     negative_thres = 0.0,
     size = (512, 512),
     multilabel = False,
-    use_albumentations = True,
     augmentation = 'tfms_018',
     n_replicas = 8,
     metrics = ['acc', 'top5'],

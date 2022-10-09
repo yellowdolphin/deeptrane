@@ -73,7 +73,7 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
         macro_batches_per_epoch = mini_batches_per_epoch // n_replica
         if mini_batches_per_epoch % n_replica > 0: macro_batches_per_epoch += 1
 
-    tfms = get_tfms(cfg, mode=mode) if cfg.use_albumentations else get_torchvision_tfms(cfg, mode=mode)
+    tfms = get_tfms(cfg, mode=mode)
     # albu wants named args: aug(image=image)
     # torchvision wants pil.image not array
     if cfg.DEBUG:
@@ -96,7 +96,7 @@ def get_dataloader(cfg, use_fold, xm, mode='train', **kwargs):
 
     dataset = wds.WebDataset(shards, shardshuffle=bool(shuffle), resampled=resampled)
     dataset = dataset.shuffle(shuffle) if shuffle else dataset
-    if cfg.use_albumentations:
+    if tfms and tfms[0].__module__.startswith('albumentations'):
         dataset = dataset.decode("rgb8").to_tuple("jpeg", "cls").map_tuple(map_albu, identity)  # albumentations
     else:
         dataset = dataset.decode("pil").to_tuple("jpeg", "cls").map_tuple(tfms, identity)  # torchvision

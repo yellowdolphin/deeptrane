@@ -14,7 +14,6 @@ cfg = dict(
     use_folds = [0],
     size = (128, 128),
     multilabel = False,
-    use_albumentations = True,
     augmentation = 'tfms_015',
     n_replicas = 8,
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue

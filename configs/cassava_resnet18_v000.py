@@ -15,7 +15,6 @@ cfg = dict(
     train_on_all = False,
     size = (128, 128),
     multilabel = False,
-    use_albumentations = True,
     augmentation = 'cassava_aug2',  # aug2 removes Normalize => much better!
     use_batch_tfms = False,
     n_replicas = 8,

@@ -15,7 +15,6 @@ cfg = dict(
     train_on_all = False,
     size = (384, 384),
     multilabel = False,
-    use_albumentations = True,
     augmentation = 'cassava_aug',
     use_batch_tfms = False,
     n_replicas = 8,

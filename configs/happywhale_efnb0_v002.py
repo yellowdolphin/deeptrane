@@ -24,7 +24,6 @@ cfg = dict(
     negative_thres = 0.0,
     size = (384, 384),
     multilabel = False,
-    use_albumentations = True,
     augmentation = 'tfms_008',
     use_batch_tfms = False,
     n_replicas = 8,

@@ -12,7 +12,6 @@ cfg = {
     "size": (384, 384),
     "multilabel": True,
     "exclude_multiimage_studies": True,
-    "use_albumentations": True,
     "n_replicas": 1,
     "bs": 32,
     "n_acc": 2,
