@@ -360,6 +360,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         'map': 'mAP',
         'eap5': 'eAP5',
         }
+    cfg.metrics = cfg.metrics or []
     cfg.metrics = [k.replace(k, aliases[k]) if k in aliases else k for k in cfg.metrics]
 
     # torchmetrics
