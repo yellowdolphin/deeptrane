@@ -16,7 +16,7 @@ cfg = dict(
 
 # Dataloader
     multilabel = False,
-    augmentation = 'cassava_aug',
+    augmentation = 'tfms_004',
     n_replicas = 1,
     bs = 8,
     epochs = 1,
