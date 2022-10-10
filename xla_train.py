@@ -303,6 +303,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             xm.master_print(f'metrics.acc {counters}: {vals}, sum: {sum(vals)}')
 
         metrics.reset()
+    else:
+        avg_metrics = {}
 
     return avg_loss, avg_metrics
 
