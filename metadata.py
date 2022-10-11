@@ -18,7 +18,6 @@ def get_metadata(cfg, project):
     cfg.competition_path = Path(cfg.competition_path or '../../data')
     print("[ √ ] Competition path:", cfg.competition_path)
 
-    cfg.image_root = cfg.image_root or '../../data/images'
     if 'colab' in cfg.tags:
         cfg.image_root = cfg.image_root.replace('/kaggle/input', '/content')
     cfg.image_root = Path(cfg.image_root)

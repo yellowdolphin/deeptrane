@@ -12,6 +12,7 @@ cfg = dict(
     use_folds = [0],
 
 # Image params
+    image_root = 'data/images',
     size = (64, 64),
 
 # Dataloader
@@ -58,7 +59,7 @@ cfg = dict(
     rst_path = '.',
     rst_name = None,
     reset_opt = False,          # don't load optimizer/scheduler state dicts
-    out_dir = '../../temp',
+    out_dir = 'output',
 
     xla = False,
 
