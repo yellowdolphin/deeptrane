@@ -102,14 +102,12 @@ if cfg.xla and torchmetrics_fork() != 'xla_fork':
 elif not cfg.xla and not torchmetrics_fork():
     print("require torchmetrics>=0.8 ...")
     quietly_run('pip install torchmetrics>=0.8', debug=True)
-elif set(cfg.metrics or ()).intersection('f1 F1 class_f1 class_F1 macro_f1 macro_F1 f2 F2 map mAP'.split()):
-    # require 0.8.0+
+else:
+    # require 0.8.0+ for kwarg compute_groups
     tm_version = torchmetrics_fork().split('.')
     if tm_version[0] == '0' and int(tm_version[1]) < 8:
         print("installing newer torchmetrics...")
         quietly_run('pip install -U torchmetrics')
-else:
-    print(f"torchmetrics should be fine (torchmetrics_fork: {torchmetrics_fork()})")
 
 # Install timm
 if cfg.use_timm:
