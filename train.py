@@ -99,7 +99,7 @@ print("[ √ ] torch:", torch.__version__)
 if cfg.xla and torchmetrics_fork() != 'xla_fork':
     quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git')
 elif not cfg.xla and not torchmetrics_fork():
-    quietly_run('pip install torchmetrics', debug=True)
+    quietly_run('pip install torchmetrics>=0.8', debug=False)
 elif set(cfg.metrics or ()).intersection('f1 F1 class_f1 class_F1 macro_f1 macro_F1 f2 F2 map mAP'.split()):
     # require 0.8.0+
     tm_version = torchmetrics_fork().split('.')
