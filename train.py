@@ -97,16 +97,13 @@ print("[ √ ] torch:", torch.__version__)
 
 # Install (xla compatible) torchmetrics
 if cfg.xla and torchmetrics_fork() != 'xla_fork':
-    print("installing XLA compatible torchmetrics...")
     quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git')
 elif not cfg.xla and not torchmetrics_fork():
-    print("require torchmetrics>=0.8 ...")
-    quietly_run('pip install torchmetrics>=0.8', debug=True)
+    quietly_run('pip install torchmetrics>=0.8', debug=False)
 else:
     # require 0.8.0+ for kwarg compute_groups
     tm_version = torchmetrics_fork().split('.')
     if tm_version[0] == '0' and int(tm_version[1]) < 8:
-        print("installing newer torchmetrics...")
         quietly_run('pip install -U torchmetrics')
 
 # Install timm
