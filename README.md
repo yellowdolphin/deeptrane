@@ -1,4 +1,4 @@
-![DeepTrane Logo](docs/reamdme_logo.png)
+![DeepTrane Logo](docs/readme_logo.png)
 
 --------------------------------------------------------------------------------
 
@@ -15,7 +15,7 @@ DeepTrane🎷 is a project-oriented deep learning library. Its main goals are:
 	<summary>Install</summary>
 
 ```bash
-git clone https://github.com/yellowdolphin/deeptrane  # clone
+git clone https://github.com/yellowdolphin/deeptrane
 cd deeptrane
 python train.py  # pytorch test run
 ```
@@ -83,9 +83,16 @@ def add_image_id(df, cfg):
     return df
 ```
 
-Augmentation, model, and training details are specified in the config file `configs/cassava_resnet18_v001.py`. This [kaggle notebook](https://www.kaggle.com/code/greendolphin/cassava-deeptrane) shows how to run the experiment and evaluate the training metrics.
+Augmentation, model, and training details are specified in the config file `configs/cassava_resnet18_v001.py`. This [kaggle notebook](https://www.kaggle.com/code/greendolphin/cassava-deeptrane) demonstrates how to run an experiment and evaluate the training metrics. After training, the directory `cfg.out_dir` contains model(s) and corresponding state(s) of optimizer and scheduler for restart.
 
 ### PyTorch training
 
+The PyTorch training script `train.py` trains on GPUs or TPUs (xla) when detected. Required packages (torchmetrics, torch_xla, timm, albumentations) are installed automatically, but only if needed, depending on config and environment. Note that host machines on kaggle and colab are not suitable to feed eight TPU cores with data-heavy inputs, such as high-resolution images. For such applications, training on GPU or with Tensorflow is recommended (see below), which has access to the beefy TPU node resources.
+
+### Tensorflow training
+
+The Tensorflow training script `train_tf.py` extracts inputs and labels from tensorflow record (tfrec) files. Instead of a filetype, the config must specify either GCS path(s) as `cfg.gcs_paths` or a kaggle dataset (subdir of `/kaggle/inputs`) as `cfg.dataset`, whose GCS path is detected automatically. 
+
+The features to be used from the tfrec files can be specified and mapped to their `tf.io` types in `cfg.tfrec_format`. Their keys will be mapped by `cfg.data_format` to default field names recognized by the encoders and the keras model (`cfg.inputs`, `cfg.targets`). These config variables should be set in the project's `init()` function. They will be ignored by `train.py`.
 
 </details>
