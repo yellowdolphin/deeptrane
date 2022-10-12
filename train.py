@@ -111,10 +111,11 @@ if cfg.use_timm:
     try:
         import timm
     except ModuleNotFoundError:
-        if os.path.exists('/kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl'):
-            quietly_run('pip install /kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl')
-        else:
-            quietly_run('pip install timm', debug=False)
+        #if os.path.exists('/kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl'):
+        #    quietly_run('pip install  /kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl')
+        #else:
+        #    quietly_run('pip install -f file:///kaggle/inputs/popular-wheels timm', debug=False)
+        quietly_run('pip install -f file:///kaggle/inputs/popular-wheels timm', debug=True)
         import timm
     print("[ √ ] timm:", timm.__version__)
 
