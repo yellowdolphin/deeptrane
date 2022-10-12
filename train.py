@@ -115,7 +115,7 @@ if cfg.use_timm:
         #    quietly_run('pip install  /kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl')
         #else:
         #    quietly_run('pip install -f file:///kaggle/inputs/popular-wheels timm', debug=False)
-        quietly_run('pip install -f file:///kaggle/inputs/popular-wheels timm', debug=True)
+        quietly_run('pip install -f file:///kaggle/input/popular-wheels timm', debug=True)
         import timm
     print("[ √ ] timm:", timm.__version__)
 
