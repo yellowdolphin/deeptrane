@@ -46,6 +46,9 @@ def get_gcs_path(cfg):
         from kaggle_datasets import KaggleDatasets
         from kaggle_web_client import BackendError
 
+        if cfg.dataset:
+            cfg.dataset = Path(cfg.dataset).name
+
         if cfg.dataset_is_private:
             # Enable GCS for private datasets
             assert os.path.exists(f'/kaggle/input/{cfg.dataset}'), f'Add {cfg.dataset} first!'
