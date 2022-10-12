@@ -50,6 +50,9 @@ if cfg.rst_name is not None:
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
 cfg.out_dir = Path(cfg.out_dir)
 
+wheels_path = cfg.wheels_path or ('/kaggle/input/popular-wheels' if cfg.cloud == 'kaggle' else None)
+pip_option = f'-f file://{cfg.wheels_path}' if cfg.wheels_path else ''
+
 # Install torch.xla on TPU supported nodes
 if 'TPU_NAME' in os.environ:
     cfg.xla = True
@@ -111,11 +114,7 @@ if cfg.use_timm:
     try:
         import timm
     except ModuleNotFoundError:
-        #if os.path.exists('/kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl'):
-        #    quietly_run('pip install  /kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl')
-        #else:
-        #    quietly_run('pip install -f file:///kaggle/inputs/popular-wheels timm', debug=False)
-        quietly_run('pip install -f file:///kaggle/input/popular-wheels timm', debug=True)
+        quietly_run(f'pip install {pip_option} timm', debug=True)
         import timm
     print("[ √ ] timm:", timm.__version__)
 
