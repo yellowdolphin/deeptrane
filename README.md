@@ -87,7 +87,9 @@ Augmentation, model, and training details are specified in the config file `conf
 
 ### PyTorch training
 
-The PyTorch training script `train.py` trains on GPUs or TPUs (xla) when detected. Required packages (torchmetrics, torch_xla, timm, albumentations) are installed automatically, but only if needed, depending on config and environment. Note that host machines on kaggle and colab are not suitable to feed eight TPU cores with data-heavy inputs, such as high-resolution images. For such applications, training on GPU or with Tensorflow is recommended (see below), which has access to the beefy TPU node resources.
+The PyTorch training script `train.py` trains on GPUs or TPUs (xla) when detected. Required packages (torchmetrics, torch_xla, timm, albumentations) are installed automatically, but only if necessary, depending on config and environment. A local path with wheels can be specified in cfg.wheels_path.
+
+Note that host machines on kaggle and colab are not suitable to feed eight TPU cores with data-heavy inputs, such as high-resolution images. For such applications, training on GPU or with Tensorflow is recommended (see below), which has access to the beefy TPU node resources.
 
 ### Tensorflow training
 
