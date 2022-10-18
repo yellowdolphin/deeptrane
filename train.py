@@ -71,8 +71,7 @@ if 'TPU_NAME' in os.environ:
                 'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
                 f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
                 'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
-                debug=True
-                )
+                debug=cfg.DEBUG)
         # LD_LIBRARY_PATH points to /usr/local/nvidia, which does not exist
         # xla setup creates /usr/local/lib/libmkl_intel_lp64.so but not .so.1
         print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
@@ -85,14 +84,12 @@ if 'TPU_NAME' in os.environ:
             'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
             f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
             'pip install -U numpy',  # nightly torch_xla needs newer numpy but does not "require" it
-            debug=True
-            )
+            debug=cfg.DEBUG)
         print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
     elif not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla'):
         quietly_run(
             f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
-            debug=True
-            )
+            debug=cfg.DEBUG)
     print("[ √ ] Python:", sys.version.replace('\n', ''))
     print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ.get('XLA_USE_BF16', None)})")
 import torch
@@ -102,7 +99,7 @@ print("[ √ ] torch:", torch.__version__)
 if cfg.xla and torchmetrics_fork() != 'xla_fork':
     quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git')
 elif not cfg.xla and not torchmetrics_fork():
-    quietly_run('pip install torchmetrics>=0.8', debug=False)
+    quietly_run('pip install torchmetrics>=0.8', debug=cfg.DEBUG)
 else:
     # require 0.8.0+ for kwarg compute_groups
     tm_version = torchmetrics_fork().split('.')
@@ -114,15 +111,15 @@ if cfg.use_timm:
     try:
         import timm
     except ModuleNotFoundError:
-        quietly_run(f'pip install {pip_option} timm', debug=True)
+        quietly_run(f'pip install {pip_option} timm', debug=cfg.DEBUG)
         import timm
     print("[ √ ] timm:", timm.__version__)
 
 # Install keras if preprocess_inputs is needed
 if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
-    quietly_run(f'pip install keras=={tf.keras.__version__}', debug=False)
+    quietly_run(f'pip install keras=={tf.keras.__version__}', debug=cfg.DEBUG)
 if cfg.filetype == 'wds':
-    quietly_run('pip install webdataset', debug=False)
+    quietly_run('pip install webdataset', debug=cfg.DEBUG)
 
 if cfg.xla:
     import torch_xla.core.xla_model as xm
