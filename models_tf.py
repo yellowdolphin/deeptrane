@@ -497,6 +497,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         cfg.metrics = cfg.metrics or []
 
+        metrics_classes = {}
         if 'acc' in cfg.metrics:
             metrics_classes['acc'] = tf.keras.metrics.SparseCategoricalAccuracy(name='acc')
         if 'top5' in cfg.metrics:
