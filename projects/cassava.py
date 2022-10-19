@@ -22,7 +22,8 @@ def init(cfg):
 
     cfg.meta_csv = cfg.competition_path / 'train.csv'  # label
     cfg.gcs_filter = 'train_tfrecords/*.tfrec'
-    #cfg.n_classes = 5  # set by metadata
+    if 'tf' in cfg.tags:
+        cfg.n_classes = 5  # pytorch: set by metadata
     cfg.gcs_paths = gcs_paths
 
     # Customize data pipeline (see tf_data for definition and defaults)
