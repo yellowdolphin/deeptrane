@@ -364,6 +364,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         }
     cfg.metrics = cfg.metrics or []
     cfg.metrics = [k.replace(k, aliases[k]) if k in aliases else k for k in cfg.metrics]
+    if cfg.save_best and cfg.save_best in aliases:
+        cfg.save_best = aliases[cfg.save_best]
 
     # torchmetrics
     dist_sync_fn = get_dist_sync_fn(xm)
