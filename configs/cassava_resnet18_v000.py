@@ -13,22 +13,23 @@ cfg = dict(
     num_folds = 4,
     use_folds = [0],
     train_on_all = False,
-    size = (128, 128),
     multilabel = False,
+    size = (128, 128),
     augmentation = 'cassava_aug2',  # aug2 removes Normalize => much better!
     use_batch_tfms = False,
     n_replicas = 8,
-    n_classes = 5057,
-    metrics = ['acc', 'top5'],
     bs = 128,
     n_acc = 1,
     epochs = 10,
     batch_verbose = None,
+    optimizer = "Adam",  # Adam, AdamW, SGD
+    wd = 5e-2,
     lr_head = 1e-3,
     one_cycle = True,
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
-    save_best = 'valid_loss',
+    metrics = ['acc', 'f1'],
+    save_best = 'f1',
 
 # Model
     arch_name = 'resnet18',
@@ -41,8 +42,6 @@ cfg = dict(
     bn_eps = 1e-5,
     rst_path = '/kaggle/input/cassava-resnet18-v25-rst',
     #rst_name = '',
-    optimizer = "Adam",  # Adam, AdamW, SGD
-    wd = 5e-2,
     dropout_ps = [],
 )
 

@@ -14,12 +14,12 @@ cfg = dict(
     num_folds = 4,
     use_folds = [0],
     train_on_all = False,
-    size = (256, 256),
+    multilabel = False,
+    size = (128, 128),
     bs = 128,
     n_acc = 1,
     epochs = 10,
     batch_verbose = None,
-    multilabel = False,
     optimizer = "Adam",  # Adam, AdamW, SGD
     wd = 5e-2,
     lr = 3e-4,
@@ -27,8 +27,8 @@ cfg = dict(
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 0.05,
-    metrics = ['acc'],
-    save_best = 'acc',
+    metrics = ['acc', 'f1'],
+    save_best = 'f1',
 
 # Augmentation
     normalize = None,
