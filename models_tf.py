@@ -496,11 +496,21 @@ def get_pretrained_model(cfg, strategy, inference=False):
             )
 
         cfg.metrics = cfg.metrics or []
-        metrics = []
+
         if 'acc' in cfg.metrics:
-            metrics.append(tf.keras.metrics.SparseCategoricalAccuracy(name='acc'))
-        if 'top5' in cfg.metrics: 
-            metrics.append(tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5'))
+            metrics_classes['acc'] = tf.keras.metrics.SparseCategoricalAccuracy(name='acc')
+        if 'top5' in cfg.metrics:
+            metrics_classes['top5'] = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5')
+        if 'f1' in cfg.metrics:
+            metrics_classes['f1'] = tfa.metrics.FBetaScore(beta=1, average='micro', name='F1')
+        if 'f2' in cfg.metrics:
+            metrics_classes['f2'] = tfa.metrics.FBetaScore(beta=2, average='micro', name='F2')
+        if 'macro_f1' in cfg.metrics:
+            metrics_classes['macro_f1'] = tfa.metrics.FBetaScore(beta=1, average='macro', name='macro_F1')
+        if 'non_existing_metric' in cfg.metrics:
+            metrics_classes['non_existing_metric'] = tf.keras.metrics.NoSuchClass(name='non_existing_metric')
+
+        metrics = [metrics_classes[m] for m in cfg.metrics]
 
         model.compile(
             optimizer = optimizer,
