@@ -29,6 +29,7 @@ cfg = dict(
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     metrics = ['F2', 'acc', 'f1', 'macro_F1'],
+    metric_compute_groups = False,  # default is None
     save_best = 'f1',
 
 # Model
