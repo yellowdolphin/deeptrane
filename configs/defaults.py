@@ -2,6 +2,9 @@ from pathlib import Path
 
 cfg = dict(
     name = Path(__file__).stem,
+    DEBUG = False,
+    xla_metrics = False,
+    xla_nightly = False,
 
 # Data Partitioning
     train_on_all = False,
@@ -9,18 +12,21 @@ cfg = dict(
     use_folds = [0],
 
 # Image params
+    image_root = 'data/images',
     size = (64, 64),
 
 # Dataloader
     multilabel = False,
-    use_albumentations = True,
-    num_tpu_cores = 1,
+    augmentation = 'tfms_004',
+    n_replicas = 1,
     bs = 8,
     epochs = 1,
     batch_verbose = None,
     do_class_sampling = False,
     frac = 1.0,
     use_batch_tfms = False,
+    fake_data = False,
+    deviceloader = None,
 
 # Optimizer, Scheduler
     optimizer = 'AdamW',
@@ -43,7 +49,7 @@ cfg = dict(
     use_aux_loss = False,
     seg_weight = 0.4,
     add_hidden_layer = False,   # add hidden_layer from efficientnet to smp model
-    use_gem = False,            # GeM pooling
+    pool = 'avg',
     dropout_ps = [0.5],
     lin_ftrs = [],
     bn_eps = 1e-5,
@@ -53,7 +59,7 @@ cfg = dict(
     rst_path = '.',
     rst_name = None,
     reset_opt = False,          # don't load optimizer/scheduler state dicts
-    out_dir = '../../temp',
+    out_dir = 'output',
 
     xla = False,
 

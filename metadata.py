@@ -15,10 +15,9 @@ def get_metadata(cfg, project):
     "Return a DataFrame with labels, image paths, dims, splits required by the datasets."
     detection = any(s in cfg.tags for s in 'yolov5 mmdet'.split())
 
-    cfg.competition_path = Path(cfg.competition_path or '../../data')
+    cfg.competition_path = Path(cfg.competition_path or 'data')
     print("[ √ ] Competition path:", cfg.competition_path)
 
-    cfg.image_root = cfg.image_root or '../../data/images'
     if 'colab' in cfg.tags:
         cfg.image_root = cfg.image_root.replace('/kaggle/input', '/content')
     cfg.image_root = Path(cfg.image_root)
@@ -31,7 +30,7 @@ def get_metadata(cfg, project):
     cfg.filetype = cfg.filetype or 'png'
     print("[ √ ] type:", cfg.filetype)
 
-    cfg.meta_csv = cfg.meta_csv or '../../data/deeptrane_test_meta.csv'
+    cfg.meta_csv = cfg.meta_csv or 'data/deeptrane_test_meta.csv'
     print("[ √ ] metadata:", cfg.meta_csv)
 
     df = pd.read_csv(cfg.meta_csv)
@@ -100,13 +99,14 @@ def get_metadata(cfg, project):
 
 
 def add_image_path(df, image_root, subdirs, filetype='png', xla=False):
+    print("add_image_path.filetype:", filetype)
     # Copy data (colab) and set image_root path
     if xla and False:  # dataloader.show_batch() hangs
         from kaggle_datasets import KaggleDatasets
         gcs_path = KaggleDatasets().get_gcs_path(image_root.parent.name)
         image_root = f'{gcs_path}/{image_root.name}'
 
-    # Add image_path above image_root to df
+    # Add image_path above image_root to df (cfg.image_root is prepended by ImageDataset)
     assert image_root.exists(), f'image_root not found: {image_root}'
     if len(subdirs) == 1 and subdirs[0] == '.':
         df['image_path'] = df.image_id + f'.{filetype}'
@@ -151,7 +151,14 @@ def maybe_encode_labels(df, cfg):
 
     max_label, min_label = df.category_id.max(), df.category_id.min()
 
-    if df.category_id.dtype == 'O' or any(max_label + 1 > cfg.n_classes, min_label < 0):
+    # allow cfg.n_classes > df.category_id.nunique() if it is safe
+    if cfg.n_classes and not any((cfg.multilabel, cfg.classes, df.category_id.dtype == 'O')) \
+                     and not any((max_label + 1 > cfg.n_classes, min_label < 0)):
+        return df, cfg.n_classes, list(range(cfg.n_classes))
+
+    cfg.n_classes = cfg.n_classes or max_label
+
+    if df.category_id.dtype == 'O' or any((max_label + 1 > cfg.n_classes, min_label < 0)):
         #                           ^-- prevents TypeError
         import sklearn
         print("[ √ ] sklearn:", sklearn.__version__)

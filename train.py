@@ -8,9 +8,9 @@ from multiprocessing import cpu_count
 #import warnings
 #warnings.filterwarnings('ignore')
 
-from future import removesuffix
 from config import Config, parser
-from utils.general import quietly_run, listify, sizify, autotype
+from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
+from utils.torch_setup import torchmetrics_fork
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -23,60 +23,108 @@ cfg.use_folds = parser_args.use_folds or cfg.use_folds
 cfg.epochs = parser_args.epochs or cfg.epochs
 cfg.batch_verbose = parser_args.batch_verbose or cfg.batch_verbose
 cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
+cfg.metrics = parser_args.metrics or cfg.metrics
 cfg.betas = parser_args.betas or cfg.betas
 cfg.dropout_ps = cfg.dropout_ps if parser_args.dropout_ps is None else listify(parser_args.dropout_ps)
 cfg.lin_ftrs = cfg.lin_ftrs if parser_args.lin_ftrs is None else listify(parser_args.lin_ftrs)
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
-print(cfg)
 
+cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
+if cfg.cloud == 'drive':
+    cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
+
+print(cfg)
+print("[ √ ] Cloud:", cfg.cloud)
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
 print("[ √ ] Folds:", cfg.use_folds)
 print("[ √ ] Architecture:", cfg.arch_name)
+
 cfg.save_yaml()
 
 # Config consistency checks
-if cfg.frac != 1: assert cfg.do_class_sampling, 'frac w/o class_sampling not implemented'
+if cfg.frac != 1: assert cfg.do_class_sampling or (cfg.filetype == 'wds'), 'frac w/o class_sampling not implemented'
 if cfg.rst_name is not None:
     rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
-if cfg.use_aux_loss: assert cfg.use_albumentations, 'MySiimCovidDataset requires albumentations'
 cfg.out_dir = Path(cfg.out_dir)
 
-# Install torch.xla on kaggle TPU supported nodes
+wheels_path = cfg.wheels_path or ('/kaggle/input/popular-wheels' if cfg.cloud == 'kaggle' else None)
+pip_option = f'-f file://{cfg.wheels_path}' if cfg.wheels_path else ''
+
+# Install torch.xla on TPU supported nodes
 if 'TPU_NAME' in os.environ:
-    cfg.xla = True         # pull out of cfg?
-    xla_version = '1.8.1'  # only '1.8.1' works on python3.7
+    cfg.xla = True
+    # '1.8.1' works on kaggle and colab, nightly only on kaggle
+    xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.8.1', '')
 
     # Auto installation
-    quietly_run(
-        #'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-        f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version}',
-        #'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper, catalyst 21.8 already installed
-        #debug=True
-    )
+    if (cfg.cloud == 'drive'):
+        # check xla_version for python 3.7: $ gsutil ls gs://tpu-pytorch/wheels/colab | grep cp37
+        # 'nightly': installs torch-1.13.0a0+git83c6113, libmkl_intel_lp64.so.1 missing
+        # '1.12': on colab re-installs torch etc anyways, libmkl_intel_lp64.so.1 missing
+        # '1.11': on colab installs torch-1.11.0a0+git8d365ae, libmkl_intel_lp64.so.1 missing
+        # w/o --version, installs torch 1.6.0 which has no MpSerialExecutor
+        if False:  # install in notebook instead
+            quietly_run(
+                'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
+                f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
+                'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
+                debug=cfg.DEBUG)
+        # LD_LIBRARY_PATH points to /usr/local/nvidia, which does not exist
+        # xla setup creates /usr/local/lib/libmkl_intel_lp64.so but not .so.1
+        print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
+        # For some reason this does not work:
+        #os.environ['LD_LIBRARY_PATH'] += ':/usr/local/lib'  # fix 'libmkl_intel_lp64.so.1 not found'
+        #if os.path.exists('/usr/local/lib/libmkl_intel_lp64.so'):
+        #    os.symlink('/usr/local/lib/libmkl_intel_lp64.so', '/usr/local/lib/libmkl_intel_lp64.so.1')
+    elif (xla_version != '1.8.1') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
+        quietly_run(
+            'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
+            f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
+            'pip install -U numpy',  # nightly torch_xla needs newer numpy but does not "require" it
+            debug=cfg.DEBUG)
+        print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
+    elif not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla'):
+        quietly_run(
+            f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
+            debug=cfg.DEBUG)
     print("[ √ ] Python:", sys.version.replace('\n', ''))
-    print("[ √ ] XLA:", xla_version)
+    print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ.get('XLA_USE_BF16', None)})")
 import torch
 print("[ √ ] torch:", torch.__version__)
+
+# Install (xla compatible) torchmetrics
+if cfg.xla and torchmetrics_fork() != 'xla_fork':
+    quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git')
+elif not cfg.xla and not torchmetrics_fork():
+    quietly_run('pip install torchmetrics>=0.8', debug=cfg.DEBUG)
+else:
+    # require 0.8.0+ for kwarg compute_groups
+    tm_version = torchmetrics_fork().split('.')
+    if tm_version[0] == '0' and int(tm_version[1]) < 8:
+        quietly_run('pip install -U torchmetrics')
 
 # Install timm
 if cfg.use_timm:
     try:
         import timm
     except ModuleNotFoundError:
-        if os.path.exists('/kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl'):
-            quietly_run('pip install /kaggle/input/timm-wheels/timm-0.4.13-py3-none-any.whl')
-        else:
-            quietly_run('pip install timm', debug=True)
+        quietly_run(f'pip install {pip_option} timm', debug=cfg.DEBUG)
         import timm
     print("[ √ ] timm:", timm.__version__)
+
+# Install keras if preprocess_inputs is needed
+if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
+    quietly_run(f'pip install keras=={tf.keras.__version__}', debug=cfg.DEBUG)
+if cfg.filetype == 'wds':
+    quietly_run('pip install webdataset', debug=cfg.DEBUG)
 
 if cfg.xla:
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.xla_multiprocessing as xmp
-    #import torch_xla.debug.metrics as met
+    import torch_xla.debug.metrics as met
 else:
     class xm(object):
         "Pseudo class to overload torch_xla.core.xla_model"
@@ -105,11 +153,15 @@ else:
             return reduce_fn([data])
 
 print(f"[ √ ] {cpu_count()} CPUs")
+cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size() if cfg.xla else 1
+cfg.gpu = not cfg.xla and torch.cuda.is_available()
 if cfg.xla:
-    print(f"[ √ ] Using {cfg.num_tpu_cores} TPU cores")
-elif not torch.cuda.is_available():
-    cfg.bs = min(cfg.bs, 3 * cpu_count())
-    print(f"[ √ ] No GPU found, reducing bs to {cfg.bs}")
+    print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
+elif cfg.gpu:
+    print(f"[ √ ] Using GPU")
+else:
+    cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
+    print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
 
 if cfg.use_aux_loss:
     try:
@@ -135,8 +187,10 @@ metadata.to_json(cfg.out_dir / 'metadata.json')
 for use_fold in cfg.use_folds:
     print(f"\nFold: {use_fold}")
     metadata['is_valid'] = metadata.fold == use_fold
-    print(f"Train set: {(~ metadata.is_valid).sum():12d}")
-    print(f"Valid set: {   metadata.is_valid.sum():12d}")
+    cfg.NUM_TRAINING_IMAGES = (~ metadata.is_valid).sum()
+    cfg.NUM_VALIDATION_IMAGES = metadata.is_valid.sum()
+    print(f"Train set: {cfg.NUM_TRAINING_IMAGES:12d}")
+    print(f"Valid set: {cfg.NUM_VALIDATION_IMAGES:12d}")
 
     if hasattr(project, 'pooling'):
         cfg.pooling = project.pooling
@@ -155,8 +209,9 @@ for use_fold in cfg.use_folds:
     if hasattr(pretrained_model, 'arc'):
         print(pretrained_model.arc)
 
+
     fn = cfg.out_dir / f'{cfg.name}_init.pth'
-    if not fn.exists():
+    if False and not fn.exists():
         print(f"Saving initial model as {fn}")
         torch.save(pretrained_model.state_dict(), fn)
 
@@ -165,32 +220,24 @@ for use_fold in cfg.use_folds:
         torch.set_default_tensor_type('torch.FloatTensor')
 
         # MpModelWrapper wraps a model to minimize host memory usage (fork only)
-        wrapped_model = xmp.MpModelWrapper(pretrained_model) if cfg.num_tpu_cores > 1 else pretrained_model
+        pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
         serial_executor = xmp.MpSerialExecutor()
 
-        xmp.spawn(_mp_fn, nprocs=cfg.num_tpu_cores, start_method='fork',
-                  args=(cfg, metadata, wrapped_model, serial_executor, xm, use_fold))
+        xmp.spawn(_mp_fn, nprocs=cfg.n_replicas, start_method='fork',
+                  args=(cfg, metadata, pretrained_model, serial_executor, xm, use_fold))
+
+        if cfg.xla_metrics:
+            xm.master_print()
+            report = met.metrics_report()  # str
+            if 'XrtTryFreeMemory' in report:
+                xm.master_print("XrtTryFreeMemory: reduce bs!")
+            xm.master_print(report)
+
 
     # Or train on CPU/GPU if no xla
     else:
-        wrapped_model = pretrained_model
-        _mp_fn(None, cfg, metadata, wrapped_model, None, xm, use_fold)
-        del wrapped_model
+        pretrained_model = pretrained_model
+        _mp_fn(None, cfg, metadata, pretrained_model, None, xm, use_fold)
         del pretrained_model
         gc.collect()
         torch.cuda.empty_cache()
-
-    if cfg.save_best:
-        saved_models = sorted(glob(f'{cfg.out_dir / cfg.name}_fold{use_fold}_ep*.pth'))
-        if len(saved_models) > 1:
-            last_saved = removesuffix(saved_models[-1], '.pth')
-            print("Best saved model:", last_saved)
-            for saved_model in saved_models[:-1]:
-                path_stem = removesuffix(saved_model, '.pth')
-                for suffix in 'pth opt sched'.split():
-                    fn = f'{path_stem}.{suffix}'
-                    if os.path.exists(fn): Path(fn).unlink()
-        elif len(saved_models) == 1:
-            print(print("Best saved model:", saved_models[0]))
-        else:
-            print(f"no checkpoints found in {cfg.out_dir}")

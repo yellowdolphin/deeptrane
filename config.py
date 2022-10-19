@@ -3,8 +3,13 @@ import sys
 from pathlib import Path
 import argparse
 import importlib
-
 import yaml
+
+
+def construct_python_tuple(loader, node):
+    return tuple(loader.construct_sequence(node))
+
+yaml.SafeLoader.add_constructor(u'tag:yaml.org,2002:python/tuple', construct_python_tuple)
 
 
 class DotDict(dict):
@@ -46,7 +51,7 @@ class Config(DotDict):
     def save_yaml(self, filename=None, width=120):
         if filename is None:
             os.makedirs(self.out_dir, exist_ok=True)
-            filename = Path(self.out_dir) / "cfg.yaml"
+            filename = Path(self.out_dir) / "config.yaml"
         save_yaml(filename, dict(self), width=width)
 
     def __repr__(self):
@@ -64,6 +69,7 @@ parser.add_argument("-f", "--use_folds", nargs="+", type=int, help="cfg.use_fold
 parser.add_argument("-v", "--batch_verbose", help="mbatch frequency of progress outputs")
 parser.add_argument("--epochs", type=int)
 parser.add_argument("--size", nargs="+", type=int, help="model input size (int) or (height, width)")
+parser.add_argument("--metrics", nargs="+", type=str, help="metrics (str) keywords or aliases")
 parser.add_argument("--dropout_ps", nargs="+", type=float, help="Dropout probabilities for head Dropout layers")
 parser.add_argument("--lin_ftrs", nargs="+", type=int, help="None|output dims of linear (FC) head layers before output layer")
 parser.add_argument("--betas", nargs=2, type=float, help="Adam (β1, β2) or SGD (μ, 1 - τ) parameters")

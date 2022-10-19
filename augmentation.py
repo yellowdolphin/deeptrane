@@ -106,37 +106,45 @@ def get_tfms(cfg, mode='train'):
         flags.update(cfg.augmentation)
 
     if mode == 'train' and 'train_tfms' in flags:
-        flags.train_tfms[0].height = cfg.size[0]
-        flags.train_tfms[0].width = cfg.size[1]
+        for t in flags.train_tfms:
+            if hasattr(t, 'height'): t.height = cfg.size[0]
+            if hasattr(t, 'width'): t.width = cfg.size[1]
         return flags.train_tfms
+
     if 'test_tfms' in flags:
-        flags.test_tfms[0].height = cfg.size[0]
-        flags.test_tfms[0].width = cfg.size[1]
+        for t in flags.train_tfms:
+            if hasattr(t, 'height'): t.height = cfg.size[0]
+            if hasattr(t, 'width'): t.width = cfg.size[1]
         return flags.test_tfms
 
-    assert not cfg.use_albumentations, 'define albumentations tfms in cfg.augmentation'
-    return get_torchvision_tfms(cfg.size, flags, mode, cfg.use_batch_tfms)
+    return get_torchvision_tfms(cfg, flags, mode, cfg.use_batch_tfms)
 
 
-def get_torchvision_tfms(size, flags, mode='train', use_batch_tfms=False):
+def get_torchvision_tfms(cfg, flags=None, mode='train'):
     "Construct torchvision transforms from `flags`"
-
-    interpolation = flags.interpolation
 
     import math
     import warnings
 
+    import torchvision.transforms as TF
+
+    flags = flags or Config('configs/aug_defaults')
+    if 'augmentation' in cfg:
+        flags.update(cfg.augmentation)
+
+    size = cfg.size
+    interpolation = flags.interpolation
+    if cfg.use_batch_tfms:
+        interpolation = torchvision.transforms.InterpolationMode.NEAREST if hasattr(torchvision.transforms, 'InterpolationMode') else 0
+
+    if (mode != 'train') or cfg.use_batch_tfms:
+        return TF.Compose([TF.Resize(size, interpolation=interpolation), TF.ToTensor()])
+
     from torchvision.transforms import (
-        Compose, ToTensor, RandomApply, Resize, CenterCrop,
+        RandomApply, CenterCrop,
         RandomHorizontalFlip, RandomVerticalFlip,
-        RandomRotation, Pad, RandomPerspective, RandomEqualize,
-        ColorJitter, Normalize, RandomErasing, Grayscale)
-
-    if mode == 'train' and use_batch_tfms:
-        return ToTensor()
-
-    if mode == 'test':
-        return Compose([Resize(size), ToTensor()])
+        RandomRotation, Pad, RandomPerspective, #RandomEqualize,
+        ColorJitter, Normalize, RandomErasing, Grayscale, GaussianBlur)
 
     tfms = []
 
@@ -174,8 +182,11 @@ def get_torchvision_tfms(size, flags, mode='train', use_batch_tfms=False):
     if flags.hist_equalize:
         tfms.append(RandomEqualize(p=flags.hist_equalize))
 
+    if flags.blur:
+        tfms.append(RandomApply([GaussianBlur(kernel_size=5)], p=flags.blur))
+
     # tensorize, normalize
-    tfms.append(ToTensor())
+    tfms.append(TF.ToTensor())
     if flags.normalize:
         tfms.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
 
@@ -183,4 +194,89 @@ def get_torchvision_tfms(size, flags, mode='train', use_batch_tfms=False):
     if flags.p_cutout:
         tfms.append(RandomErasing(p=flags.p_cutout,
                                   scale=(0.05, 0.3), ratio=(0.5, 1.4), value=0.93))
-    return Compose(tfms)
+    return TF.Compose(tfms)
+
+
+def get_tf_tfms(cfg, mode='train'):
+    "Return tfms based on flags from file `cfg.augmentation`."
+    import tensorflow as tf
+    from utils.general import quietly_run
+    try:
+        import tensorflow_addons as tfa
+    except ModuleNotFoundError:
+        quietly_run('pip install tensorflow_addons')
+        import tensorflow_addons as tfa
+
+    flags = Config(f'configs/{cfg.augmentation}')
+    # inputs is dict or tuple. index/keys must accord to data_format!
+
+    if mode == 'train':
+        def random_h_or_v_crop(image, size):
+            if tf.random.uniform([]) > 0.5:  # crop either horizontally or vertically
+                crop = int((1 - flags.random_crop * tf.random.uniform([])) * size[1])
+                h, w = size[0], crop
+            else:
+                crop = int((1 - flags.random_crop * tf.random.uniform([])) * size[0])
+                h, w = crop, size[1]
+            image = tf.image.random_crop(image, [h, w, 3])
+            return tf.image.resize(image, size)
+
+
+        def tfms(inputs, targets, sample_weights=None):
+            image = inputs[0] if isinstance(inputs, tuple) else inputs['image']
+            image = tf.image.resize(image, cfg.size)
+            image = tf.image.transpose(image) if flags.transpose and tf.random.uniform([]) < 0.5 else image
+            image = tf.image.random_flip_left_right(image) if flags.hflip else image
+            image = tf.image.random_flip_up_down(image) if flags.vflip else image
+            image = tf.image.random_hue(image, **flags.hue) if flags.hue else image
+            image = tf.image.random_saturation(image, *flags.saturation) if flags.saturation else image
+            image = tf.image.random_contrast(image, *flags.contrast) if flags.contrast else image
+            image = tf.image.random_brightness(image, **flags.brightness) if flags.brightness else image
+
+            if flags.rotate and tf.random.uniform([]) < 0.5:
+                phi = (2 * tf.random.uniform([]) - 1) * flags.rotate * 3.1415 / 180
+                image = tfa.image.rotate(image, angles=phi, interpolation='bilinear',
+                                         fill_mode='constant', fill_value=1.0)
+
+            if flags.random_crop and (tf.random.uniform([]) < 0.75):
+                image = random_h_or_v_crop(image, cfg.size)
+
+            # tf.image_random_jpeg_quality broken on kaggle TPUs
+            #if flags.random_jpeg_quality and tf.random.uniform([]) < 0.75:
+            #    min_quality, max_quality = int(95 * (1 - flags.random_jpeg_quality)), 95
+            #    image = tf.image.random_jpeg_quality(image, min_quality, max_quality)
+
+            if flags.random_grayscale and tf.random.uniform([]) < 0.5 * flags.random_grayscale:
+                image = tf.image.adjust_saturation(image, 0)
+
+            if flags.mean_filter and tf.random.uniform([]) < 0.5 * flags.mean_filter:
+                image = tfa.image.mean_filter2d(image, filter_shape=5)
+
+            # tfa.image.cutout is currently broken, issue #2384
+            #if flags.cutout and tf.random.uniform([]) < 0.75:
+            #    area = 2 * int((size * flags.cutout) ** 2 / 2)
+            #    image = tfa.image.random_cutout(image, mask_size=area, constant_values=220)            
+
+            if isinstance(inputs, tuple):
+                inputs = (image, *inputs[1:])
+            else:
+                inputs['image'] = image
+            if sample_weights is None:
+                return inputs, targets
+            return inputs, targets, sample_weights
+
+        return tfms
+
+    else:
+        def tfms(inputs, targets, sample_weights=None):
+            image = inputs[0] if isinstance(inputs, tuple) else inputs['image']
+            image = tf.image.resize(image, cfg.size)
+            if isinstance(inputs, tuple):
+                inputs = (image, *inputs[1:])
+            else:
+                inputs['image'] = image
+            if sample_weights is None:
+                return inputs, targets
+            return inputs, targets, sample_weights
+
+        return tfms

@@ -3,9 +3,77 @@ import json
 import os
 import shutil
 import math
+from typing import List
 import numpy as np
+import torchmetrics as tm
+from torchmetrics.utilities.checks import _input_format_classification
+from torchmetrics.utilities.enums import DataType
 from sklearn.metrics import average_precision_score
+import torch
+from torch import Tensor
 import torch.nn as nn
+
+
+def get_dist_sync_fn(xm):
+    "Enables xla syncronization of torchmetrics classes"
+    if xm.xrt_world_size() <= 1:
+        return None
+
+    def dist_sync_fn(data, group=None):
+        assert group is None, f'group not None: {group}'
+        local_data = data
+        ordinal = xm.get_ordinal()
+        assert isinstance(data, Tensor), f'{type(data)} is not a Tensor'
+        data = xm.mesh_reduce('metric_sync', data, list)
+        assert type(data) is list
+        assert len(data) == xm.xrt_world_size()
+        assert isinstance(data[ordinal], Tensor), f'{type(data[ordinal])} is not a Tensor'
+        assert data[ordinal].dtype == local_data.dtype, f'dtype changed to {data[ordinal].dtype}'
+        assert data[ordinal].shape == local_data.shape, f'shape changed to {data[ordinal].shape}'
+        return data
+
+    return dist_sync_fn
+
+
+def is_listmetric(metric):
+    # torchmetric metrics w/o "average" attribute yield lists
+    return getattr(metric, 'average', '') is None
+
+
+def reduce(values):
+    if isinstance(values, Tensor):
+        return torch.mean(values)
+    return sum(values) / len(values)
+
+
+class AverageMeter(object):
+    '''Computes and stores the average and current value'''
+
+    def __init__(self, xm):
+        self.xm = xm  # allow overload at runtime
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+
+    @property
+    def average(self):
+        eps = 1e-14
+        reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
+        reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
+        return reduced_sum / (reduced_count + eps)
+
+    @property
+    def current(self):
+        # current value, averaged over devices (and minibatch)
+        return self.xm.mesh_reduce('meter_val', self.val, reduce)
 
 
 def log_average_miss_rate(prec, rec, num_images):
@@ -286,11 +354,13 @@ def val_map(gt_labels, pred_scores, score_thresh=1e-5, classwise=False, xm=None)
     return ap_list if classwise else map
 
 
-def multiclass_average_precision_score(y_true, y_score):
-    "Return class-mean of single-class AP scores"
-    n_classes = y_true.shape[1]
-    class_aps = [average_precision_score(y_true[:, i], y_score[:, i]) for i in range(n_classes)]
-    return np.mean(class_aps)
+#def multiclass_average_precision_score(y_true, y_score):
+#    """Return class-mean of single-class AP scores (obsolete)
+#
+#    Same as average_precision_score(y_true, y_score)"""
+#    n_classes = y_true.shape[1]
+#    class_aps = [average_precision_score(y_true[:, i], y_score[:, i]) for i in range(n_classes)]
+#    return np.mean(class_aps)
 
 
 # mAP metric implementations --------------------------------------------------
@@ -584,51 +654,87 @@ class VinBigDataEval:
 
 # Metrics for image recognition -----------------------------------------------
 
+class NegativeRate(tm.StatScores):
+    """This metric monitors the rate at which `negative_class` is predicted.summarize.
 
-class NegativeRate(nn.Module):
-    def __init__(self, negative_class=0, name='neg_rate'):
-        super().__init__()
+    All input formats are supported, but num_classes must be specified.
+    kwargs are passed to the StatScores parent class."""
+    is_differentiable = False
+    full_state_update: bool = False
+
+    def __init__(self, num_classes, negative_class=0, **kwargs):
+        kwargs.update(dict(reduce='macro', num_classes=num_classes))
+        super().__init__(**kwargs)
         self.negative_class = negative_class
-        self.needs_top5 = False
-        self.needs_scores = False
-        self.__name__ = name
 
-    def forward(self, labels, preds):
-        preds = preds[:, 0] if preds.ndim > 1 else preds
-        return (preds == self.negative_class).sum() / len(preds)
+    def compute(self) -> Tensor:
+        class_stats = super().compute()
+        assert class_stats.ndim == 2, f'expected class_stats.ndim 2 got {class_stats.ndim}'
+        neg_stats = class_stats[self.negative_class]
+        tp, fp, tn, fn, sup = neg_stats
+        print("negative_class:", self.negative_class)
+        print("tp fp tn fn total:", tp, fp, tn, fn, tp + fp + tn + fn)
+        return (tp + fp) / (tp + fp + tn + fn)
 
 
-class MAP(nn.Module):
-    def __init__(self, xm, k=0, name='mAP'):
+class EmbeddingAveragePrecision(tm.Metric):
+    """This metric calculates cos similarity scores for `embeddings`, generates predictions for
+    a range of negative/new thresholds and calculates the top5 AP score for the best threshold.
+
+    It requires embeddings instead of classifier logits/scores."""
+
+    is_differentiable = False
+    higher_is_better = True
+    full_state_update: bool = False
+
+    def __init__(self, xm, k=0):
         super().__init__()
         self.xm = xm
         self.k = k
-        #self.needs_topk = True
-        self.needs_scores = True
-        self.__name__ = name
+        self.add_state('embeddings', default=torch.FloatTensor(), dist_reduce_fx='cat')
+        self.add_state('labels', default=torch.LongTensor(), dist_reduce_fx='cat')
 
 
-    def forward(self, labels, features):
-        m = np.matmul(features, np.transpose(features))  # similarity matrix
-        for i in range(features.shape[0]):
-            m[i,i] = -1000.0  # avoid self-reckognition
-        predict_sorted = np.argsort(m, axis=-1)[:,::-1]  # most similar other examples
+    def update(self, embeddings: torch.FloatTensor, labels: torch.LongTensor):
+        #labels, embeddings = self._input_format(labels, embeddings)  # outdated doc?
+        assert embeddings.size(0) == labels.size(0), f'len mismatch between labels ' \
+            f'({labels.size(0)}) and embeddings ({embeddings.size(0)})'
+        self.embeddings = torch.cat([self.embeddings, embeddings])
+        self.labels = torch.cat([self.labels, labels])
 
-        #thresholds = np.arange(0.4, 0.3, -0.02)
-        thresholds = np.arange(1, 0, -0.05)
+
+    def compute(self):
+        labels, embeddings = self.labels, self.embeddings
+        #self.xm.master_print("labels:", labels.shape, labels.dtype)  # torch.Size([10207]) torch.int64
+        #self.xm.master_print("embeddings:", embeddings.shape)  # torch.Size([10207, 15587])
+        m = torch.matmul(embeddings, embeddings.T)  # similarity matrix
+        #self.xm.master_print("m:", m.shape)  # torch.Size([10207, 10207])
+        m.fill_diagonal_(-1000.0)  # penalize self-reckognition
+        #self.xm.master_print("m:", m.shape, [m[i, i] for i in range(0, 5, 10)])  # torch.Size([10207, 10207]) [tensor(38486.7383, device='cuda:0')]
+        predict_sorted = torch.argsort(m, dim=-1, descending=True)
+
+        # the rest is much faster on CPU
+        labels = labels.cpu().numpy()
+        m = m.cpu().numpy()
+        predict_sorted = predict_sorted.cpu().numpy()
+        #print(labels.shape, m.shape, predict_sorted.shape)  # ok
+
         map5_list = []
-        for threshold in thresholds:
+        for threshold in np.arange(1, 0, -0.05):
             top5s = []
-            for l, scores, indices in zip(labels, m, predict_sorted):  # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
-                top5_labels, top5_scores = self.get_top5(scores, indices, labels, threshold)
+            for l, scores, indices in zip(labels, m, predict_sorted):  
+                # (2799,) int64, (2799, 2799) float32, (2799, 2799) int64
+                top5_labels = self.get_top5(scores, indices, labels, threshold)  # -> tensor (cpu)
                 top5s.append(np.array(top5_labels))
+            assert isinstance(top5s[0], np.ndarray)
+            assert top5s[0].shape == (5,)
             map5_list.append((threshold, self.mapk(labels, top5s)))
         map5_list = list(sorted(map5_list, key=lambda x: x[1], reverse=True))
         best_thres = map5_list[0][0]
         best_score = map5_list[0][1]
         self.xm.master_print(f"best_thres: {best_thres:.2f}")
 
-        return best_score
+        return torch.tensor(best_score)
 
 
     def get_top5(self, scores, indices, labels, threshold):
@@ -654,14 +760,58 @@ class MAP(nn.Module):
             ret_scores.append(s)
             if len(ret_labels) >= self.k:
                 break
-        return ret_labels[:5], ret_scores[:5]
+        return ret_labels[:5]
 
 
-    def mapk(self, labels, preds):
+    def get_top5_2(self, scores, indices, labels, threshold):
+        # slow
+        #self.xm.master_print("scores:", scores.device)  # cuda
+        #self.xm.master_print("indices:", indices.device)  # cuda
+        #self.xm.master_print("labels:", labels.device)  # cuda
+        #self.xm.master_print("threshold:", threshold.device)  # cuda
+        # TODO: vectorize, use torch functions
+        used = set()
+        ret_labels = []
+
+        for index in indices:
+            l = labels[index].item()
+            s = scores[index]
+            if l in used:
+                continue
+
+            if 0 not in used and s < threshold:
+                used.add(0)
+                ret_labels.append(0)
+            if l in used:
+                continue
+
+            used.add(l)
+            ret_labels.append(l)
+            if len(ret_labels) >= self.k:
+                break
+        return torch.LongTensor(ret_labels[:5]).to(labels.device)
+
+
+    def mapk(self, labels: np.array, preds: List[np.array]):
+        #labels, preds = labels.cpu().numpy(), [p.cpu().numpy() for p in preds]
+        assert isinstance(labels, np.ndarray)
+        assert isinstance(preds, list)
+        assert isinstance(preds[0], np.ndarray)
+        assert preds[0].shape == (5,)
         return np.mean([self.apk(l, p) for l, p in zip(labels, preds)])
 
 
+    def mapk2(self, labels: torch.LongTensor, preds: List[torch.FloatTensor]):
+        # slow
+        #self.xm.master_print("mapk labels:", labels.shape, labels.dtype, labels.device)  # torch.Size([10207]) torch.int64 cuda:0
+        #self.xm.master_print("mapk preds:", len(preds), preds[0].shape, preds[0].dtype, preds[0].device)  # 10207 torch.Size([5]) torch.int64 cuda:0
+        return torch.mean(torch.FloatTensor([self.apk2(l, p) for l, p in zip(labels, preds)]))
+
+
     def apk(self, labels, preds):
+        assert isinstance(labels, np.int64)
+        assert isinstance(preds, np.ndarray)
+        assert preds.shape == (5,)
         k = self.k
         if not labels:
             return 0.0
@@ -683,3 +833,31 @@ class MAP(nn.Module):
                 score += num_hits / (i + 1.0)
 
         return score / min(len(labels), k)
+
+
+    def apk2(self, labels, preds):
+        # slow
+        #self.xm.master_print("apk labels:", labels.shape, labels.device)  # torch.Size([]) cuda:0
+        #self.xm.master_print("apk preds:", preds.shape, preds.device)  # torch.Size([5]) cuda:0
+        k = self.k
+        if not labels:
+            return torch.tensor(0.0)
+        if len(preds) > k:
+            preds = preds[:k]
+
+        #if not hasattr(labels, '__len__') or len(labels) == 1:
+        if labels.ndim == 0:
+            for i, p in enumerate(preds):
+                if p == labels:
+                    return torch.tensor(1.0 / (i + 1))
+            return torch.tensor(0.0)
+
+        score = 0.0
+        num_hits = 0.0
+
+        for i, p in enumerate(preds):
+            if p in labels and p not in preds[:i]:
+                num_hits += 1.0
+                score += num_hits / (i + 1.0)
+
+        return torch.tensor(score / min(len(labels), k))
