@@ -29,6 +29,7 @@ but there are issues:
 import math
 
 import tensorflow as tf
+import tensorflow_addons as tfa  # for tfa.optimizers, tfa.metrics
 from utils.general import quietly_run
 
 # if cfg.arch_name.startswith('efnv1'):
