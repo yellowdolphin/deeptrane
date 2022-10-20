@@ -509,7 +509,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             metrics_classes['f2'] = tfa.metrics.FBetaScore(num_classes=cfg.n_classes, beta=2.0, average='micro', name='F2')
         if 'macro_f1' in cfg.metrics:
             metrics_classes['macro_f1'] = tfa.metrics.F1Score(num_classes=cfg.n_classes, average='macro', name='macro_F1')
-        if 'non_existing_metric' in cfg.metrics:
+        if True: #'non_existing_metric' in cfg.metrics:
             metrics_classes['non_existing_metric'] = tf.keras.metrics.NoSuchClass(name='non_existing_metric')
 
         metrics = [metrics_classes[m] for m in cfg.metrics]

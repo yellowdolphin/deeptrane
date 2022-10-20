@@ -27,8 +27,8 @@ cfg = dict(
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 0.05,
-    metrics = ['acc', 'f1'],
-    save_best = 'f1',
+    metrics = ['acc', 'macro_acc'],
+    save_best = 'acc',
 
 # Augmentation
     normalize = None,
