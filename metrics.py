@@ -14,10 +14,10 @@ from torch import Tensor
 import torch.nn as nn
 
 
-def get_dist_sync_fn(xm):
-    "Enables xla syncronization of torchmetrics classes"
+def get_tm_dist_args(xm):
+    "Return torchmetrics kwargs to enable xla syncronization"
     if xm.xrt_world_size() <= 1:
-        return None
+        return {}
 
     def dist_sync_fn(data, group=None):
         assert group is None, f'group not None: {group}'
@@ -32,7 +32,10 @@ def get_dist_sync_fn(xm):
         assert data[ordinal].shape == local_data.shape, f'shape changed to {data[ordinal].shape}'
         return data
 
-    return dist_sync_fn
+    def distributed_available_fn():
+        return True
+
+    return dict(dist_sync_fn=dist_sync_fn, distributed_available_fn=distributed_available_fn)
 
 
 def is_listmetric(metric):

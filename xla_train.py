@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import torchmetrics as tm
 print("[ √ ] torchmetrics:", tm.__version__)
-from metrics import get_dist_sync_fn, is_listmetric, NegativeRate, AverageMeter, EmbeddingAveragePrecision
+from metrics import get_tm_dist_args, is_listmetric, NegativeRate, AverageMeter, EmbeddingAveragePrecision
 from torch_data import get_dataloaders, get_fakedata_loaders
 import torch
 from torch import nn
@@ -368,24 +368,24 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         cfg.save_best = aliases[cfg.save_best]
 
     # torchmetrics
-    dist_sync_fn = get_dist_sync_fn(xm)
+    dist_args = get_tm_dist_args(xm)
     metrics = {}
     if 'acc' in cfg.metrics:
-        metrics['acc'] = tm.Accuracy(dist_sync_fn=dist_sync_fn)
+        metrics['acc'] = tm.Accuracy(**dist_args)
     if 'macro_acc' in cfg.metrics:
-        metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
+        metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, **dist_args)
     if 'top5' in cfg.metrics:
-        metrics['top5'] = tm.Accuracy(top_k=5, dist_sync_fn=dist_sync_fn)
+        metrics['top5'] = tm.Accuracy(top_k=5, **dist_args)
     if 'top3' in cfg.metrics:
-        metrics['top3'] = tm.Accuracy(top_k=3, dist_sync_fn=dist_sync_fn)
+        metrics['top3'] = tm.Accuracy(top_k=3, **dist_args)
     if 'F1' in cfg.metrics:
-        metrics['F1'] = tm.F1Score(num_classes=cfg.n_classes, average='micro', dist_sync_fn=dist_sync_fn)
+        metrics['F1'] = tm.F1Score(num_classes=cfg.n_classes, average='micro', **dist_args)
     if 'macro_F1' in cfg.metrics:
-        metrics['macro_F1'] = tm.F1Score(num_classes=cfg.n_classes, average='macro', dist_sync_fn=dist_sync_fn)
+        metrics['macro_F1'] = tm.F1Score(num_classes=cfg.n_classes, average='macro', **dist_args)
     if 'class_F1' in cfg.metrics:
-        metrics['class_F1'] = tm.F1Score(num_classes=cfg.n_classes, average=None, dist_sync_fn=dist_sync_fn)
+        metrics['class_F1'] = tm.F1Score(num_classes=cfg.n_classes, average=None, **dist_args)
     if 'F2' in cfg.metrics:
-        metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, dist_sync_fn=dist_sync_fn)
+        metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, **dist_args)
     if 'pct_N' in cfg.metrics:
         negative_class = (
             0 if cfg.negative_class is None else
@@ -394,7 +394,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['pct_N'] = NegativeRate(num_classes=cfg.n_classes, negative_class=negative_class, 
                                         threshold=cfg.negative_thres or 0.5)
     if 'mAP' in cfg.metrics:
-        metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, dist_sync_fn=dist_sync_fn)
+        metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, **dist_args)
     if 'eAP5' in cfg.metrics:
         metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
     metrics = tm.MetricCollection(metrics, compute_groups=cfg.metric_compute_groups)
