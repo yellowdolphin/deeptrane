@@ -97,7 +97,7 @@ print("[ √ ] torch:", torch.__version__)
 
 # Install (xla compatible) torchmetrics
 if cfg.xla and torchmetrics_fork() != 'xla_fork':
-    quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git')
+    quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git', debug=True)
 elif not cfg.xla and not torchmetrics_fork():
     quietly_run('pip install torchmetrics>=0.8', debug=cfg.DEBUG)
 else:
