@@ -10,7 +10,7 @@ from multiprocessing import cpu_count
 
 from config import Config, parser
 from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
-from utils.torch_setup import torchmetrics_fork
+from utils.torch_setup import torchmetrics_version
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -96,13 +96,21 @@ import torch
 print("[ √ ] torch:", torch.__version__)
 
 # Install (xla compatible) torchmetrics
-if cfg.xla and torchmetrics_fork() != 'xla_fork':
-    quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git', debug=cfg.DEBUG)
-elif not cfg.xla and not torchmetrics_fork():
+if cfg.xla and torchmetrics_version() != 'xla_compatible':
+    # Use own fork while current torchmetrics is broken
+    #quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git', debug=cfg.DEBUG)
+
+    # Current version works with torch_xla and torch 1.8.1, but torch requirement is not met by "1.8.0a0+56b43f4"
+    # Have to prevent re-installation of wrong torch version.
+    # Switch to pypi when distributed_available fix is out (10.4?)
+    quietly_run('pip install --no-deps git+https://github.com/Lightning-AI/metrics.git', debug=cfg.DEBUG)
+    quietly_run('pip install numpy>=1.17.2 packaging typing-extensions')
+
+elif not cfg.xla and not torchmetrics_version():
     quietly_run('pip install torchmetrics>=0.8', debug=cfg.DEBUG)
 else:
     # require 0.8.0+ for kwarg compute_groups
-    tm_version = torchmetrics_fork().split('.')
+    tm_version = torchmetrics_version().split('.')
     if tm_version[0] == '0' and int(tm_version[1]) < 8:
         quietly_run('pip install -U torchmetrics')
 

@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 
-def torchmetrics_fork():
+def torchmetrics_version():
     "Check if torchmetrics is installed and if it is xla-compatible"
     install_dirs = [Path(p) / 'torchmetrics' for p in sys.path if (Path(p) / 'torchmetrics').exists()]
     if len(install_dirs) == 1:
@@ -13,9 +13,10 @@ def torchmetrics_fork():
             with open(metric_module_file, 'r') as f:
                 code = f.read()
 
-            if 'if dist_sync_fn is None' in code:
-                print("[ √ ] torchmetrics installation: dist_sync_fn issue is fixed")
-                return 'xla_fork'
+            if 'self.distributed_available_fn = kwargs.pop("distributed_available_fn"' in code:
+                # dist_sync_fn issue (#1301) has been fixed in 5bbad47ef7e044d23fe06ab179d3c06b444d0f7e
+                print("[ √ ] torchmetrics is xla-compatible")
+                return 'xla_compatible'
 
         if about_file.exists():
             with open(about_file, 'r') as f:
