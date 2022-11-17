@@ -66,11 +66,12 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
         plt.show()
         df.lr.plot(title='lr')
 
-        # print metrics for spreadsheet
+        # Print metrics for spreadsheet copy&paste (tab-separated)
         best_idx = df[best_metric].argmax()
         best_ep = df.index[best_idx]
-        best_metrics = [best_ep]
         fields = losses + metrics
-        best_metrics.extend(df.loc[best_ep, fields])
-        print("best_ep\t" + '\t'.join(losses + metrics))
-        print('\t'.join([str(m) for m in best_metrics]))
+        best_metrics = df.loc[best_ep, fields].tolist()
+        keys = ['best_ep'] + fields
+        values = [str(best_ep)] + [f'{m:.5f}' for m in best_metrics]
+        print('\t'.join(keys))
+        print('\t'.join(values))
