@@ -314,7 +314,7 @@ class AddMarginProductSubCenter(tf.keras.layers.Layer):
 
 
 def get_margin(cfg):
-    # Adaptive margins for each target class (range: cfg.margin_min ... cfg.margin_maxbe)
+    # Adaptive margins for each target class (range: cfg.margin_min ... cfg.margin_max)
     # should be defined in project.
     m = cfg.adaptive_margin or 0.3
 
