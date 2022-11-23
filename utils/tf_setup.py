@@ -3,6 +3,7 @@ from utils.general import quietly_run
 
 
 def install_model_libs(cfg):
+    quietly_run('pip install tensorflow-addons')
     if cfg.arch_name.startswith('efnv1'):
         quietly_run('pip install efficientnet', debug=False)
     elif cfg.arch_name.startswith('efnv2'):
