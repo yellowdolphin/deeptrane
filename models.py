@@ -284,6 +284,19 @@ def compare_state_dicts(a, b, check_shapes=False):
                 print(f"size mismatch in {k:40} {str(list(a[k].shape)):12} {str(list(b[k].shape)):12}")
 
 
+def get_bottleneck_params(cfg):
+    "Define one Dropout (maybe zero) per FC + optional final Dropout"
+    dropout_ps = cfg.dropout_ps or []
+    lin_ftrs = cfg.lin_ftrs or []
+    if len(dropout_ps) > len(lin_ftrs) + 1:
+        raise ValueError(f"too many dropout_ps ({len(dropout_ps)}) for {len(lin_ftrs)} lin_ftrs")
+    final_dropout = dropout_ps.pop() if len(dropout_ps) == len(lin_ftrs) + 1 else 0
+    num_missing_ps = len(lin_ftrs) - len(dropout_ps)
+    dropout_ps.extend([0] * num_missing_ps)
+
+    return lin_ftrs, dropout_ps, final_dropout
+
+
 def get_pretrained_model(cfg):
     """Initialize pretrained_model for a new fold based on global variables
 
@@ -325,21 +338,18 @@ def get_pretrained_model(cfg):
     if cfg.get_bottleneck is not None:
         bottleneck = cfg.get_bottleneck(cfg, n_features)
     else:
+        lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
         bottleneck = []
-        for p, out_features in zip(cfg.dropout_ps, cfg.lin_ftrs):
-            bottleneck.append(nn.Dropout(p=p))
+        for p, out_features in zip(dropout_ps, lin_ftrs):
+            if p > 0: bottleneck.append(nn.Dropout(p=p))
             bottleneck.append(nn.Linear(n_features, out_features))
             n_features = out_features
-            if cfg.head_bn:
-                bottleneck.append(nn.BatchNorm1d(n_features))
-        bottleneck = nn.Sequential(*bottleneck)
+            if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(n_features))
+        if final_dropout:
+            bottleneck.append(nn.Dropout(p=final_dropout))
+
     n_features = get_last_out_features(bottleneck, None) or n_features
     print(n_features, "features after bottleneck")
-
-    if cfg.fastai_head:
-        cfg.pool = 'cat'
-
-
 
     if cfg.deotte:
         # Happywhale model used in my final TF notebooks
@@ -357,16 +367,12 @@ def get_pretrained_model(cfg):
                              nn.Linear(n_features * cfg.feature_size, cfg.channel_size),
                              nn.BatchNorm1d(cfg.channel_size))
     elif cfg.arch_name.startswith('cait'):
-        dropout = [nn.Dropout(p=cfg.dropout_ps[0])] if cfg.dropout_ps else []
-        head = nn.Sequential(*dropout,
-                             *bottleneck,
+        head = nn.Sequential(*bottleneck,
                              nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
     else:
         print(f"building output layer {n_features, cfg.channel_size or cfg.n_classes}")
-        dropout = [nn.Dropout(p=cfg.dropout_ps[0])] if cfg.dropout_ps else []
         head = nn.Sequential(pooling_layer,
                              nn.Flatten(),
-                             *dropout,
                              *bottleneck,
                              nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
 

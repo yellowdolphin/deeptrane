@@ -329,19 +329,34 @@ def get_margin(cfg):
     raise ValueError(f'ArcFace type {cfg.arcface} not supported')
 
 
-def BatchNorm(bn_type):
-    if bn_type == 'batch_norm': return tf.keras.layers.BatchNormalization()
-    if bn_type == 'sync_bn': return tf.keras.layers.experimental.SyncBatchNormalization()
-    if bn_type == 'layer_norm': return tf.keras.layers.LayerNormalization()  # bad valid, nan loss
+def BatchNorm(bn_type, name=None):
+    if bn_type == 'batch_norm': return tf.keras.layers.BatchNormalization(name=name)
+    if bn_type == 'sync_bn': return tf.keras.layers.experimental.SyncBatchNormalization(name=name)
+    if bn_type == 'layer_norm': return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
     #if bn_type == 'instance_norm':
     #    import tensorflow_addons as tfa
     #    return tfa.layers.InstanceNormalization()  # nan loss
-    if bn_type == 'instance_norm': return tf.keras.layers.BatchNormalization(virtual_batch_size=cfg.bs)
+    if bn_type == 'instance_norm': return tf.keras.layers.BatchNormalization(virtual_batch_size=cfg.bs, name=name)
+    if bn_type: return tf.keras.layers.BatchNormalization(name=name)  # default
+    raise ValueError(f'{bn_type} is no recognized bn_type')
 
 
 def check_model_inputs(cfg, model):
     for inp in model.inputs:
         assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
+
+
+def get_bottleneck_params(cfg):
+    "Define one Dropout (maybe zero) per FC + optional final Dropout"
+    dropout_ps = cfg.dropout_ps or []
+    lin_ftrs = cfg.lin_ftrs or []
+    if len(dropout_ps) > len(lin_ftrs) + 1:
+        raise ValueError(f"too many dropout_ps ({len(dropout_ps)}) for {len(lin_ftrs)} lin_ftrs")
+    final_dropout = dropout_ps.pop() if len(dropout_ps) == len(lin_ftrs) + 1 else 0
+    num_missing_ps = len(lin_ftrs) - len(dropout_ps)
+    dropout_ps.extend([0] * num_missing_ps)
+
+    return lin_ftrs, dropout_ps, final_dropout
 
 
 def get_pretrained_model(cfg, strategy, inference=False):
@@ -444,12 +459,19 @@ def get_pretrained_model(cfg, strategy, inference=False):
             # create_model(nb_classes=0) includes pooling as last layer
 
         # Bottleneck(s)
-        for p, out_channels in zip(cfg.dropout_ps, cfg.lin_ftrs):
-            embed = tf.keras.layers.Dropout(p)(embed)
-            embed = tf.keras.layers.Dense(out_channels)(embed)
-            embed = BatchNorm(bn_type=cfg.bn_head)(embed) if cfg.head_bn else embed
-        if cfg.bn_head and not cfg.lin_ftrs:
-            embed = BatchNorm(bn_type=cfg.bn_head)(embed)  # does this help?
+        if cfg.get_bottleneck is not None:
+            for layer in cfg.get_bottleneck(cfg, n_features):
+                embed = layer(embed)
+        else:
+            lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
+            for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
+                embed = tf.keras.layers.Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
+                embed = tf.keras.layers.Dense(out_channels, name=f"FC_{i}")(embed)
+                embed = BatchNorm(bn_type=cfg.bn_head, name=f"BN_{i}")(embed) if cfg.bn_head else embed
+            embed = tf.keras.layers.Dropout(final_dropout, 
+                name=f"dropout_final_{final_dropout}")(embed) if final_dropout else embed
+            if cfg.bn_head and not lin_ftrs:
+                embed = BatchNorm(bn_type=cfg.bn_head, name=f"BN_final")(embed)  # does this help?
 
         # Output layer or Margin
         if cfg.arcface and inference:
@@ -460,12 +482,12 @@ def get_pretrained_model(cfg, strategy, inference=False):
             output = tf.keras.layers.Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
         else:
             assert cfg.n_classes, 'set cfg.n_classes in project or config file!'
-            features = tf.keras.layers.Dense(cfg.n_classes)(embed)
+            features = tf.keras.layers.Dense(cfg.n_classes, name='classifier')(embed)
             output = tf.keras.layers.Softmax(dtype='float32')(features)
         
         if cfg.aux_loss:
             assert cfg.n_aux_classes, 'set cfg.n_aux_classes in project or config file!'
-            aux_features = tf.keras.layers.Dense(cfg.n_aux_classes)(embed)
+            aux_features = tf.keras.layers.Dense(cfg.n_aux_classes, name='aux_classifier')(embed)
             aux_output = tf.keras.layers.Softmax(dtype='float32', name='aux')(aux_features)
 
         # Outputs

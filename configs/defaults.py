@@ -52,6 +52,7 @@ cfg = dict(
     pool = 'avg',
     dropout_ps = [0.5],
     lin_ftrs = [],
+    bn_head = False,
     bn_eps = 1e-5,
     bn_momentum = 0.1,
     wd = 0.05,                  # default 1e-2
