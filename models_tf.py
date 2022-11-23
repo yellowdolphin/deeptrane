@@ -1,8 +1,8 @@
 """
-Models from tf.keras.applications suck. 
+Models from tf.keras.applications suck.
 Efficientnet V1 works best from `efficientnet` library.
 Efficientnet V2 works best from keras-efficientnet-v2.
-Other models can be obtained from tfimm or tfhub libraries, 
+Other models can be obtained from tfimm or tfhub libraries,
 but there are issues:
 
 ### tfimm models
@@ -12,7 +12,8 @@ but there are issues:
 - vit_base_patch16_384 requires size=384, 43 h/ep CPU
 - vit_base_patch8_224 requires size=224, bs=8, 61 h/ep CPU
 - swin_base_patch4_window12_384 requires size=384, OK in CPU/GPU, error on TPU
-- swin_base_patch4_window7_224_in22k OK in CPU/GPU, error on TPU (XLA cannot infer shape for model/swin_transformer_1/layers/0/blocks/0/attn/qkv/Tensordot operation)
+- swin_base_patch4_window7_224_in22k OK in CPU/GPU, error on TPU (XLA cannot infer shape
+    for model/swin_transformer_1/layers/0/blocks/0/attn/qkv/Tensordot operation)
 - deit_base_distilled_patch16_384
     - First dimension of predictions 4 must match length of targets 2
 
@@ -24,19 +25,18 @@ but there are issues:
 - vit_b8 requires size=224, fast but Errors on TPU in/after validation
     - save_weights error
 - convnext_base_21k_1k_224_fe
-    - UnimplementedError:  Fused conv implementation does not support grouped convolutions for now.
+    - UnimplementedError:  Fused conv implementation does not support grouped convolutions.
 """
 import math
 
 import tensorflow as tf
 import tensorflow_addons as tfa  # for tfa.optimizers, tfa.metrics
-from utils.general import quietly_run
 
 # if cfg.arch_name.startswith('efnv1'):
 #     import efficientnet.tfkeras as efn
-#     EFN = {'efnv1b0': efn.EfficientNetB0, 'efnv1b1': efn.EfficientNetB1, 
+#     EFN = {'efnv1b0': efn.EfficientNetB0, 'efnv1b1': efn.EfficientNetB1,
 #            'efnv1b2': efn.EfficientNetB2, 'efnv1b3': efn.EfficientNetB3,
-#            'efnv1b4': efn.EfficientNetB4, 'efnv1b5': efn.EfficientNetB5, 
+#            'efnv1b4': efn.EfficientNetB4, 'efnv1b5': efn.EfficientNetB5,
 #            'efnv1b6': efn.EfficientNetB6, 'efnv1b7': efn.EfficientNetB7}
 
 # if cfg.arch_name.startswith('efnv2'):
@@ -75,7 +75,7 @@ class GeMPoolingLayer(tf.keras.layers.Layer):
         inputs = tf.clip_by_value(inputs, clip_value_min=1e-6, clip_value_max=tf.reduce_max(inputs))
         inputs = tf.pow(inputs, self.p)
         inputs = tf.reduce_mean(inputs, axis=[1, 2], keepdims=False)
-        inputs = tf.pow(inputs, 1./self.p)
+        inputs = tf.pow(inputs, 1.0 / self.p)
         return inputs
 
 
@@ -87,11 +87,11 @@ class CustomTrainStep(tf.keras.Model):
         #for w in self.weights:            # safer, but needs more memory
         for w in self.trainable_weights:  # unfreezing layers may break grad accumulation
             w.grad = tf.Variable(tf.zeros_like(w), trainable=False)
-        
+
     @property
     def trainable_grads(self):
         return [w.grad for w in self.trainable_weights]
-    
+
     def zero_grads(self):
         for g in self.trainable_grads:
             g.assign(tf.zeros_like(g))
@@ -105,11 +105,12 @@ class CustomTrainStep(tf.keras.Model):
         self.optimizer.apply_gradients(zip(self.trainable_grads, self.trainable_variables))
         self.zero_grads()
         return 0
-    
+
     def train_step(self, data):
         # Supports multiple losses (outputs/labels) y = [y0, y1, ...]
         #x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)  # tf>2.4
         x, y = data
+
         # Run forward pass.
         with tf.GradientTape() as tape:
             y_pred = self(x, training=True)
@@ -119,10 +120,11 @@ class CustomTrainStep(tf.keras.Model):
 
         self.add_grads(tape.gradient(loss, self.trainable_variables))
         self.n_grad_steps.assign(
-            tf.cond(tf.equal(self.n_grad_steps, self.n_acc), 
+            tf.cond(tf.equal(self.n_grad_steps, self.n_acc),
                     self.optimizer_step, lambda: self.n_grad_steps + 1))
         #return self.compute_metrics(x, y, y_pred, sample_weight)  # tf>2.7
         self.compiled_metrics.update_state(y, y_pred)
+
         # Collect metrics to return
         return_metrics = {}
         for metric in self.metrics:
@@ -140,11 +142,11 @@ class SequentialWithGrad(tf.keras.Sequential):
         #for w in self.weights:            # safer, but needs more memory
         for w in self.trainable_weights:  # unfreezing layers may break grad accumulation
             w.grad = tf.Variable(tf.zeros_like(w), trainable=False)
-        
+
     @property
     def trainable_grads(self):
         return [w.grad for w in self.trainable_weights]
-    
+
     def zero_grads(self):
         for g in self.trainable_grads:
             g.assign(tf.zeros_like(g))
@@ -160,11 +162,11 @@ class ModelWithGrad(tf.keras.Model):
         #for w in self.weights:            # safer, but needs more memory
         for w in self.trainable_weights:  # unfreezing layers may break grad accumulation
             w.grad = tf.Variable(tf.zeros_like(w), trainable=False)
-        
+
     @property
     def trainable_grads(self):
         return [w.grad for w in self.trainable_weights]
-    
+
     def zero_grads(self):
         for g in self.trainable_grads:
             g.assign(tf.zeros_like(g))
@@ -295,11 +297,11 @@ class AddMarginProductSubCenter(tf.keras.layers.Layer):
             initializer='glorot_uniform',
             dtype='float32',
             trainable=True)
-    
+
     def call(self, inputs):
         input, label = inputs
         label = tf.cast(label, dtype=tf.int32)
-        cosine_all = tf.matmul(tf.math.l2_normalize(input, axis=1), 
+        cosine_all = tf.matmul(tf.math.l2_normalize(input, axis=1),
                                tf.math.l2_normalize(self.W, axis=0))
         if self.k == 1:
             cosine = cosine_all
@@ -319,26 +321,39 @@ def get_margin(cfg):
     m = cfg.adaptive_margin or 0.3
 
     if cfg.arcface == 'ArcMarginProduct':
-        return ArcMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters or 1, easy_margin=cfg.easy_margin,
-            name=f'head/{cfg.arcface}', dtype='float32')
+        return ArcMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters or 1,
+                                         easy_margin=cfg.easy_margin,
+                                         name=f'head/{cfg.arcface}', dtype='float32')
 
     if cfg.arcface == 'AddMarginProduct':
         return AddMarginProductSubCenter(cfg.n_classes, m=m, k=cfg.subcenters or 1,
-            name=f'head/{cfg.arcface}', dtype='float32')
+                                         name=f'head/{cfg.arcface}', dtype='float32')
 
     raise ValueError(f'ArcFace type {cfg.arcface} not supported')
 
 
-def BatchNorm(bn_type, name=None):
-    if bn_type == 'batch_norm': return tf.keras.layers.BatchNormalization(name=name)
-    if bn_type == 'sync_bn': return tf.keras.layers.experimental.SyncBatchNormalization(name=name)
-    if bn_type == 'layer_norm': return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
+def BatchNorm(cfg, bn_type, name=None):
+    if bn_type == 'batch_norm':
+        return tf.keras.layers.BatchNormalization(name=name)
+    if bn_type == 'sync_bn':
+        return tf.keras.layers.experimental.SyncBatchNormalization(name=name)
+    if bn_type == 'layer_norm':
+        return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
     #if bn_type == 'instance_norm':
     #    import tensorflow_addons as tfa
     #    return tfa.layers.InstanceNormalization()  # nan loss
-    if bn_type == 'instance_norm': return tf.keras.layers.BatchNormalization(virtual_batch_size=cfg.bs, name=name)
-    if bn_type: return tf.keras.layers.BatchNormalization(name=name)  # default
+    if bn_type == 'instance_norm':
+        return tf.keras.layers.BatchNormalization(virtual_batch_size=cfg.bs, name=name)
+    if bn_type:
+        return tf.keras.layers.BatchNormalization(name=name)  # default
     raise ValueError(f'{bn_type} is no recognized bn_type')
+
+
+def freeze_bn(model):
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.layers.BatchNormalization):
+            layer.trainable = False
+            assert layer.trainable is False, f'could not freeze {layer.name}'
 
 
 def check_model_inputs(cfg, model):
@@ -374,7 +389,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
         model_cls = getattr(efn, f'EfficientNetV2{cfg.arch_name[5:].upper()}')
         print("keras_efficientnet_v2:", efn.__version__)
     elif cfg.arch_name in TFHUB:
-        pass
+        import tensorflow_hub as hub
+        print("tensorflow_hub:", hub.__version__)
     else:
         import tfimm
         print("tfimm:", tfimm.__version__)
@@ -386,7 +402,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         # Inputs
         input_shape = (*cfg.size, 3)
         inputs = [tf.keras.layers.Input(shape=input_shape, name='image')]
-        if cfg.arcface and not inference: 
+        if cfg.arcface and not inference:
             inputs.append(tf.keras.layers.Input(shape=(), name='target'))
 
         # Body
@@ -401,10 +417,12 @@ def get_pretrained_model(cfg, strategy, inference=False):
             tfimm.create_model(cfg.arch_name, pretrained="timm", nb_classes=0))
 
         if cfg.sync_bn:
-            pretrained_model = replace_bn_layers(pretrained_model, 
+            from experimental.normalization import replace_bn_layers
+            pretrained_model = replace_bn_layers(pretrained_model,
                                                  tf.keras.layers.experimental.SyncBatchNormalization,
                                                  keep_weights=True)
         elif cfg.instance_norm:
+            from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
                                                  tf.keras.layers.BatchNormalization,
                                                  keep_weights=True,
@@ -428,7 +446,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
                 embed = tf.keras.layers.GlobalMaxPooling2D()(x)
             else:
                 embed = tf.keras.layers.GlobalAveragePooling2D()(x)
-            
+
         elif efnv2:
             x = pretrained_model(inputs[0])
             if cfg.pool == 'flatten':
@@ -460,18 +478,18 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         # Bottleneck(s)
         if cfg.get_bottleneck is not None:
-            for layer in cfg.get_bottleneck(cfg, n_features):
+            for layer in cfg.get_bottleneck(cfg):
                 embed = layer(embed)
         else:
             lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
             for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
                 embed = tf.keras.layers.Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
                 embed = tf.keras.layers.Dense(out_channels, name=f"FC_{i}")(embed)
-                embed = BatchNorm(bn_type=cfg.bn_head, name=f"BN_{i}")(embed) if cfg.bn_head else embed
-            embed = tf.keras.layers.Dropout(final_dropout, 
-                name=f"dropout_final_{final_dropout}")(embed) if final_dropout else embed
+                embed = BatchNorm(cfg, bn_type=cfg.bn_head, name=f"BN_{i}")(embed) if cfg.bn_head else embed
+            embed = tf.keras.layers.Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
+                embed) if final_dropout else embed
             if cfg.bn_head and not lin_ftrs:
-                embed = BatchNorm(bn_type=cfg.bn_head, name=f"BN_final")(embed)  # does this help?
+                embed = BatchNorm(cfg, bn_type=cfg.bn_head, name="BN_final")(embed)  # does this help?
 
         # Output layer or Margin
         if cfg.arcface and inference:
@@ -484,7 +502,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             assert cfg.n_classes, 'set cfg.n_classes in project or config file!'
             features = tf.keras.layers.Dense(cfg.n_classes, name='classifier')(embed)
             output = tf.keras.layers.Softmax(dtype='float32')(features)
-        
+
         if cfg.aux_loss:
             assert cfg.n_aux_classes, 'set cfg.n_aux_classes in project or config file!'
             aux_features = tf.keras.layers.Dense(cfg.n_aux_classes, name='aux_classifier')(embed)
@@ -492,7 +510,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         # Outputs
         outputs = [output]
-        if cfg.aux_loss and not inference: 
+        if cfg.aux_loss and not inference:
             outputs.append(aux_output)
 
         # Build model
@@ -511,12 +529,13 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if cfg.use_custom_training_loop: return model
 
         optimizer = (
-            tfa.optimizers.AdamW(weight_decay=cfg.wd, learning_rate=cfg.lr, 
-                                 beta_1=cfg.betas[0], beta_2=cfg.betas[1]) if cfg.optimizer == 'AdamW' else
-            tf.keras.optimizers.Adam(learning_rate=cfg.lr, 
-                                     beta_1=cfg.betas[0], beta_2=cfg.betas[1]) if cfg.optimizer == 'Adam' else
-            tf.keras.optimizers.SGD(learning_rate=cfg.lr, momentum=cfg.betas[0])
-            )
+            tfa.optimizers.AdamW(weight_decay=cfg.wd, learning_rate=cfg.lr,
+                                 beta_1=cfg.betas[0],
+                                 beta_2=cfg.betas[1]) if cfg.optimizer == 'AdamW' else
+            tf.keras.optimizers.Adam(learning_rate=cfg.lr,
+                                     beta_1=cfg.betas[0],
+                                     beta_2=cfg.betas[1]) if cfg.optimizer == 'Adam' else
+            tf.keras.optimizers.SGD(learning_rate=cfg.lr, momentum=cfg.betas[0]))
 
         cfg.metrics = cfg.metrics or []
 
@@ -535,10 +554,10 @@ def get_pretrained_model(cfg, strategy, inference=False):
         metrics = [metrics_classes[m] for m in cfg.metrics]
 
         model.compile(
-            optimizer = optimizer,
-            loss = 'sparse_categorical_crossentropy',
-            loss_weights = (1 - cfg.aux_loss, cfg.aux_loss) if cfg.aux_loss else None,
-            metrics = metrics)
+            optimizer=optimizer,
+            loss='sparse_categorical_crossentropy',
+            loss_weights=(1 - cfg.aux_loss, cfg.aux_loss) if cfg.aux_loss else None,
+            metrics=metrics)
 
         check_model_inputs(cfg, model)
 

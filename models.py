@@ -19,7 +19,9 @@ class AdaptiveCatPool2d(nn.Module):
         self.output_size = output_size or 1
         self.ap = nn.AdaptiveAvgPool2d(self.output_size)
         self.mp = nn.AdaptiveMaxPool2d(self.output_size)
-    def forward(self, x): return torch.cat([self.mp(x), self.ap(x)], 1)
+
+    def forward(self, x):
+        return torch.cat([self.mp(x), self.ap(x)], 1)
 
 
 def gem(x, p=1.5, eps=1e-6):
@@ -166,7 +168,8 @@ class AddMarginProduct(nn.Module):
         # one_hot = one_hot.cuda() if cosine.is_cuda else one_hot
         one_hot.scatter_(1, label.view(-1, 1).long(), 1)
         # -------------torch.where(out_i = {x_i if condition_i else y_i) -------------
-        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)  # you can use torch.where if your torch.__version__ is 0.4
+        # you can use torch.where if your torch.__version__ is 0.4
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
         output *= self.s
         # print(output)
 
@@ -205,30 +208,19 @@ class ArcNet(nn.Module):
         self.valid_mode = 'normal' if cfg.deotte else 'embedding'
 
     def forward(self, images, labels=None):
-        # In validation, forward is called w/o labels. Hence, output features have shape [N, 512] rather than [N, n_classes].
-        # But task.loss(features, labels) is called the same way! As task.loss is same in train/valid, dataloader is pytorch one,
+        # In validation, forward is called w/o labels.
+        # Hence, output features have shape [N, 512] rather than [N, n_classes].
+        # But task.loss(features, labels) is called the same way!
+        # As task.loss is same in train/valid, dataloader is pytorch one,
         # the dataset must provide some labels in the 0...511 range that represent ...what?
         # Both task.forward() and task.inference() are called w (train) or w/o (valid) labels!
         # If inference is called with outputs, the latter are just returned, otherwise same as forward.
-        # When called w/o labels, the features are normalized but not passed through ArcModule, hence have size [N, 512]!
+        # When called w/o labels, the features are normalized but not passed through ArcModule,
+        # hence have size [N, 512]!
         if (self.valid_mode == 'embedding' and not self.training) or (labels is None):
-            return self.model(images)  # skip normalize, return embeddings like in Vlad Vaduva's and TF notebooks
+            return self.model(images)  # skip normalize, return embeddings
         features = F.normalize(self.model(images))
         return self.arc(features, labels)
-
-    #def get_embeddings(self, images):
-    #    assert not self.training
-    #    return self.model(images)  # skip normalize, return embeddings like in Vlad Vaduva's and TF notebooks
-
-    #def logits(self, features, labels):
-        # Allows extra step between feature normalization and ArcModule. What used for???
-        # After cosine-similarity, the predtion would be argmax, but to predict "new_individual",
-        # argmax(scores) should be replaced by n_classes if max_score < threshold!
-        # NO: 'new_individual' is an ordinary class and its embedding should be trained to be an
-        # image-adaptive threshold for the other classes' scores! Hence, 'new_individual' images should
-        # be part of SKF splitting!
-    #    return self.arc(features, labels)
-
 
 
 def is_bn(name):
