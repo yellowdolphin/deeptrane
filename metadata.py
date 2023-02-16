@@ -33,7 +33,10 @@ def get_metadata(cfg, project):
     cfg.meta_csv = cfg.meta_csv or 'data/deeptrane_test_meta.csv'
     print("[ √ ] metadata:", cfg.meta_csv)
 
-    df = pd.read_csv(cfg.meta_csv)
+    if hasattr(project, 'read_csv'):
+        df = project.read_csv(cfg)
+    else:
+        df = pd.read_csv(cfg.meta_csv)
 
     if hasattr(project, 'add_image_id'):
         df = project.add_image_id(df, cfg)
