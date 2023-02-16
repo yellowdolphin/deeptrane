@@ -99,7 +99,8 @@ def get_metadata(cfg, project):
         df = project.after_split(df, cfg)
 
     assert df.columns[0] == 'image_path'  # dataset convention
-    assert df.columns[1] == 'category_id'  # dataset convention
+    if cfg.classes:
+        assert df.columns[1] == 'category_id'  # dataset convention
 
     return df
 
