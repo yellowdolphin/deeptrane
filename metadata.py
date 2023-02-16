@@ -66,7 +66,9 @@ def get_metadata(cfg, project):
         print("[ √ ] classes:", *cfg.classes[:4], '...' if len(cfg.classes) > 4 else '')
 
     # Check for unecessary columns, put columns in standard order, reset index
-    required_columns = ['image_id', 'image_path', 'category_id']
+    required_columns = ['image_id', 'image_path']
+    if not cfg.regression:
+        required_columns.append('category_id')
     if cfg.multilabel and not detection:
         required_columns.extend(cfg.classes)
         # keep 'category_id' for StratifiedKFold
