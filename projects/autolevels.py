@@ -101,7 +101,7 @@ class Curve(torch.nn.Module):
         df.x = df.x.astype(int)  # pitfall: np.uint64 + int -> np.float64
         m = df.groupby('x').y.mean()  # sorted int index
         if len(m) < 1 + m.index[-1] - m.index[0]:
-            print("using interpolation")
+            #print("using interpolation")
             m = m.reindex(range(m.index[0], m.index[-1] + 1)).interpolate('linear')
         assert len(m) == 1 + m.index.max() - m.index.min(), f"m.index: {m.index.min()} ... {m.index.max()} ({len(m)})"
         shape = x.shape
