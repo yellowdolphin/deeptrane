@@ -70,6 +70,14 @@ class Curve(torch.nn.Module):
         dist = Beta(alpha, beta)
         c = (255. - blackpoint) / torch.exp(dist.log_prob(self.max_x))
         return blackpoint + c * torch.exp(dist.log_prob(x))
+    
+    def pdf(self, x):
+        # TEST: is this slower than forward?
+        "Input array value range: 0 ... 255"
+        alpha, beta, blackpoint = self.transformed_parameters()
+        x = np.clip(x, a_min=1e-3, a_max=None) / 255 * (1 - self.eps)
+        y = np.power(x, alpha - 1) * np.power(1 - x, beta - 1)
+        return blackpoint + (255 - blackpoint) * y / y.max()
 
     def transformed_parameters(self):
         alpha = 1 + torch.exp(self.a.detach())
@@ -89,7 +97,7 @@ class Curve(torch.nn.Module):
         alpha, beta, blackpoint = self.transformed_parameters()
         assert x.max() > 1, f"inv_pdf called with x={x.dtype} {x.shape} {x.min()} ... {x.max()}"
         df = pd.DataFrame({'y': np.linspace(0, 255, 10000)})
-        df['x'] = pdf(df.y.to_numpy(), alpha, beta, blackpoint)
+        df['x'] = self.pdf(df.y.to_numpy())
         df.x = df.x.astype(int)  # pitfall: np.uint64 + int -> np.float64
         m = df.groupby('x').y.mean()  # sorted int index
         if len(m) < 1 + m.index[-1] - m.index[0]:
