@@ -127,6 +127,8 @@ class ColorCastDataset(Dataset):
         """
         self.df = df.reset_index(drop=True)
         self.image_root = cfg.image_root
+        self.transform = transform
+        self.tensor_transform = tensor_transform
         self.return_path_attr = return_path_attr
         self.labeled = labeled
         self.dist_a = torch.distributions.normal.Normal(0, 0.5)
