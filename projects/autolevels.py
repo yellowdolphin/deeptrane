@@ -129,8 +129,10 @@ class ColorCastDataset(Dataset):
         self.image_root = cfg.image_root
         self.transform = transform
         self.tensor_transform = tensor_transform
-        self.return_path_attr = return_path_attr
+        self.albu = transform and transform.__module__.startswith('albumentations')
+        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
         self.labeled = labeled
+        self.return_path_attr = return_path_attr
         self.dist_a = torch.distributions.normal.Normal(0, 0.5)
         self.dist_b = torch.distributions.normal.Normal(0.4, 0.25)
         self.dist_bp = torch.distributions.half_normal.HalfNormal(0.02)
@@ -166,10 +168,12 @@ class ColorCastDataset(Dataset):
             image[:, :, channel] = curve.inverse_pdf(image[:, :, channel])
 
         if self.transform:
-            transformed = self.transform(image=np.array(image), mask=mask)
-            image = transformed["image"]
-            image = (image / 255).float()
-            mask = transformed["mask"]  # -> uint8 tensor
+            if self.albu:
+                image = self.transform(image=np.array(image))['image']
+                image = (image / 255).float() if self.floatify else image
+            else:
+                # torchvision, requires PIL.Image
+                image = self.transform(PIL.Image.fromarray(image))
 
         if self.tensor_transform:
             image = self.tensor_transform(image)
