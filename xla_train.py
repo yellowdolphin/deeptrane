@@ -345,6 +345,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     # Criterion (default reduction: 'mean'), Metrics
     criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()
+    if cfg.classes is None:
+        criterion = nn.MSELoss()
     if cfg.use_aux_loss:
         from segmentation_models_pytorch.losses.dice import DiceLoss
     seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
