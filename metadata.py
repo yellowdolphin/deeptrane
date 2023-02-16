@@ -67,7 +67,7 @@ def get_metadata(cfg, project):
 
     # Check for unecessary columns, put columns in standard order, reset index
     required_columns = ['image_id', 'image_path']
-    if not cfg.regression:
+    if cfg.classes:
         required_columns.append('category_id')
     if cfg.multilabel and not detection:
         required_columns.extend(cfg.classes)
@@ -273,7 +273,7 @@ def split_data(df, cfg, seed=42):
     if cfg.train_on_all:
         return df.set_index('image_id')
 
-    if cfg.n_classes > 1 and not cfg.multilabel:
+    if cfg.classes and (cfg.n_classes > 1) and not cfg.multilabel:
         from sklearn.model_selection import StratifiedKFold
 
         labels = df.category_id.values
