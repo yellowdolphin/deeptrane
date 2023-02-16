@@ -243,13 +243,15 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     test_tfms = get_tfms(cfg, mode='test')
     tensor_tfms = None
 
-    ds_train = ImageDataset(meta_train, cfg, labeled=True,
-                            transform=train_tfms if augment else test_tfms, tensor_transform=tensor_tfms,
-                            class_column=class_column)
+    dataset_class = cfg.dataset_class or ImageDataset
+
+    ds_train = dataset_class(meta_train, cfg, labeled=True,
+                             transform=train_tfms if augment else test_tfms, tensor_transform=tensor_tfms,
+                             class_column=class_column)
     
-    ds_valid = ImageDataset(meta_valid, cfg, labeled=True,
-                            transform=test_tfms, tensor_transform=tensor_tfms,
-                            class_column=class_column)
+    ds_valid = dataset_class(meta_valid, cfg, labeled=True,
+                             transform=test_tfms, tensor_transform=tensor_tfms,
+                             class_column=class_column)
 
     xm.master_print("ds_train:", len(ds_train))
     xm.master_print("ds_valid:", len(ds_valid))
