@@ -20,9 +20,6 @@ def init(cfg):
 
     cfg.meta_csv = cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt'
 
-    def read_csv(cfg):
-        return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
-
     #elif cfg.filetype == 'tfrec':
     #    cfg.image_root = cfg.competition_path / 'train_tfrecords'
 
@@ -45,6 +42,10 @@ def init(cfg):
     #cfg.targets = ['target']
 
     cfg.dataset_class = ColorCastDataset
+
+
+def read_csv(cfg):
+    return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
 
 
 class Curve(torch.nn.Module):
