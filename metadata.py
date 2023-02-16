@@ -61,8 +61,9 @@ def get_metadata(cfg, project):
     df, cfg.bg_images = maybe_drop_bg_images(df, cfg, project)
 
     df, cfg.n_classes, cfg.classes = maybe_encode_labels(df, cfg)
-    print("[ √ ] n_classes:", cfg.n_classes)
-    print("[ √ ] classes:", *cfg.classes[:4], '...' if len(cfg.classes) > 4 else '')
+    if cfg.classes:
+        print("[ √ ] n_classes:", cfg.n_classes)
+        print("[ √ ] classes:", *cfg.classes[:4], '...' if len(cfg.classes) > 4 else '')
 
     # Check for unecessary columns, put columns in standard order, reset index
     required_columns = ['image_id', 'image_path', 'category_id']
@@ -148,6 +149,11 @@ def maybe_drop_bg_images(df, cfg, project):
 
 
 def maybe_encode_labels(df, cfg):
+    if 'category_id' not in df:
+        print("[ √ ] Regression job (metadata has no category_id)")
+        cfg.regression = True  # CHECK: needed?
+        return df, None, None
+
     if cfg.multilabel:
         assert cfg.classes, 'no multilabel class names found in cfg'
         return df, len(cfg.classes), cfg.classes
