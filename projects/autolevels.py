@@ -15,7 +15,7 @@ def init(cfg):
     if cfg.cloud == 'drive':
         cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
 
-    if cfg.filetype == 'JPG':
+    if cfg.filetype == 'JPEG':
         cfg.image_root = cfg.competition_path / 'ILSVRC/Data/CLS-LOC/train'
 
     cfg.meta_csv = cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt'
