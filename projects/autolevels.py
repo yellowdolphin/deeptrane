@@ -167,6 +167,8 @@ class ColorCastDataset(Dataset):
             curve = Curve(*label)
             image[:, :, channel] = curve.inverse_pdf(image[:, :, channel])
 
+        labels = labels.flatten()
+
         if self.transform:
             if self.albu:
                 image = self.transform(image=np.array(image))['image']
