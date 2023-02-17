@@ -41,8 +41,12 @@ def init(cfg):
     #cfg.inputs = ['image']
     #cfg.targets = ['target']
 
-    cfg.dataset_class = ColorCastDataset
-
+    if cfg.curve == 'gamma':
+        cfg.dataset_class = InvGammaDataset
+        cfg.channel_size = 3
+    elif cfg.curve == 'beta':
+        cfg.dataset_class = InvBetaDataset
+        cfg.channel_size = 9
 
 def read_csv(cfg):
     return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
@@ -110,18 +114,18 @@ class Curve(torch.nn.Module):
         return m.loc[x].to_numpy().reshape(shape)
 
 
-class ColorCastDataset(Dataset):
-    """Dataset for test images (no targets needed)"""
+class InvBetaDataset(Dataset):
+    """Images are transformed according to randomly drawn curve parameters"""
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
-                 class_column='category_id', return_path_attr=None):
+                 return_path_attr=None):
         """
         Args:
             df (pd.DataFrame):                First row must contain the image file paths
             image_root (string, Path):        Root directory for df.image_path
             transform (callable, optional):   Optional transform to be applied on the first
                                               element (image) of a sample.
-            labeled (bool, optional):         return `class_column` of `df`
+            labeled (bool, optional):         if True, return curve parameters as regression target
             return_path_attr (str, optional): return Path attribute `return_path_attr`
 
         """
@@ -179,5 +183,71 @@ class ColorCastDataset(Dataset):
 
         if self.tensor_transform:
             image = self.tensor_transform(image)
+
+        return image, labels if self.labeled else image
+
+
+class InvGammaDataset(Dataset):
+    """Images are transformed according to randomly drawn curve parameters"""
+
+    def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
+                 return_path_attr=None):
+        """
+        Args:
+            df (pd.DataFrame):                First row must contain the image file paths
+            image_root (string, Path):        Root directory for df.image_path
+            transform (callable, optional):   Optional transform to be applied on the first
+                                              element (image) of a sample.
+            labeled (bool, optional):         if True, return curve parameters as regression target
+            return_path_attr (str, optional): return Path attribute `return_path_attr`
+
+        """
+        self.df = df.reset_index(drop=True)
+        self.image_root = cfg.image_root
+        self.transform = transform
+        self.tensor_transform = tensor_transform
+        self.albu = transform and transform.__module__.startswith('albumentations')
+        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
+        self.labeled = labeled
+        self.return_path_attr = return_path_attr
+        self.dist_logit_gamma = torch.distributions.normal.Normal(0, 1)
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, index):
+
+        fn = os.path.join(self.image_root, self.df.iloc[index, 0])
+        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
+            bytes_data = gcsfs.read(fn)
+            image = PIL.Image.open(io.BytesIO(bytes_data))
+        else:
+            # Benchmark (JPEGs): io 23:57, cv2 22:14, PIL 22:57
+            # cv2 is slightly faster but does not exactly reproduce PIL/fastai's pixel values.
+            #image = io.imread(fn)    # array
+            assert os.path.exists(fn), f'{fn} not found'
+            image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
+            #image = PIL.Image.fromarray(image)  # optional, not required
+            #image = torch.from_numpy(cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)).permute(2,0,1).contiguous()/255.
+            #image = torch.FloatTensor(cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)).to(device) / 255
+            #image = PIL.Image.open(fn)
+
+        if self.transform:
+            if self.albu:
+                image = self.transform(image=np.array(image))['image']
+                image = (image / 255).float() if self.floatify else image
+            else:
+                # torchvision, requires PIL.Image
+                image = self.transform(PIL.Image.fromarray(image))
+
+        if self.tensor_transform:
+            image = self.tensor_transform(image)
+
+        n_channels = image.shape[-1]
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channels last'
+        
+        # draw gamma (label), gamma-transform image
+        labels = torch.sigmoid(self.dist_logit_gamma.sample((n_channels,)))
+        image = torch.pow(image, labels[None, None, :])
 
         return image, labels if self.labeled else image

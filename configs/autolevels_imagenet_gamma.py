@@ -30,7 +30,7 @@ cfg = dict(
     save_best = 'acc',
 
 # Model
-    arch_name = 'tf_efficientnet_b0_ns',
+    arch_name = 'resnet18',
     use_gem = False,
     bn_eps = 1e-5,
     #rst_path = '/kaggle/input/cassava-deeptrane-rst',
