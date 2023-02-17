@@ -232,6 +232,7 @@ class InvGammaDataset(Dataset):
             #image = torch.FloatTensor(cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)).to(device) / 255
             #image = PIL.Image.open(fn)
 
+        print("image before transform:", image.shape)
         if self.transform:
             if self.albu:
                 image = self.transform(image=np.array(image))['image']
@@ -240,14 +241,15 @@ class InvGammaDataset(Dataset):
                 # torchvision, requires PIL.Image
                 image = self.transform(PIL.Image.fromarray(image))
 
+        print("image before tensor_transform:", image.shape)
         if self.tensor_transform:
             image = self.tensor_transform(image)
 
-        n_channels = image.shape[-1]
+        n_channels = image.shape[0]
         assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channels last'
         
         # draw gamma (label), gamma-transform image
         labels = torch.sigmoid(self.dist_logit_gamma.sample((n_channels,)))
-        image = torch.pow(image, labels[None, None, :])
+        image = torch.pow(image, labels[:, None, None])  # channels first
 
         return image, labels if self.labeled else image
