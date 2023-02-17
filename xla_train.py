@@ -275,8 +275,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
         # compute local loss
         assert preds.detach().dim() == 2, f'preds have wrong dim {preds.detach().dim()}'
-        assert preds.detach().size()[1] == cfg.n_classes, f'preds have wrong shape {preds.detach().size()}'
-        assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
+        assert preds.detach().size()[1] == (cfg.n_classes or cfg.channel_size), f'preds have wrong shape {preds.detach().size()}'
+        if cfg.classes:
+            assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
         loss = criterion(preds, labels)
         loss_meter.update(loss.item(), inputs.size(0))  # 1 aten/iter but no performance drop
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
