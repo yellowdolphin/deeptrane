@@ -112,7 +112,7 @@ def get_tfms(cfg, mode='train'):
         return flags.train_tfms
 
     if 'test_tfms' in flags:
-        for t in flags.train_tfms:
+        for t in flags.test_tfms:
             if hasattr(t, 'height'): t.height = cfg.size[0]
             if hasattr(t, 'width'): t.width = cfg.size[1]
         return flags.test_tfms
