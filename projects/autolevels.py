@@ -210,7 +210,7 @@ class InvGammaDataset(Dataset):
         self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
         self.labeled = labeled
         self.return_path_attr = return_path_attr
-        self.dist_logit_gamma = torch.distributions.normal.Normal(0, 1)
+        self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
 
     def __len__(self):
         return len(self.df)
@@ -247,7 +247,7 @@ class InvGammaDataset(Dataset):
             image = self.tensor_transform(image)
 
         # draw gamma (label), gamma-transform image
-        labels = torch.sigmoid(self.dist_logit_gamma.sample((n_channels,)))
+        labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
         image = torch.pow(image, labels[:, None, None])  # channels first
 
         return image, labels if self.labeled else image
