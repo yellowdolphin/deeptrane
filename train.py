@@ -168,7 +168,7 @@ if cfg.xla:
 elif cfg.gpu:
     print(f"[ √ ] Using GPU")
 else:
-    cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
+    #cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
     print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
 
 if cfg.use_aux_loss:
