@@ -26,14 +26,14 @@ class ImageDataset(Dataset):
     """Dataset for test images (no targets needed)"""
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
-                 class_column='category_id', return_path_attr=None):
+                 return_path_attr=None):
         """
         Args:
             df (pd.DataFrame):                First row must contain the image file paths
             image_root (string, Path):        Root directory for df.image_path
             transform (callable, optional):   Optional transform to be applied on the first
                                               element (image) of a sample.
-            labeled (bool, optional):         return `class_column` of `df`
+            labeled (bool, optional):         return `cfg.class_column` of `df`
             return_path_attr (str, optional): return Path attribute `return_path_attr`
 
         """
@@ -54,7 +54,7 @@ class ImageDataset(Dataset):
                 assert len(oh_columns) == n_classes, f'{len(oh_columns)} oh_columns but {n_classes} classes'
                 self.labels = torch.FloatTensor(self.df[oh_columns].values)
             else:
-                class_column = class_column or self.df.columns[1]
+                class_column = cfg.class_column or self.df.columns[1]
                 self.labels = torch.LongTensor(self.df[class_column].values)
                 if len(self) > 0:
                     min_label, max_label = self.labels.min(), self.labels.max()
@@ -230,9 +230,6 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
         from experimental import tfds
         return tfds.get_dataloaders(cfg, use_fold)
 
-    class_column = metadata.columns[1]  # convention, defined in metadata.get_metadata
-    xm.master_print("Using class labels from column", class_column)
-
     is_valid = metadata.is_valid if hasattr(metadata, 'is_valid') else (metadata.fold == use_fold)
     is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
     meta_train = metadata.loc[~ is_valid]
@@ -246,12 +243,10 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     dataset_class = cfg.dataset_class or ImageDataset
 
     ds_train = dataset_class(meta_train, cfg, labeled=True,
-                             transform=train_tfms if augment else test_tfms, tensor_transform=tensor_tfms,
-                             class_column=class_column)
+                             transform=train_tfms if augment else test_tfms, tensor_transform=tensor_tfms)
     
     ds_valid = dataset_class(meta_valid, cfg, labeled=True,
-                             transform=test_tfms, tensor_transform=tensor_tfms,
-                             class_column=class_column)
+                             transform=test_tfms, tensor_transform=tensor_tfms)
 
     xm.master_print("ds_train:", len(ds_train))
     xm.master_print("ds_valid:", len(ds_valid))
@@ -268,7 +263,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
 
     if cfg.do_class_sampling:
         # Data samplers, class-weighted metrics
-        train_labels = meta_train[class_column]
+        train_labels = meta_train[cfg.class_column]
 
         # Use torch's WeightedRandomSampler with custom class weights
         class_counts = train_labels.value_counts().sort_index().values

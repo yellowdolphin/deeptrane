@@ -98,9 +98,13 @@ def get_metadata(cfg, project):
     if hasattr(project, 'after_split'):
         df = project.after_split(df, cfg)
 
-    assert df.columns[0] == 'image_path'  # dataset convention
+    # dataset conventions
+    assert df.columns[0] == 'image_path'  
     if cfg.classes:
-        assert df.columns[1] == 'category_id'  # dataset convention
+        assert df.columns[1] == 'category_id'
+        cfg.class_column = metadata.columns[1]
+        xm.master_print(f"Using class labels from column {cfg.class_column}")
+
 
     return df
 
