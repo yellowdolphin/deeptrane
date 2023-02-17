@@ -190,11 +190,25 @@ class ImageDataLoader(DataLoader):
                    figsize: Tuple[int, int] = (12, 6)):
         """Show images in a batch of samples."""
         batch = next(iter(self))
-        images_batch = batch[0][:max_n]
+        batch_images = batch[0][:max_n]
+
         plt.figure(figsize=figsize)
-        grid = utils.make_grid(images_batch, n_cols, padding, normalize,
-                               pad_value=pad_value)
-        plt.imshow(grid.numpy().transpose((1, 2, 0)))
+        grid = utils.make_grid(batch_images, n_cols, padding, normalize,
+                               pad_value=pad_value).numpy().transpose((1, 2, 0))
+        grid = (grid * 255).clip(0, 255).astype(np.uint8).copy()  # cv2 needs copy()
+        if len(batch) > 1:
+            batch_labels = batch[1][:max_n].numpy()
+            n_rows = (len(batch_labels) - 1) // n_cols + 1
+            format = ('d' if np.issubdtype(batch_labels.dtype, np.integer) else 
+                      '.3f' if np.issubdtype(batch_labels.dtype, np.floating) else
+                      's')
+            for i, label in enumerate(batch_labels):
+                text = ', '.join(f'{l:{format}}' for l in label)
+                row, col = i // n_cols, i % n_cols
+                dx, dy = grid.shape[1] / n_cols, grid.shape[0] / n_rows
+                offset_x, offset_y = int((col + 0.05) * dx), int((row + 0.95) * dy)
+                grid = cv2.putText(grid, text, (offset_x, offset_y), 0, 0.4, (255, 255, 255), 1)
+        plt.imshow(grid)
         plt.title('Batch from dataloader')
 
 
