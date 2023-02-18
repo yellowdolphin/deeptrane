@@ -2,6 +2,7 @@ from collections import OrderedDict
 from subprocess import run
 from pathlib import Path
 import math
+from functools import partial
 
 import timm
 import torch
@@ -257,7 +258,19 @@ def get_last_out_features(m, default='raise'):
     return default
 
 
+def body_forward(self, x):
+    "Replaces model.forward in timm models"
+    return self.forward_features(x)
+
+
 def skip_head(m):
+    if hasattr(m, 'forward_features'):
+        # Monkey-patch timm model to skip model.forward_head() call
+        print("Monkey-patching timm model.forward:")
+        print(m.forward.__code__)
+        m.forward = partial(body_forward, m)
+        return m
+
     for attr in ['classifier', 'global_pool', 'head', 'fc']:
         if hasattr(m, attr): setattr(m, attr, nn.Identity())
     return m
