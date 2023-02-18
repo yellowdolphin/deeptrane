@@ -10,7 +10,7 @@ cfg = dict(
     #filetype = 'tfrec',  # tfds or wds
 
 # Training
-    num_folds = 2,
+    num_folds = 4,
     use_folds = [0],
     train_on_all = False,
     size = (128, 128),
@@ -27,7 +27,7 @@ cfg = dict(
     one_cycle = True,
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
-    save_best = 'acc',
+    save_best = 'valid_loss',
 
 # Model
     arch_name = 'tf_efficientnet_b0_ns',
