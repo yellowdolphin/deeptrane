@@ -52,6 +52,7 @@ cfg = dict(
     pool = 'avg',
     dropout_ps = [0.5],
     lin_ftrs = [],
+    scale_output_layer = 1.0,   # modify initialization of the output layer weights
     bn_head = False,
     bn_eps = 1e-5,
     bn_momentum = 0.1,

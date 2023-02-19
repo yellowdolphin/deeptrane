@@ -264,12 +264,12 @@ def body_forward(self, x):
 
 
 def skip_head(m):
-    if hasattr(m, 'forward_features'):
-        # Monkey-patch timm model to skip model.forward_head() call
-        print("Monkey-patching timm model.forward:")
-        print(m.forward.__code__)
-        m.forward = partial(body_forward, m)
-        return m
+    #if hasattr(m, 'forward_features'):
+    #    # Monkey-patch timm model to skip model.forward_head() call
+    #    print("Monkey-patching timm model.forward:")
+    #    print(m.forward.__code__)
+    #    m.forward = partial(body_forward, m)
+    #    return m
 
     for attr in ['classifier', 'global_pool', 'head', 'fc']:
         if hasattr(m, attr): setattr(m, attr, nn.Identity())
@@ -382,6 +382,256 @@ def get_pretrained_model(cfg):
                              nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
 
     pretrained_model = nn.Sequential(OrderedDict([('body', body), ('head', head)]))
+
+    if cfg.arcface:
+        pretrained_model = ArcNet(cfg, pretrained_model)
+        if DEBUG:
+            keys = list(pretrained_model.state_dict().keys())
+            print("keys of ArcNet.state_dict:", keys[:2], '...', keys[-2:])
+
+    if cfg.rst_name:
+        # Dont ever use xser: stores each tensor in a separate file!
+        rst_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.pth'
+        state_dict = torch.load(rst_file, map_location=torch.device('cpu'))
+        keys = list(state_dict.keys())
+        if DEBUG: print("keys of loaded state_dict:", keys[:2], '...', keys[-2:])
+        if keys[0].startswith('0.') and keys[-1].startswith('1.'):
+            # Fastai model: rename body keys, skip head if head != 'head'
+            head = 'skip_head'
+            print(f"Fastai model, renaming keys in state_dict: '0'/'1' -> 'body'/'{head}'")
+            for k in keys:
+                k_new = 'body' + k[1:] if k[0] == '0' else head
+                state_dict[k_new] = state_dict.pop(k)
+        if keys[0].startswith('model') and list(pretrained_model.state_dict().keys())[0].startswith('body'):
+            # Chest14-pretrained model from siimnihpretrained
+            for key in keys:
+                if key.startswith('model.'):
+                    new_key = key.replace('model.', 'body.')
+                    state_dict[new_key] = state_dict.pop(key)
+                elif cfg.use_gem and key == 'pooling.p':
+                    state_dict['head.0.p'] = state_dict.pop(key)
+                    print(f'Pretrained weights: found pooling.p = {state_dict["head.0.p"].item()}')
+                else:
+                    print(f'Pretrained weights: skipping {key}')
+                    _ = state_dict.pop(key)
+            keys = list(state_dict.keys())
+        if 'pretrained' in str(cfg.rst_path):
+            for k in keys:
+                if k.startswith('head') and (k.endswith('weight') or k.endswith('bias')):
+                    v = state_dict.pop(k)
+                    print(f'Pretrained weights: skipping {k} {list(v.size())}')
+        try:
+            incomp = pretrained_model.load_state_dict(state_dict, strict=False)
+        except RuntimeError:
+            compare_state_dicts(pretrained_model.state_dict(), state_dict, check_shapes=True)
+            raise
+        print(f"Restarting training from {rst_file}")
+        if len(incomp) == 2:
+            print(f"Loaded state_dict has {len(incomp[0])} missing keys, {len(incomp[1])} unexpected keys.")
+            if len(incomp[0]) + len(incomp[1]) > 2:
+                compare_state_dicts(pretrained_model.state_dict(), state_dict)
+
+    # change BN running average parameters
+    n_bn_layers = 0
+    for n, m in pretrained_model.named_modules():
+        if isinstance(m, torch.nn.BatchNorm2d) or isinstance(m, torch.nn.BatchNorm1d):
+            n_bn_layers += 1
+            m.eps = cfg.bn_eps
+            m.momentum = cfg.bn_momentum
+    if n_bn_layers:
+        print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
+
+    # EfficientNet-V2 body has SiLU, BN (everywhere), but no Dropout.
+    # Fused-MBConv (stages 1-3) and SE + 3x3-group_conv (group_size=1, stages 4-7).
+    #print("FC stats:")
+    #print("weight:",
+    #      pretrained_model.state_dict()['head.3.weight'].mean(),
+    #      pretrained_model.state_dict()['head.3.weight'].std())
+    #print("bias:  ",
+    #      pretrained_model.state_dict()['head.3.bias'].mean(),
+    #      pretrained_model.state_dict()['head.3.bias'].std())
+    print(pretrained_model)
+    return pretrained_model
+
+
+def get_output_layer(model):
+    # obsolete, use model.get_classifier() instead
+    if hasattr(model, 'head'):
+        if isinstance(model.head, torch.nn.Linear):
+            return model.head
+        elif hasattr(model.head, 'fc'):
+            assert isinstance(model.head.fc, torch.nn.Linear), f"weird (head.fc): {model.head.fc}"
+            return model.head.fc
+    elif hasattr(model, 'fc'):
+        assert isinstance(model.fc, torch.nn.Linear), f"weird (fc): {model.fc}"
+        return model.fc
+    elif hasattr(model, 'classifier'):
+        assert isinstance(model.classifier, torch.nn.Linear), f"weird (classifier): {model.classifier}"
+        return model.classifier
+    return None
+
+
+def set_output_layer(model, layer):
+    if hasattr(model, 'head'):
+        if isinstance(model.head, torch.nn.Linear):
+            model.head = layer
+            return model.head
+        elif hasattr(model.head, 'fc'):
+            assert isinstance(model.head.fc, torch.nn.Linear), f"weird (head.fc): {model.head.fc}"
+            model.head.fc = layer
+            return model.head.fc
+    elif hasattr(model, 'fc'):
+        assert isinstance(model.fc, torch.nn.Linear), f"weird (fc): {model.fc}"
+        model.fc = layer
+        return model.fc
+    elif hasattr(model, 'classifier'):
+        assert isinstance(model.classifier, torch.nn.Linear), f"weird (classifier): {model.classifier}"
+        model.classifier = layer
+        return model.classifier
+    return None
+
+
+def get_pretrained_timm(cfg):
+    """Initialize pretrained_model for a new fold based on cfg
+
+    Use timm API as far as possible.
+
+    Not sure: Custom pooling module can be assigned to cfg.pool, or factory to cfg.get_pooling,
+    which is called with (cfg, n_features).
+
+    Custom bottleneck factory can be assigned to cfg.get_bottleneck.
+    """
+    # AdaptiveMaxPool2d does not work with xla, use pmp = concat_pool = False
+    pretrained = (cfg.rst_name is None) and 'defaults' not in cfg.tags
+    pretrained_model = timm.create_model(cfg.arch_name, pretrained=pretrained,
+                                         num_classes=cfg.n_classes or cfg.channel_size)
+
+    pretrained_model.eval()
+    inp = torch.randn(2, 3, 224, 224)
+    unpooled_features = pretrained_model.forward_features(inp)
+    embeddings = pretrained_model.forward_head(unpooled_features, pre_logits=True)
+    predictions = pretrained_model.forward_head(unpooled_features)
+    n_features = unpooled_features.shape[1]
+    print(n_features, "features before pooling")
+
+    # Pooling
+    if cfg.pool is None:
+        pooling_layer = None  # keep original
+    elif cfg.get_pooling is not None:
+        pooling_layer = cfg.get_pooling(cfg, n_features)
+    elif cfg.pool == 'flatten':
+        pooling_layer = []
+    elif cfg.pool == 'fc':
+        assert cfg.feature_size, 'cfg.pool=fc needs cfg.feature_size'
+        pooling_layer = nn.Sequential(
+            nn.Dropout2d(p=0.1, inplace=True),
+            nn.Flatten(),
+            nn.Linear(n_features * cfg.feature_size, n_features),
+            nn.BatchNorm1d(n_features))
+    elif cfg.pool == 'gem':
+        pooling_layer = GeM()
+    elif cfg.pool in ['cat', 'concat']:
+        pooling_layer = AdaptiveCatPool2d(output_size=1)
+    elif cfg.pool == 'max':
+        pooling_layer = nn.AdaptiveMaxPool2d(output_size=1)
+    else:
+        pooling_layer = nn.AdaptiveAvgPool2d(output_size=1)
+    if cfg.pool in ['max', 'concat'] and cfg.xla:
+        print("WARNING: MaxPool not supported by torch_xla")
+    #if pooling_layer is not None:
+    #    pretrained_model.head.global_pool = pooling_layer
+    #n_features = get_last_out_features(pooling_layer, None) or n_features
+    #assert n_features == pretrained_model.forward
+    #print(n_features, "features after pooling")
+
+    if pooling_layer:
+        n_features = torch.flatten(pooling_layer(unpooled_features), 1, -1).shape[1]
+        print(f"{n_features} features after pooling")
+    else:
+        n_features = embeddings.shape[1]  # can be incorrect if custom pooling
+        print(f"{n_features} features after original pooling")
+
+    # improve initialization of output layer
+    #set_output_layer(pretrained_model, nn.Linear(n_features, cfg.channel_size or cfg.n_classes))  # good: efn, rexnet
+    if cfg.scale_output_layer is not None:
+        if pooling_layer is not None:
+            print("WARNING: scale_output_layer not supported with custom pooling")
+        output_layer = pretrained_model.get_classifier()
+        with torch.no_grad():
+            fan_in = output_layer.weight.size(1)
+            limit = math.sqrt(1 / fan_in) * cfg.scale_output_layer
+            nn.init.uniform_(output_layer.weight, -limit, limit)
+            nn.init.uniform_(output_layer.bias, -limit, limit)
+            gain_w = output_layer.weight.detach().max().numpy() / math.sqrt(1 / fan_in)
+            gain_b = output_layer.bias.detach().max().numpy() / math.sqrt(1 / fan_in)
+            print("output layer weight gain:", gain_w)
+            print("output layer bias gain:  ", gain_b)
+
+    # Bottleneck(s)
+    if cfg.get_bottleneck is not None:
+        bottleneck = cfg.get_bottleneck(cfg, n_features)
+    else:
+        lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
+        bottleneck = []
+        for p, out_features in zip(dropout_ps, lin_ftrs):
+            if p > 0: bottleneck.append(nn.Dropout(p=p))
+            bottleneck.append(nn.Linear(n_features, out_features))
+            n_features = out_features
+            if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(n_features))
+        if final_dropout:
+            bottleneck.append(nn.Dropout(p=final_dropout))
+
+    n_features = get_last_out_features(bottleneck, None) or n_features
+    print(n_features, "features after bottleneck")
+
+    if cfg.deotte:
+        # Happywhale model used in my final TF notebooks
+        head = nn.Sequential(nn.AdaptiveAvgPool2d(output_size=1),
+                             #nn.BatchNorm2d(n_features),   # also try BN1d after Flatten
+                             nn.Flatten(),
+                             nn.BatchNorm1d(n_features),
+                             )
+        cfg.channel_size = n_features
+    elif cfg.feature_size:
+        # Model used by pudae (Humpback-whale-identification) with FC instead of AvgPool
+        head = nn.Sequential(nn.BatchNorm2d(n_features),
+                             nn.Dropout2d(p=cfg.dropout_ps[0]),
+                             nn.Flatten(),
+                             nn.Linear(n_features * cfg.feature_size, cfg.channel_size),
+                             nn.BatchNorm1d(cfg.channel_size))
+    elif pooling_layer:
+        print(f"building output layer {n_features, cfg.channel_size or cfg.n_classes}")
+        head = nn.Sequential(pooling_layer,
+                             nn.Flatten(),
+                             *bottleneck,
+                             nn.Linear(n_features, cfg.channel_size or cfg.n_classes))
+    else:
+        head = None  # use original head, maybe replace FC by bottleneck
+
+    class TimmWrapper(nn.Module):
+        def __init__(self, timm_model, custom_head=None, bottleneck=None):
+            super(TimmWrapper, self).__init__()
+            self.timm_model = timm_model
+            self.custom_head = custom_head
+            self.bottleneck = bottleneck
+            if self.custom_head:
+                print("Custom head:")
+                print(self.custom_head)
+            elif self.bottleneck:
+                print("Custom bottleneck:")
+                print(self.bottleneck)
+
+        def forward(self, x):
+            unpooled_features = self.timm_model.forward_features(x)
+            if self.custom_head is not None:
+                return self.custom_head(unpooled_features)
+            elif self.bottleneck is not None:
+                embeddings = self.timm_model.forward_head(unpooled_features, pre_logits=True)
+                return self.bottleneck(embeddings)
+            return self.timm_model.forward_head(unpooled_features)
+
+    if head or bottleneck:
+        pretrained_model = TimmWrapper(pretrained_model, head, bottleneck)
 
     if cfg.arcface:
         pretrained_model = ArcNet(cfg, pretrained_model)

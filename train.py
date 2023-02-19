@@ -180,7 +180,7 @@ if cfg.use_aux_loss:
     print("[ √ ] segmentation_models_pytorch:", smp.__version__)
 
 from metadata import get_metadata
-from models import get_pretrained_model, get_smp_model
+from models import get_pretrained_model, get_pretrained_timm, get_smp_model
 from xla_train import _mp_fn
 
 # Import project (code, constant settings)
@@ -208,7 +208,8 @@ for use_fold in cfg.use_folds:
     if cfg.use_aux_loss:
         pretrained_model = get_smp_model(cfg)
     else:
-        pretrained_model = get_pretrained_model(cfg)
+        #pretrained_model = get_pretrained_model(cfg)
+        pretrained_model = get_pretrained_timm(cfg)
     pretrained_model.requires_labels = getattr(pretrained_model, 'requires_labels', False)
     if hasattr(pretrained_model, 'head'):
         print(pretrained_model.head)
