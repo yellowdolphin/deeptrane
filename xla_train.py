@@ -131,6 +131,10 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
+        # batch transform images from InvGammaDataset
+        if cfg.project == 'autolevels':
+            inputs = torch.pow(inputs, labels[:, :, None, None])
+
         # image batch_tfms
         #if cfg.use_batch_tfms:
         #    inputs = batch_tfms(inputs)
@@ -255,6 +259,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
+
+        # batch transform images from InvGammaDataset
+        if cfg.project == 'autolevels':
+            inputs = torch.pow(inputs, labels[:, :, None, None])
 
         # forward
         with torch.no_grad():

@@ -248,6 +248,6 @@ class InvGammaDataset(Dataset):
 
         # draw gamma (label), gamma-transform image
         labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
-        image = torch.pow(image, labels[:, None, None])  # channels first
+        #image = torch.pow(image, labels[:, None, None])  # channels first
 
         return image, labels if self.labeled else image
