@@ -278,6 +278,14 @@ def split_data(df, cfg, seed=42):
     if cfg.train_on_all:
         return df.set_index('image_id')
 
+    try:
+        import sklearn
+    except ModuleNotFoundError:
+        from utils.general import quietly_run
+        quietly_run('pip install scikit-learn')
+        import sklearn
+    print("[ √ ] sklearn:", sklearn.__version__)
+
     if cfg.classes and (cfg.n_classes > 1) and not cfg.multilabel:
         from sklearn.model_selection import StratifiedKFold
 

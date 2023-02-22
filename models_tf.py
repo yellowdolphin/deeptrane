@@ -498,10 +498,13 @@ def get_pretrained_model(cfg, strategy, inference=False):
             margin = get_margin(cfg)
             features = margin([embed, inputs[1]])
             output = tf.keras.layers.Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
-        else:
+        elif cfg.classes:
             assert cfg.n_classes, 'set cfg.n_classes in project or config file!'
             features = tf.keras.layers.Dense(cfg.n_classes, name='classifier')(embed)
             output = tf.keras.layers.Softmax(dtype='float32')(features)
+        else:
+            assert cfg.channel_size, 'set cfg.channel_size in project or config file!'
+            output = tf.keras.layers.Dense(cfg.channel_size, name='regressor')(embed)
 
         if cfg.aux_loss:
             assert cfg.n_aux_classes, 'set cfg.n_aux_classes in project or config file!'
@@ -555,7 +558,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         model.compile(
             optimizer=optimizer,
-            loss='sparse_categorical_crossentropy',
+            loss='sparse_categorical_crossentropy' if cfg.classes else 'mean_squared_error',
             loss_weights=(1 - cfg.aux_loss, cfg.aux_loss) if cfg.aux_loss else None,
             metrics=metrics)
 

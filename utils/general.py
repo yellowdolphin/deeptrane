@@ -41,12 +41,12 @@ def autotype(cfg, key, value):
         raise KeyError(f"Unrecognized key: `{key}` is not an attribute of cfg")
     if isinstance(cfg[key], bool):
         cfg[key] = value.lower() == 'true'
+    elif value.lower() == 'none':
+        cfg[key] = [] if isinstance(cfg[key], list) else None
     elif isinstance(cfg[key], int) or key in none_or_int:
         cfg[key] = int(value)
     elif isinstance(cfg[key], float):
         cfg[key] = float(value)
-    elif value.lower() == 'none':
-        cfg[key] = [] if isinstance(cfg[key], list) else None
     elif isinstance(cfg[key], str) or cfg[key] is None:
         cfg[key] = str(value)
     else:

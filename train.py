@@ -36,6 +36,8 @@ if cfg.cloud == 'drive':
 
 print(cfg)
 print("[ √ ] Cloud:", cfg.cloud)
+if cfg.cloud == 'kaggle':
+    print("      Docker Image:", os.environ.get('KAGGLE_DOCKER_IMAGE', '?'))
 print("[ √ ] Tags:", cfg.tags)
 print("[ √ ] Mode:", cfg.mode)
 print("[ √ ] Folds:", cfg.use_folds)
@@ -51,14 +53,15 @@ if cfg.rst_name is not None:
 cfg.out_dir = Path(cfg.out_dir)
 
 wheels_path = cfg.wheels_path or ('/kaggle/input/popular-wheels' if cfg.cloud == 'kaggle' else None)
-pip_option = f'-f file://{cfg.wheels_path}' if cfg.wheels_path else ''
+pip_option = f'-f file://{wheels_path}' if wheels_path else ''
 
 # Install torch.xla on TPU supported nodes
-if 'TPU_NAME' in os.environ:
+tpu_vars = 'TPU_ACCELERATOR_TYPE TPU_PROCESS_ADDRESSES PYTORCH_LIBTPU PIP_LIBTPU ACCELERATOR_TYPE AGENT_BOOTSTRAP_IMAGE TPU_SKIP_MDS_QUERY TPU_TOPOLOGY_WRAP TPU_HOST_BOUNDS'.split()
+if any([v in os.environ for v in tpu_vars]):
     cfg.xla = True
     # '1.8.1' works on kaggle and colab, nightly only on kaggle
-    xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.8.1', '')
-
+    #xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.8.1', '')
+    xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.10.0', '')
     # Auto installation
     if (cfg.cloud == 'drive'):
         # check xla_version for python 3.7: $ gsutil ls gs://tpu-pytorch/wheels/colab | grep cp37
@@ -79,40 +82,64 @@ if 'TPU_NAME' in os.environ:
         #os.environ['LD_LIBRARY_PATH'] += ':/usr/local/lib'  # fix 'libmkl_intel_lp64.so.1 not found'
         #if os.path.exists('/usr/local/lib/libmkl_intel_lp64.so'):
         #    os.symlink('/usr/local/lib/libmkl_intel_lp64.so', '/usr/local/lib/libmkl_intel_lp64.so.1')
-    elif (xla_version != '1.8.1') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
-        quietly_run(
-            'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-            f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
-            'pip install -U numpy',  # nightly torch_xla needs newer numpy but does not "require" it
-            debug=cfg.DEBUG)
-        print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
+    #elif (xla_version != '1.8.1') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
+    elif (xla_version != '1.10.0') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
+        #try:
+        #    import torch_xla
+        #    xla_version = torch_xla.__version__
+        #except ModuleNotFoundError:
+        if True:
+            print(f"running pytorch-xla-env-setup.py --version {xla_version} {apt_libs} ...")
+            quietly_run(
+                'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
+                f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
+                'pip install -U numpy',  # nightly torch_xla needs newer numpy but does not "require" it
+                debug=cfg.DEBUG)
+            print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
     elif not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla'):
-        quietly_run(
-            f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
-            debug=cfg.DEBUG)
+        try:
+            import torch_xla
+            xla_version = torch_xla.__version__
+        except ModuleNotFoundError:
+            print("running pytorch-xla-env-setup.py --version 1.10.0 ...")
+            quietly_run(
+                f'{sys.executable} pytorch-xla-env-setup.py --version 1.10.0',
+                debug=cfg.DEBUG)
     print("[ √ ] Python:", sys.version.replace('\n', ''))
     print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ.get('XLA_USE_BF16', None)})")
+    # Install catalyst, required by DistributedSamplerWrapper
+    try:
+        import catalyst
+    except ModuleNotFoundError:
+        quietly_run('pip install -U --progress-bar off catalyst')
+        import catalyst
+    print("[ √ ] catalyst:", catalyst.__version__)
 import torch
 print("[ √ ] torch:", torch.__version__)
 
 # Install (xla compatible) torchmetrics
-if cfg.xla and torchmetrics_version() != 'xla_compatible':
-    # Use own fork while current torchmetrics is broken
+#if cfg.xla and torchmetrics_version() != 'xla_compatible':
+    # Use own fork while current torchmetrics is broken. FIXED!
     #quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git', debug=cfg.DEBUG)
 
-    # Current version works with torch_xla and torch 1.8.1, but torch requirement is not met by "1.8.0a0+56b43f4"
-    # Have to prevent re-installation of wrong torch version.
+    # Current version works with torch_xla and torch 1.8.1, but torch requirement is not met by "1.8.0a0+56b43f4",
+    # have to prevent re-installation of wrong torch version. FIXED!
     # Switch to pypi when distributed_available fix is out (10.4?)
-    quietly_run('pip install --no-deps git+https://github.com/Lightning-AI/metrics.git', debug=cfg.DEBUG)
-    quietly_run('pip install numpy>=1.17.2 packaging typing-extensions')
+    #quietly_run('pip install --no-deps git+https://github.com/Lightning-AI/metrics.git', debug=cfg.DEBUG)
+    #quietly_run('pip install numpy>=1.17.2 packaging typing-extensions lightning-utilities >=0.7.0, <0.8.0')
+#    print("installing current version of torchmetrics with requirements...")
+#    quietly_run('pip install -U torchmetrics', debug=True)
+#elif not cfg.xla and not torchmetrics_version():
+#    quietly_run('pip install torchmetrics>=0.8', debug=cfg.DEBUG)
+#else:
+#    # require 0.8.0+ for kwarg compute_groups
+#    tm_version = torchmetrics_version().split('.')
+#    if tm_version[0] == '0' and int(tm_version[1]) < 8:
+#        print("installing current version of torchmetrics...")
+#        quietly_run('pip install -U torchmetrics', debug=True)
 
-elif not cfg.xla and not torchmetrics_version():
-    quietly_run('pip install torchmetrics>=0.8', debug=cfg.DEBUG)
-else:
-    # require 0.8.0+ for kwarg compute_groups
-    tm_version = torchmetrics_version().split('.')
-    if tm_version[0] == '0' and int(tm_version[1]) < 8:
-        quietly_run('pip install -U torchmetrics')
+# Install torchmetrics
+quietly_run('pip install torchmetrics>=0.11.1')
 
 # Install timm
 if cfg.use_timm:

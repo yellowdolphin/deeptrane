@@ -10,7 +10,13 @@ from torchvision import transforms, utils
 import PIL.Image
 # Alternatives to PIL (no speed gain):
 # from skimage import io
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError:
+    from utils.general import quietly_run
+    quietly_run('pip install opencv-python-headless')
+    import cv2
+print("[ √ ] cv2:", cv2.__version__)
 
 from augmentation import get_tfms
 

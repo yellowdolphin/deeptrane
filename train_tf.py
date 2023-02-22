@@ -113,7 +113,7 @@ for use_fold in cfg.use_folds:
         cv_split(cfg, use_fold)
     assert cfg.train_files and cfg.valid_files
 
-    if hasattr(project, 'count_examples'):
+    if hasattr(project, 'count_data_items'):
         cfg.num_train_images = project.count_data_items(cfg.train_files)
         cfg.num_valid_images = project.count_data_items(cfg.valid_files)
     else:
@@ -123,8 +123,8 @@ for use_fold in cfg.use_folds:
     print(f"train: {len(cfg.train_files):>6}  {cfg.num_train_images:>10}")
     print(f"valid: {len(cfg.valid_files):>6}  {cfg.num_valid_images:>10}")
 
-    train_dataset = get_dataset(cfg, mode='train')
-    valid_dataset = get_dataset(cfg, mode='valid')
+    train_dataset = get_dataset(cfg, project, mode='train')
+    valid_dataset = get_dataset(cfg, project, mode='valid')
 
     dataloader_bs = cfg.bs * cfg.n_replicas
     batches_per_epoch = cfg.num_train_images // dataloader_bs

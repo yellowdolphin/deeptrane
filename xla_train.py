@@ -502,7 +502,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         epoch_start = time.perf_counter()
         current_lr = optimizer.param_groups[-1]["lr"]
         if hasattr(scheduler, 'get_last_lr'):
-            assert scheduler.get_last_lr()[-1] == current_lr, f'scheduler: {scheduler.get_last_lr()[-1]}, opt: {current_lr}'
+            # after restart, they disagree and scheduler is correct.
+            #assert scheduler.get_last_lr()[-1] == current_lr, f'scheduler: {scheduler.get_last_lr()[-1]}, opt: {current_lr}'
+            current_lr = scheduler.get_last_lr()[-1]
 
         # Update train_loader shuffling
         if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):

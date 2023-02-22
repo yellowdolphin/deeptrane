@@ -25,9 +25,10 @@ default_inputs = ['image']
 default_targets = ['target']
 
 
-def count_data_items(filenames):
+def count_data_items(filenames, tfrec_filename_pattern=None):
     "Infer number of items from tfrecord file names."
-    pattern = re.compile(r"-([0-9]*)\.")
+    tfrec_filename_pattern = tfrec_filename_pattern or r"-([0-9]*)\."
+    pattern = re.compile(tfrec_filename_pattern)
     n = [int(pattern.search(fn).group(1)) for fn in filenames if pattern.search(fn)]
     if len(n) < len(filenames):
         print(f"WARNING: only {len(n)} / {len(filenames)} urls follow the convention:")
@@ -37,18 +38,18 @@ def count_data_items(filenames):
     return np.sum(n)
 
 
-def get_gcs_path(cfg):
-    "Get GCS dataset path from cfg.dataset and kaggle, fallback to cfg.gcs_paths"
+def get_gcs_paths(cfg):
+    "Get GCS dataset paths from cfg.datasets and kaggle, fallback to cfg.gcs_paths"
 
-    if cfg.gcs_path: return cfg.gcs_path
-    assert cfg.dataset, 'specify either gcs_path or dataset in config'
+    if cfg.gcs_paths: return cfg.gcs_paths
+    assert cfg.datasets, 'specify either gcs_paths or datasets in config'
 
     if cfg.cloud == 'kaggle':
         from kaggle_datasets import KaggleDatasets
         from kaggle_web_client import BackendError
 
-        if cfg.dataset:
-            cfg.dataset = Path(cfg.dataset).name
+        if cfg.datasets:
+            cfg.datasets = [Path(ds).name for ds in cfg.datasets]
 
         if cfg.dataset_is_private:
             # Enable GCS for private datasets
@@ -63,34 +64,40 @@ def get_gcs_path(cfg):
                 print("Using /kaggle/input instead")
 
         try:
-            gcs_path = KaggleDatasets().get_gcs_path(cfg.dataset)
+            gcs_paths = [KaggleDatasets().get_gcs_path(ds) for ds in cfg.datasets]
         except ConnectionError:
             print("ConnectionError, using cfg.gcs_paths")
             assert cfg.gcs_paths, 'No gcs_paths defined in config'
-            gcs_path = cfg.gcs_paths[cfg.dataset]
+            gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
         except BackendError:
-            print(f"dataset {cfg.dataset} not in /kaggle/input, using cfg.gcs_paths")
+            print(f"datasets {cfg.datasets} not in /kaggle/input, using cfg.gcs_paths")
             assert cfg.gcs_paths, 'No gcs_paths defined in config'
-            gcs_path = cfg.gcs_paths[cfg.dataset]
+            gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
 
-        print("GCS path:", gcs_path)
-        return gcs_path
+        print("GCS paths:", gcs_paths)
+        return gcs_paths
 
     if cfg.dataset_is_private:
         from google.colab import auth
         auth.authenticate_user()
 
-    gcs_path = cfg.gcs_paths[cfg.dataset]
+    gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
 
-    return gcs_path
+    return gcs_paths
 
 
 def get_shards(cfg):
-    assert cfg.gcs_path, 'need gcs_path for splitting!'
-    pattern = cfg.gcs_filter or '*.tfrec*'
-    all_files = np.sort(tf.io.gfile.glob(f'{cfg.gcs_path}/{pattern}'))
+    assert cfg.gcs_paths, 'need gcs_paths for splitting!'
+    if cfg.gcs_filters:
+        patterns, paths = cfg.gcs_filters, cfg.gcs_paths
+        assert len(patterns) == len(paths), f'len mismatch of cfg.gcs_filters ({len(patters)}) and cfg.gcs_paths ({len(paths)})'
+        all_files = [np.sort(tf.io.gfile.glob(f'{path}/{pattern}')) for path, pattern in zip(paths, patterns)]
+    else:
+        pattern = cfg.gcs_filter or '*.tfrec*'
+        all_files = [np.sort(tf.io.gfile.glob(f'{gcs_path}/{pattern}')) for gcs_path in cfg.gcs_paths]
+    all_files = np.concatenate(all_files)
     n_files = len(all_files)
-    assert n_files > 0, f'no tfrec files found at {cfg.gcs_path}'
+    assert n_files > 0, f'no tfrec files found at {cfg.gcs_paths}'
     return all_files, n_files
 
 
@@ -155,8 +162,6 @@ def show_tfrec_features(url, bboxes=[], text_features=[]):
 
 
 def decode_image(cfg, image_data, box=None):
-    "Decode our images (updated to include crops)"
-    
     if box is not None: # and box[0] >= 0 and box[1] >= 0 and box[2] > box[0] and box[3] > box[1]:
         left, top, right, bottom = box[0], box[1], box[2], box[3]
         bbs = tf.convert_to_tensor([top, left, bottom - top, right - left])
@@ -218,7 +223,7 @@ def parse_tfrecord(cfg, example):
     return inputs, targets
 
 
-def get_dataset(cfg, mode='train'):
+def get_dataset(cfg, project, mode='train'):
     filenames = cfg.train_files if mode == 'train' else cfg.valid_files
     if cfg.DEBUG: tf.print(f'urls for mode "{mode}":', filenames)
     shuffle = cfg.shuffle_buffer or 2048 if mode == 'train' else None
@@ -228,12 +233,15 @@ def get_dataset(cfg, mode='train'):
     data_format = cfg.data_format  # assume is mode agnostic for now
     bs = cfg.bs
     bs *= cfg.n_replicas
-    if cfg.double_bs_in_valid and (mode == 'train'): bs *= 2
+    if cfg.double_bs_in_valid and (mode != 'train'): bs *= 2
 
     dataset = tf.data.TFRecordDataset(filenames, num_parallel_reads=AUTO)
     dataset = dataset.cache() if cfg.cache_data else dataset
     dataset = dataset.with_options(ignore_order) if shuffle else dataset
-    dataset = dataset.map(partial(parse_tfrecord, cfg), num_parallel_calls=AUTO)
+    if project and hasattr(project, 'parse_tfrecord'):
+        dataset = dataset.map(partial(project.parse_tfrecord, cfg), num_parallel_calls=AUTO)
+    else:
+        dataset = dataset.map(partial(parse_tfrecord, cfg), num_parallel_calls=AUTO)
     dataset = dataset.map(tfms, num_parallel_calls=AUTO) if tfms else dataset
     dataset = dataset.repeat() if mode == 'train' else dataset
     dataset = dataset.shuffle(shuffle) if shuffle else dataset
@@ -265,16 +273,17 @@ def check_data_format(cfg):
     for inp in cfg.inputs:
         assert inp in cfg.data_format, f'"{inp}" (cfg.inputs) is missing in cfg.data_format'
     for target in cfg.targets:
-        assert target in cfg.data_format, f'"{inp}" (cfg.targets) is missing in cfg.data_format'
+        if not target in cfg.data_format:
+            print(f'WARNING: "{target}" (cfg.targets) is missing in cfg.data_format')
 
 
 def configure_data_pipeline(cfg):
-    """Adds to config: gcs_path, tfrec_format, data_format, inputs, targets.
+    """Adds to config: gcs_paths, tfrec_format, data_format, inputs, targets.
 
     These attributes can be overridden in the project or config file.
     They are tested for consistency.
     """
-    cfg.gcs_path = get_gcs_path(cfg)
+    cfg.gcs_paths = get_gcs_paths(cfg)
 
     if cfg.arcface:
         default_inputs.append('target')

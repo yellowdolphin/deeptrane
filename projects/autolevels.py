@@ -6,6 +6,19 @@ import cv2
 import torch
 from torch.utils.data import Dataset
 
+try:
+    import albumentations as alb
+except ModuleNotFoundError:
+    from utils.general import quietly_run
+    quietly_run('pip install albumentations')
+    import albumentations as alb
+print("[ √ ] albumentations:", alb.__version__)
+
+
+import tensorflow as tf
+import tensorflow_probability as tfp
+tfd = tfp.distributions
+
 gcs_paths = {
     #'cassava-leaf-disease-classification': 'gs://kds-2f1ef51620b1d194f7b5370df991a8cf346870f5e8d86f95e5b81ba3',
     }
@@ -17,6 +30,23 @@ def init(cfg):
 
     if cfg.filetype == 'JPEG':
         cfg.image_root = cfg.competition_path / 'ILSVRC/Data/CLS-LOC/train'
+    else:
+        # Customize data pipeline (see tf_data for definition and defaults)
+        """Features in first TFRecord file:
+        image/class/synset             bytes_list        0.013 kB
+        image/encoded                  bytes_list       32.609 kB
+        image/width                    int64_list        0.006 kB
+        image/class/label              int64_list        0.006 kB
+        image/colorspace               bytes_list        0.007 kB
+        image/format                   bytes_list        0.008 kB
+        image/height                   int64_list        0.006 kB
+        image/channels                 int64_list        0.005 kB
+        image/filename                 bytes_list        0.022 kB"""
+        #cfg.tfrec_format = {'encoded': tf.io.FixedLenFeature([], tf.string)}
+        cfg.tfrec_format = {'image/encoded': tf.io.FixedLenFeature([], tf.string)}
+        cfg.data_format = {'image': 'image/encoded'}
+        cfg.inputs = ['image']
+        cfg.targets = ['target']
 
     cfg.meta_csv = cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt'
 
@@ -28,18 +58,6 @@ def init(cfg):
     #if 'tf' in cfg.tags:
     #    cfg.n_classes = 5  # pytorch: set by metadata
     #cfg.gcs_paths = gcs_paths
-
-    # Customize data pipeline (see tf_data for definition and defaults)
-    #cfg.tfrec_format = {
-    #    'image': tf.io.FixedLenFeature([], tf.string),
-    #    'box': tf.io.FixedLenFeature([4], tf.int64),
-    #    'target': tf.io.FixedLenFeature([], tf.int64)}
-    #cfg.data_format = {
-    #    'image': 'image',
-    #    #'bbox': 'box',
-    #    'target': 'target'}
-    #cfg.inputs = ['image']
-    #cfg.targets = ['target']
 
     if cfg.curve == 'gamma':
         cfg.dataset_class = InvGammaDataset
@@ -251,3 +269,60 @@ class InvGammaDataset(Dataset):
         image = torch.pow(image, labels[:, None, None])  # channels first
 
         return image, labels if self.labeled else image
+
+
+def decode_image(cfg, image_data, target):
+    "Decode image and apply inverse curve transform according to target"
+    
+    image = tf.image.decode_jpeg(image_data, channels=3)
+    
+    if cfg.BGR:
+        image = tf.reverse(image, axis=[-1])
+
+    if cfg.normalize in ['torch', 'tf', 'caffe']:
+        from keras.applications.imagenet_utils import preprocess_input
+        image = preprocess_input(image, mode=cfg.normalize)
+    else:
+        image = tf.cast(image, tf.float32) / 255.0
+
+    if cfg.curve == 'gamma':
+        image = tf.math.pow(image, target[None, None, :])
+    elif cfg.curve == 'beta':
+        raise NotImplementedError
+
+    return image
+
+
+def parse_tfrecord(cfg, example):
+    """This TFRecord parser extracts the features defined in cfg.tfrec_format.
+
+    TFRecord feature names are mapped to default names by cfg.data_format.
+    Default names are understood by the data pipeline, model, and loss function. 
+    Returns: (inputs, targets, [sample_weights])
+
+    Default names (keys): 'image', 'mask', 'bbox', 'target', 'aux_target', 'image_id'
+
+    Only keys in cfg.tfrec_format will be parsed.
+    """
+
+    example = tf.io.parse_single_example(example, cfg.tfrec_format)
+    features = {}
+
+    if cfg.curve == 'gamma':
+        features['target'] = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
+    elif cfg.curve == 'beta':
+        raise NotImplementedError
+
+    features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'])
+    
+    # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
+    # inputs can be a dict
+    inputs = tuple(features[key] for key in cfg.inputs)
+    targets = tuple(features[key] for key in cfg.targets)
+
+    return inputs, targets
+
+
+def count_data_items(filenames, tfrec_filename_pattern=None):
+    "Got number of items from idx files"
+    return np.sum([391 if 'validation' in fn else 1252 for fn in filenames])
