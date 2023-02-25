@@ -44,17 +44,6 @@ cfg["tags"] = cfg["name"].split("_")
 
 cfg["curve"] = 'gamma' if 'gamma' in cfg["tags"] else 'beta'
 
-if 'cait' in cfg["tags"]: 
-    cfg["arch_name"] = 'cait_xs24_384'
-elif 'nfnet' in cfg["tags"]:
-    cfg["arch_name"] = 'eca_nfnet_l1'
-elif 'efnv2' in cfg["tags"]:
-    cfg["arch_name"] = 'tf_efficientnetv2_s_in21ft1k'
-elif 'efnb3' in cfg["tags"]:
-    cfg["arch_name"] = 'tf_efficientnet_b3_ns'
-elif 'efnb0' in cfg["tags"]:
-    cfg["arch_name"] = 'tf_efficientnet_b0_ns'
 cfg["lr_bn"] = cfg["lr_head"]
 cfg["lr_body"] = cfg["lr_head"]
 if cfg["epochs"] == 1: cfg["batch_verbose"] = 10
-#cfg["folds_json"] = f'/kaggle/input/cassava-folds-json/folds{cfg["num_folds"]}.json'

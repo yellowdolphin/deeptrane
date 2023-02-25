@@ -14,8 +14,7 @@ cfg = dict(
     use_folds = [0],
     train_on_all = False,
     size = (128, 128),
-    multilabel = False,
-    #augmentation = 'cassava_aug2',  # aug2 removes Normalize => much better!
+    augmentation = 'tfms_004',
     use_batch_tfms = False,
     n_replicas = 8,
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue
@@ -25,9 +24,10 @@ cfg = dict(
     batch_verbose = 1,
     lr_head = 1e-2,
     one_cycle = True,
-    div_factor = 5,                            # default: 25, from Chest14: 1
-    pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
+    div_factor = 5,                   # default: 25, from Chest14: 1
+    pct_start = 0.25,                 # default: 0.3, from Chest14: 0.6, pipeline1: 0
     save_best = 'valid_loss',
+    loss_weights = [1.0, 2.0, 25.0],  # a, b, bp
 
 # Model
     arch_name = 'mobilevitv2_100',

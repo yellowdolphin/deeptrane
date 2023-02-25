@@ -173,6 +173,17 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             seg_loss = seg_crit(seg_logits, masks)
             cls_loss = criterion(preds, labels)
             loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
+        elif cfg.loss_weights is not None:
+            _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
+            _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
+            loss = sum(w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels))
+
+            # alternative code
+            with torch.no_grad():
+                _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
+                _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
+                loss2 = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
+                assert loss2 == loss.detach(), f'loss: {loss.detach()}, loss2: {loss2}'
         else:
             loss = criterion(preds, labels)
 
@@ -278,7 +289,18 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         assert preds.detach().size()[1] == (cfg.n_classes or cfg.channel_size), f'preds have wrong shape {preds.detach().size()}'
         if cfg.classes:
             assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
-        loss = criterion(preds, labels)
+        if cfg.loss_weights is not None:
+            _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
+            _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
+            loss = sum(w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels))
+
+            # alternative code
+            _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
+            _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
+            loss2 = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
+            assert loss2 == loss, f'loss: {loss}, loss2: {loss2}'
+        else:
+            loss = criterion(preds, labels)
         loss_meter.update(loss.item(), inputs.size(0))  # 1 aten/iter but no performance drop
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
@@ -351,6 +373,11 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     if cfg.use_aux_loss:
         from segmentation_models_pytorch.losses.dice import DiceLoss
     seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
+
+    if cfg.loss_weights:
+        cfg.loss_weights = torch.tensor(cfg.loss_weights)
+    else:
+        cfg.loss_weights = None
 
     #old_metrics = [] # OK: [pct_N, eap5, acc, macro_acc, top3, f1, macro_f1]
 
