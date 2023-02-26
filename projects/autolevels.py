@@ -60,7 +60,7 @@ def init(cfg):
     #cfg.gcs_paths = gcs_paths
 
     if cfg.curve == 'gamma':
-        cfg.dataset_class = InvGammaDataset
+        cfg.dataset_class = AugInvGammaDataset
         cfg.channel_size = 3
     elif cfg.curve == 'beta':
         cfg.dataset_class = InvBetaDataset
@@ -267,6 +267,73 @@ class InvGammaDataset(Dataset):
         # draw gamma (label), gamma-transform image
         labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
         image = torch.pow(image, labels[:, None, None])  # channels first
+
+        return image, labels if self.labeled else image
+
+
+class AugInvGammaDataset(Dataset):
+    """Images are transformed according to randomly drawn curve parameters
+    
+    Floatify, inv-curve-transform, noise, blur, uint8, crop/resize, tensorize"""
+
+    def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
+                 return_path_attr=None):
+        """
+        Args:
+            df (pd.DataFrame):                First row must contain the image file paths
+            image_root (string, Path):        Root directory for df.image_path
+            transform (callable, optional):   Optional transform to be applied on the first
+                                              element (image) of a sample.
+            labeled (bool, optional):         if True, return curve parameters as regression target
+            return_path_attr (str, optional): return Path attribute `return_path_attr`
+
+        """
+        self.df = df.reset_index(drop=True)
+        self.image_root = cfg.image_root
+        self.transform = transform
+        self.tensor_transform = tensor_transform
+        self.albu = transform and transform.__module__.startswith('albumentations')
+        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
+        self.labeled = labeled
+        self.return_path_attr = return_path_attr
+        self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
+        self.noise_level = cfg.noise_level
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, index):
+
+        fn = os.path.join(self.image_root, self.df.iloc[index, 0])
+        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
+            bytes_data = gcsfs.read(fn)
+            image = PIL.Image.open(io.BytesIO(bytes_data))
+        else:
+            assert os.path.exists(fn), f'{fn} not found'
+            image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
+
+        n_channels = image.shape[2]
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channels last'
+
+        # draw gamma (label), gamma-transform image
+        labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
+        image = np.array(image, dtype=np.float32) / 255
+        image = np.power(image, labels[None, None, :].numpy())  # channels last
+        if self.noise_level:
+            image += np.random.randn(*image.shape) * self.noise_level
+        image *= 255
+        image = np.clip(image, 0, 255).astype(np.uint8)
+
+        if self.transform:
+            if self.albu:
+                image = self.transform(image=np.array(image))['image']
+                image = (image / 255).float() if self.floatify else image
+            else:
+                # torchvision, requires PIL.Image
+                image = self.transform(PIL.Image.fromarray(image))
+
+        if self.tensor_transform:
+            image = self.tensor_transform(image)
 
         return image, labels if self.labeled else image
 

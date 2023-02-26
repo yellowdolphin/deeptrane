@@ -14,12 +14,12 @@ cfg = dict(
     use_folds = [0],
     train_on_all = False,
     size = (128, 128),
-    multilabel = False,
-    #augmentation = 'cassava_aug2',  # aug2 removes Normalize => much better!
+    augmentation = 'tfms_004',
+    noise_level = 0.05,
     use_batch_tfms = False,
     n_replicas = 8,
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue
-    bs = 128,
+    bs = 64,
     #n_acc = 8,
     epochs = 1,
     batch_verbose = 1,

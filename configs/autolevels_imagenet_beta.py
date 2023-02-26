@@ -15,6 +15,7 @@ cfg = dict(
     train_on_all = False,
     size = (128, 128),
     augmentation = 'tfms_004',
+    noise_level = 0.05,
     use_batch_tfms = False,
     n_replicas = 8,
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue

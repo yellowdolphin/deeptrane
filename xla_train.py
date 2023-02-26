@@ -179,11 +179,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             loss = sum(w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels))
 
             # alternative code
-            with torch.no_grad():
-                _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
-                _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
-                loss2 = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
-                assert loss2 == loss.detach(), f'loss: {loss.detach()}, loss2: {loss2}'
+            #_preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
+            #_labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
+            #loss = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
         else:
             loss = criterion(preds, labels)
 
