@@ -131,6 +131,20 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
+
+        if cfg.presize and (cfg.curve == 'gamma'):
+            # experimental batch transforms for autolevels TPU training
+            inputs = inputs.float() / 255
+            inputs = torch.pow(inputs, labels[:, :, None, None])  # channels first
+            if cfg.noise_level:
+                inputs += torch.randn_like(inputs) * cfg.noise_level
+
+            # quantize, mimick a normal ImageDataset
+            inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
+            inputs = TF.resize(inputs, cfg.size)
+            inputs = inputs.float() / 255
+
+
         # image batch_tfms
         #if cfg.use_batch_tfms:
         #    inputs = batch_tfms(inputs)

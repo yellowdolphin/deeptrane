@@ -5,6 +5,8 @@ import pandas as pd
 import cv2
 import torch
 from torch.utils.data import Dataset
+from torchvision.transforms import Resize
+from torchvision.transforms.functional import InterpolationMode
 
 try:
     import albumentations as alb
@@ -296,8 +298,14 @@ class AugInvGammaDataset(Dataset):
         self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
         self.labeled = labeled
         self.return_path_attr = return_path_attr
+        if cfg.presize:
+            self.presize = cfg.presize
+            self.resize = Resize(self.presize, interpolation=InterpolationMode.NEAREST)
+        else:
+            self.presize = None
         self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
         self.noise_level = cfg.noise_level
+        self.presize = cfg.presize
 
     def __len__(self):
         return len(self.df)
@@ -317,12 +325,21 @@ class AugInvGammaDataset(Dataset):
 
         # draw gamma (label), gamma-transform image
         labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
-        image = np.array(image, dtype=np.float32) / 255
-        image = np.power(image, labels[None, None, :].numpy())  # channels last
-        if self.noise_level:
-            image += np.random.randn(*image.shape) * self.noise_level
-        image *= 255
-        image = np.clip(image, 0, 255).astype(np.uint8)
+
+        if self.presize is None:
+            # this is slow on CPU, use presize to do it on TPU
+            image = np.array(image, dtype=np.float32) / 255
+            image = np.power(image, labels[None, None, :].numpy())  # channels last
+            if self.noise_level:
+                image += np.random.randn(*image.shape) * self.noise_level
+            image *= 255
+            image = np.clip(image, 0, 255).astype(np.uint8)
+
+        else:
+            # just resize to common cfg.presize for collocation, generate labels on TPU
+            image = torch.tensor(image.transpose(2, 0, 1))  # channels first
+            image = self.resize(image)
+            return image, labels
 
         if self.transform:
             if self.albu:
