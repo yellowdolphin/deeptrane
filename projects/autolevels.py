@@ -5,8 +5,9 @@ import pandas as pd
 import cv2
 import torch
 from torch.utils.data import Dataset
-from torchvision.transforms import Resize
+import torchvision.transforms as TT
 from torchvision.transforms.functional import InterpolationMode
+
 
 try:
     import albumentations as alb
@@ -182,7 +183,7 @@ class InvBetaDataset(Dataset):
             #image = PIL.Image.open(fn)
 
         n_channels = image.shape[-1]
-        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channels last'
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
         
         labels = torch.stack([dist.sample((n_channels,)) for dist in [self.dist_a, self.dist_b, self.dist_bp]])
         assert labels.shape == (3, n_channels)
@@ -261,14 +262,14 @@ class InvGammaDataset(Dataset):
                 image = self.transform(PIL.Image.fromarray(image))
 
         n_channels = image.shape[0]
-        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channels first'
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel first'
         
         if self.tensor_transform:
             image = self.tensor_transform(image)
 
         # draw gamma (label), gamma-transform image
         labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
-        image = torch.pow(image, labels[:, None, None])  # channels first
+        image = torch.pow(image, labels[:, None, None])  # channel first
 
         return image, labels if self.labeled else image
 
@@ -298,14 +299,11 @@ class AugInvGammaDataset(Dataset):
         self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
         self.labeled = labeled
         self.return_path_attr = return_path_attr
-        if cfg.presize:
-            self.presize = cfg.presize
-            self.resize = Resize(self.presize, interpolation=InterpolationMode.NEAREST)
-        else:
-            self.presize = None
+        self.use_batch_tfms = cfg.use_batch_tfms
+        if self.use_batch_tfms:
+            self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
         self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
         self.noise_level = cfg.noise_level
-        self.presize = cfg.presize
 
     def __len__(self):
         return len(self.df)
@@ -321,25 +319,24 @@ class AugInvGammaDataset(Dataset):
             image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
 
         n_channels = image.shape[2]
-        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channels last'
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
 
-        # draw gamma (label), gamma-transform image
+        # draw gamma (label)
         labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
 
-        if self.presize is None:
-            # this is slow on CPU, use presize to do it on TPU
-            image = np.array(image, dtype=np.float32) / 255
-            image = np.power(image, labels[None, None, :].numpy())  # channels last
-            if self.noise_level:
-                image += np.random.randn(*image.shape) * self.noise_level
-            image *= 255
-            image = np.clip(image, 0, 255).astype(np.uint8)
-
-        else:
-            # just resize to common cfg.presize for collocation, generate labels on TPU
-            image = torch.tensor(image.transpose(2, 0, 1))  # channels first
-            image = self.resize(image)
+        if self.use_batch_tfms:
+            # just resize to double cfg.size and tensorize for collocation
+            image = torch.tensor(image.transpose(2, 0, 1))  # channel first
+            image = self.presize(image)
             return image, labels
+
+        # this is slow on CPU, use batch tfms to do it on TPU
+        image = np.array(image, dtype=np.float32) / 255
+        image = np.power(image, labels[None, None, :].numpy())  # channel last
+        if self.noise_level:
+            image += np.random.randn(*image.shape) * self.noise_level
+        image *= 255
+        image = np.clip(image, 0, 255).astype(np.uint8)
 
         if self.transform:
             if self.albu:

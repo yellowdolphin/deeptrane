@@ -117,7 +117,7 @@ def get_tfms(cfg, mode='train'):
             if hasattr(t, 'width'): t.width = cfg.size[1]
         return flags.test_tfms
 
-    return get_torchvision_tfms(cfg, flags, mode, cfg.use_batch_tfms)
+    return get_torchvision_tfms(cfg, flags, mode)
 
 
 def get_torchvision_tfms(cfg, flags=None, mode='train'):
@@ -134,8 +134,6 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
 
     size = cfg.size
     interpolation = flags.interpolation
-    if cfg.use_batch_tfms:
-        interpolation = torchvision.transforms.InterpolationMode.NEAREST if hasattr(torchvision.transforms, 'InterpolationMode') else 0
 
     if (mode != 'train') or cfg.use_batch_tfms:
         return TF.Compose([TF.Resize(size, interpolation=interpolation), TF.ToTensor()])

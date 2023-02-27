@@ -11,7 +11,6 @@ from metrics import get_tm_dist_args, is_listmetric, NegativeRate, AverageMeter,
 from torch_data import get_dataloaders, get_fakedata_loaders
 import torch
 from torch import nn
-import torchvision.transforms.functional as TF
 import torch.optim as optim
 from torch.optim import lr_scheduler
 from utils.schedulers import get_one_cycle_scheduler, maybe_step
@@ -42,20 +41,18 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
-        try:
-            from torchvision.transforms.functional import InterpolationMode
-        except ImportError:
-            from configs.torchvision import InterpolationMode
+        import torchvision.transforms as TT
+        import torchvision.transforms.functional as TF
+        #from torchvision.transforms.functional import InterpolationMode
 
-        #pre_size = TT.Resize(cfg.size)
-        #batch_tfms = torch.nn.Sequential(
+        batch_tfms = torch.nn.Sequential(
             #TT.RandomRotation(degrees=5),
-            #TT.GaussianBlur(kernel_size=5),
-            #TT.RandomHorizontalFlip(),
+            TT.GaussianBlur(kernel_size=5),
+            TT.RandomHorizontalFlip(),
             #TT.RandomGrayscale(0.2),
-        #    TT.RandomResizedCrop(cfg.size, scale=(0.4, 1.0)),
-        #    )
-        #batch_tfms.to(device)
+            TT.RandomResizedCrop(cfg.size, scale=(0.5, 1.0)),
+            )
+        batch_tfms.to(device)
 
     #if cfg.use_batch_tfms:
     #    raise NotImplementedError('get aug_flags first!')
@@ -76,8 +73,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
     # training loop
     n_iter = len(dataloader)
-    iterable = range(n_iter) if cfg.use_batch_tfms or (cfg.fake_data == 'on_device') else dataloader
-    sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
+    iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
+    #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -86,7 +83,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
-        elif cfg.use_batch_tfms:
+        #elif cfg.use_batch_tfms:
             # resize and collate images, labels
             #samples = [next(sample_iterator) for _ in range(cfg.bs)]
             #for s in samples:
@@ -96,13 +93,13 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             #labels = torch.stack([s[1] for s in samples])
             #del samples
 
-            inputs, labels = [], []
-            for _ in range(cfg.bs):
-                s = next(sample_iterator)
-                inputs.append(TF.resize(s[0], cfg.size, InterpolationMode('nearest')))
-                labels.append(s[1])
-            inputs = torch.stack(inputs)
-            labels = torch.stack(labels)
+        #    inputs, labels = [], []
+        #    for _ in range(cfg.bs):
+        #        s = next(sample_iterator)
+        #        inputs.append(TF.resize(s[0], cfg.size, InterpolationMode('nearest')))
+        #        labels.append(s[1])
+        #    inputs = torch.stack(inputs)
+        #    labels = torch.stack(labels)
 
             #assert inputs.shape == (cfg.bs, 3, *cfg.size)
             #assert labels.shape == (cfg.bs,)
@@ -132,22 +129,23 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
 
-        if cfg.presize and (cfg.curve == 'gamma'):
-            # experimental batch transforms for autolevels TPU training
+        if cfg.use_batch_tfms and cfg.curve and (cfg.curve == 'gamma'):
+            # batch transforms for autolevels TPU training
             inputs = inputs.float() / 255
-            inputs = torch.pow(inputs, labels[:, :, None, None])  # channels first
+            inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
             if cfg.noise_level:
                 inputs += torch.randn_like(inputs) * cfg.noise_level
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
-            inputs = TF.resize(inputs, cfg.size)
-            inputs = inputs.float() / 255
+            #inputs = TF.resize(inputs, cfg.size)  # replace by batch_tfms?
+            #inputs = inputs.float() / 255
 
 
         # image batch_tfms
-        #if cfg.use_batch_tfms:
-        #    inputs = batch_tfms(inputs)
+        if cfg.use_batch_tfms:
+            inputs = inputs.float() / 255
+            inputs = batch_tfms(inputs)
             #if cfg.size[1] > cfg.size[0]:
             #    # train on 90-deg rotated nybg2021 images
             #    inputs = inputs.transpose(-2,-1)
@@ -255,7 +253,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
     # validation loop
     n_iter = len(dataloader)
-    iterable = range(n_iter) if cfg.use_batch_tfms or (cfg.fake_data == 'on_device') else dataloader
+    iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -278,6 +276,22 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             inputs, labels = (
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
+
+        if cfg.use_batch_tfms and cfg.curve and (cfg.curve == 'gamma'):
+            # batch transforms for autolevels TPU training
+            inputs = inputs.float() / 255
+            inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
+            if cfg.noise_level:
+                inputs += torch.randn_like(inputs) * cfg.noise_level
+
+            # quantize, mimick a normal ImageDataset
+            inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
+            #inputs = TF.resize(inputs, cfg.size)
+            #inputs = inputs.float() / 255
+
+        if cfg.use_batch_tfms:
+            inputs = inputs.float() / 255
+            inputs = TF.resize(inputs, cfg.size)
 
         # forward
         with torch.no_grad():
