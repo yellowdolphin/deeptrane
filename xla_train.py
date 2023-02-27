@@ -43,16 +43,24 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     if cfg.use_batch_tfms:
         import torchvision.transforms as TT
         import torchvision.transforms.functional as TF
-        #from torchvision.transforms.functional import InterpolationMode
+        from torchvision.transforms.functional import InterpolationMode
+        
+        size = torch.tensor(cfg.size, dtype=torch.float, device=device)
 
-        batch_tfms = torch.nn.Sequential(
-            #TT.RandomRotation(degrees=5),
-            TT.GaussianBlur(kernel_size=5),
-            TT.RandomHorizontalFlip(),
-            #TT.RandomGrayscale(0.2),
-            TT.RandomResizedCrop(cfg.size, scale=(0.5, 1.0)),
-            )
-        batch_tfms.to(device)
+        # TT.Random* tfms disable fast TPU execution!
+        #batch_tfms = torch.nn.Sequential(
+        #    TT.RandomRotation(degrees=5),
+        #    TT.GaussianBlur(kernel_size=5),  # OK
+        #    TT.RandomHorizontalFlip(p=0.5),  # issue
+        #    TT.RandomGrayscale(0.2),
+        #    TT.RandomResizedCrop(cfg.size, scale=(0.5, 1.0)),  # issue
+        #    TT.Resize(cfg.size),  # OK
+        #    )
+        #batch_tfms = TT.Compose(  # does not help with random tfms
+        #    TT.RandomHorizontalFlip(),
+        #    TT.Resize(cfg.size),
+        #)
+        #batch_tfms = batch_tfms.to(device)  # same or worse with random tfms
 
     #if cfg.use_batch_tfms:
     #    raise NotImplementedError('get aug_flags first!')
@@ -138,14 +146,23 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
-            #inputs = TF.resize(inputs, cfg.size)  # replace by batch_tfms?
-            #inputs = inputs.float() / 255
 
 
         # image batch_tfms
         if cfg.use_batch_tfms:
+            # RandomResizedCrop
+            scale_min = 0.6
+            height_width = ((scale_min + (1 - scale_min) * torch.rand(2)) * size).to(torch.int)
+            top, left = ((size - height_width) * torch.rand(2)).to(torch.int)
+            inputs = TF.resized_crop(inputs, top, left, *height_width, cfg.size)
+
+            # RandomHorizontalFlip
+            if torch.rand(1) > 0.5:
+                inputs = TF.hflip(inputs)
+
+            #all TT.Random* tfms break fast TPU execution!
+            #inputs = batch_tfms(inputs)  
             inputs = inputs.float() / 255
-            inputs = batch_tfms(inputs)
             #if cfg.size[1] > cfg.size[0]:
             #    # train on 90-deg rotated nybg2021 images
             #    inputs = inputs.transpose(-2,-1)
@@ -286,8 +303,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
-            #inputs = TF.resize(inputs, cfg.size)
-            #inputs = inputs.float() / 255
 
         if cfg.use_batch_tfms:
             inputs = inputs.float() / 255

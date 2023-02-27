@@ -23,7 +23,7 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 
 gcs_paths = {
-    #'cassava-leaf-disease-classification': 'gs://kds-2f1ef51620b1d194f7b5370df991a8cf346870f5e8d86f95e5b81ba3',
+    'imagenet-object-localization-challenge': 'gs://kds-ea17055740cb6a131247a93dc6ea8c461c783584c675b3a2391fbddb',
     }
 
 def init(cfg):
