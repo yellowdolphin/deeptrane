@@ -158,8 +158,11 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             scale_min = 0.6
             top = 10
             left = 10
-            height = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[0])
-            width = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[1])
+            #height = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[0])  # bad
+            #width = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[1])  # bad
+            r0, r1 = 0.33, 0.74
+            height = int((scale_min + (1 - scale_min) * r0) * cfg.size[0])
+            width = int((scale_min + (1 - scale_min) * r1) * cfg.size[1])
             inputs = TF.resized_crop(inputs, top, left, height, width, cfg.size)
             if torch.rand(1) > 0.5:
                 inputs = TF.hflip(inputs)
