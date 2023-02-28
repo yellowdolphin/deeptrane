@@ -41,17 +41,17 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
-        import torchvision.transforms as TT
+        #import torchvision.transforms as TT
         import torchvision.transforms.functional as TF
-        from torchvision.transforms.functional import InterpolationMode
+        #from torchvision.transforms.functional import InterpolationMode
 
-        ###DEBUG
+        # TT.Random* tfms disable fast TPU execution!
         #batch_tfms = torch.nn.Sequential(
-        #    ##TT.RandomRotation(degrees=5),
+        #    #TT.RandomRotation(degrees=5),
         #    TT.GaussianBlur(kernel_size=5),  # OK
         #    TT.RandomHorizontalFlip(p=0.5),  # issue
-        #    ##TT.RandomGrayscale(0.2),
-        #    #TT.RandomResizedCrop(cfg.size, scale=(0.5, 1.0)),  # issue
+        #    #TT.RandomGrayscale(0.2),
+        #    TT.RandomResizedCrop(cfg.size, scale=(0.5, 1.0)),  # issue
         #    TT.Resize(cfg.size),  # OK
         #    )
         #batch_tfms = TT.Compose(  # does not help with random tfms
@@ -134,7 +134,6 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
-
         if cfg.use_batch_tfms and cfg.curve and (cfg.curve == 'gamma'):
             # batch transforms for autolevels TPU training
             inputs = inputs.float() / 255
@@ -144,29 +143,33 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
-            #inputs = TF.resize(inputs, cfg.size)  # replace by batch_tfms?
-            #inputs = inputs.float() / 255
-
 
         # image batch_tfms
         if cfg.use_batch_tfms:
+            #inputs = batch_tfms(inputs)  # all TT.Random* tfms break fast tpu execution
+
+            # RandomResizedCrop (breaks fast TPU exe if tensor shapes depend on torch.rand())
             #size = torch.tensor(cfg.size)
-            #height_width = ((0.5 + 0.5 * torch.rand(2)) * size).to(torch.int)
-            #top, left = ((size - height_width) * torch.rand(2)).to(torch.int)
+            #height_width = ((0.5 + 0.5 * torch.rand(2)) * size).to(torch.int)  # bad
+            #top, left = ((size - height_width) * torch.rand(2)).to(torch.int)  # bad
             #height, width = height_width
-            #inputs = TF.crop(inputs, 10, 10, int(0.9 * cfg.size[0]), int(0.9 * cfg.size[1]))  # OK
-            scale_min = 0.6
-            top = 10
-            left = 10
             #height = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[0])  # bad
             #width = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[1])  # bad
-            r0, r1 = 0.33, 0.74
-            height = int((scale_min + (1 - scale_min) * r0) * cfg.size[0])
-            width = int((scale_min + (1 - scale_min) * r1) * cfg.size[1])
-            inputs = TF.resized_crop(inputs, top, left, height, width, cfg.size)
+            #inputs = TF.crop(inputs, 10, 10, int(0.9 * cfg.size[0]), int(0.9 * cfg.size[1]))  # OK
+            #scale_min = 0.6
+            #top = 10
+            #left = 10
+            #r0, r1 = 0.33, 0.74  # OK
+            #height = int((scale_min + (1 - scale_min) * r0) * cfg.size[0])
+            #width = int((scale_min + (1 - scale_min) * r1) * cfg.size[1])
+            #inputs = TF.resized_crop(inputs, top, left, height, width, cfg.size)
+
+            inputs = TF.resize(inputs, cfg.size)
+
+            # RandomHorizontalFlip (OK)
             if torch.rand(1) > 0.5:
                 inputs = TF.hflip(inputs)
-            #inputs = batch_tfms(inputs)  ##DEBUG: all TT.Random* tfms break tpu exec
+
             inputs = inputs.float() / 255
             #if cfg.size[1] > cfg.size[0]:
             #    # train on 90-deg rotated nybg2021 images
@@ -273,6 +276,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     if metrics: 
         metrics.to(device)
 
+    if cfg.use_batch_tfms:
+        import torchvision.transforms.functional as TF
+
     # validation loop
     n_iter = len(dataloader)
     iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
@@ -308,8 +314,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
-            #inputs = TF.resize(inputs, cfg.size)
-            #inputs = inputs.float() / 255
 
         if cfg.use_batch_tfms:
             inputs = inputs.float() / 255
