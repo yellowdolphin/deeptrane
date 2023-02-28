@@ -154,8 +154,13 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             #height_width = ((0.5 + 0.5 * torch.rand(2)) * size).to(torch.int)
             #top, left = ((size - height_width) * torch.rand(2)).to(torch.int)
             #height, width = height_width
-            inputs = TF.crop(inputs, 10, 10, int(0.9 * cfg.size[0]), int(0.9 * cfg.size[1]))
-            inputs = TF.resize(inputs, cfg.size)
+            #inputs = TF.crop(inputs, 10, 10, int(0.9 * cfg.size[0]), int(0.9 * cfg.size[1]))  # OK
+            scale_min = 0.6
+            top = 10
+            left = 10
+            height = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[0])
+            width = int((scale_min + (1 - scale_min) * torch.rand(1)) * cfg.size[1])
+            inputs = TF.resized_crop(inputs, top, left, height, width, cfg.size)
             if torch.rand(1) > 0.5:
                 inputs = TF.hflip(inputs)
             #inputs = batch_tfms(inputs)  ##DEBUG: all TT.Random* tfms break tpu exec
