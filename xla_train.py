@@ -43,7 +43,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     if cfg.use_batch_tfms:
         import torchvision.transforms as TT
         import torchvision.transforms.functional as TF
-        #from torchvision.transforms.functional import InterpolationMode
+        from torchvision.transforms.functional import InterpolationMode
 
         ###DEBUG
         #batch_tfms = torch.nn.Sequential(
