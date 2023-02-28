@@ -150,11 +150,11 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
         # image batch_tfms
         if cfg.use_batch_tfms:
-            size = torch.tensor(cfg.size)
-            height_width = ((0.5 + 0.5 * torch.rand(2)) * size).to(torch.int)
-            top, left = ((size - height_width) * torch.rand(2)).to(torch.int)
-            height, width = height_width
-            inputs = TF.crop(inputs, top, left, height, width)
+            #size = torch.tensor(cfg.size)
+            #height_width = ((0.5 + 0.5 * torch.rand(2)) * size).to(torch.int)
+            #top, left = ((size - height_width) * torch.rand(2)).to(torch.int)
+            #height, width = height_width
+            inputs = TF.crop(inputs, 10, 10, 0.9 * cfg.size[0], 0.9 * cfg.size[1])
             inputs = TF.resize(inputs, cfg.size)
             if torch.rand(1) > 0.5:
                 inputs = TF.hflip(inputs)
