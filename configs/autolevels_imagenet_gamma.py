@@ -22,14 +22,15 @@ cfg = dict(
     bs = 64,
     epochs = 1,
     batch_verbose = 1,
-    lr_head = 1e-3,
+    lr_head = 1e-2,
     one_cycle = True,
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     save_best = 'valid_loss',
 
 # Model
-    arch_name = 'resnet18',
+    arch_name = 'mobilevitv2_100',
+    scale_output_layer = 1.0,
     use_gem = False,
     bn_eps = 1e-5,
     rst_path = '/kaggle/input/autolevels-modelbox',

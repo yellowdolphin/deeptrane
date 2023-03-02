@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as TT
 from torchvision.transforms.functional import InterpolationMode
+from scipy.interpolate import interp1d
 
 
 try:
@@ -66,14 +67,14 @@ def init(cfg):
         cfg.dataset_class = AugInvGammaDataset
         cfg.channel_size = 3
     elif cfg.curve == 'beta':
-        cfg.dataset_class = InvBetaDataset
+        cfg.dataset_class = AugInvBetaDataset
         cfg.channel_size = 9
 
 def read_csv(cfg):
     return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
 
 
-class Curve(torch.nn.Module):
+class OptimizableCurve(torch.nn.Module):
     def __init__(self, a=1, b=1, bp=0, eps=0.1):
         """Differentiable probability density function of a Beta distribution
 
@@ -133,6 +134,97 @@ class Curve(torch.nn.Module):
         x = np.clip(x, a_min=m.index[0], a_max=m.index[-1])
         x = x.astype(np.uint64).reshape(-1)
         return m.loc[x].to_numpy().reshape(shape)
+
+
+class Curve():
+    def __init__(self, a=1, b=1, bp=0, eps=0.1, create_blackpoint=False):
+        """Set of Beta distributions, PDF and inverse PDF
+
+        a: log(alpha parameter)
+        b: logit(beta parameter)
+        bp: black point / 500
+        eps: small positive (nonzero) value, increase to reduce peak slope
+        create_blackpoint: mirror blackpoint to obtain more realistic photos"""
+        super().__init__()
+        self.a = np.array(a, dtype=float)
+        self.b = np.array(b, dtype=float)
+        self.bp = np.array(bp, dtype=float)
+        assert self.a.shape == self.b.shape == self.bp.shape, 'parameter shape mismatch'
+        self.eps = float(eps)
+        self.max_x = 1 - self.eps
+        self.create_blackpoint = create_blackpoint
+
+    @staticmethod
+    def match_dims(p, x):
+        "Append new axes to p or prepend new axes to x until they match"
+        # align first (batch/channel) axes (different parameter for each element)
+        while not all([any([ap == ax, ap == 1, ax == 1]) for ap, ax in zip(p.shape, x.shape)]):
+            x = x[None, ...]
+        
+        # append curve/height/width... axes to p (same parameters for all elements)
+        dim_p = p.dim() if isinstance(p, torch.Tensor) else p.ndim
+        dim_x = x.dim() if isinstance(x, torch.Tensor) else x.ndim
+        while dim_p < dim_x:
+            p, dim_p = p[..., None], dim_p + 1
+        
+        return p, x
+
+    def prepare_broadcast(self, params, x):
+        "Add extra dims to each of params to match those of x"
+        params = list(params)
+        for i, p in enumerate(params):
+            params[i], x = self.match_dims(p, x)
+        return params, x
+
+    def pdf(self, x):
+        "Input array value range: 0 ... 255"
+        params = self.transformed_parameters()
+        (alpha, beta, blackpoint), x = self.prepare_broadcast(params, x)
+        x = np.clip(x, 1e-3, None) / 255 * (1 - self.eps)
+        y = np.power(x, alpha - 1) * np.power(1 - x, beta - 1)
+        return blackpoint + (255 - blackpoint) * y / y.max()
+
+    def transformed_parameters(self):
+        alpha = 1 + np.exp(self.a)
+        beta = 1 / (1 + np.exp(-(10 * self.b)))  # sigmoid
+        blackpoint = 500 * self.bp
+        return alpha, beta, blackpoint
+
+    @classmethod
+    def from_transformed_parameters(cls, alpha, beta, blackpoint, eps=0.1):
+        a = np.log(alpha - 1)
+        b = np.log(beta / (1 - beta)) / 10  # logit
+        bp = blackpoint / 500
+        return cls(a, b, bp, eps)
+
+    def get_inverse_curves(self):
+        y = np.linspace(0, 255, 10000)
+        xs = self.pdf(y)
+        curves = []
+        for x in xs:
+            if self.create_blackpoint:
+                # resembles more realistic photo
+                f = interp1d(x, y, fill_value=(x[0], x[-1]), bounds_error=False, assume_sorted=True)
+                support = np.arange(256)
+            else:
+                f = interp1d(x, y, bounds_error=True, assume_sorted=True)
+                support = np.arange(256).clip(x[0], x[-1])
+            curves.append(f(support))
+        return np.stack(curves)  # channels first
+    
+    def apply_inverse_pdf(self, img):
+        y = np.linspace(0, 255, 10000)
+        xs = self.pdf(y)
+        for i, x in enumerate(xs):
+            if self.create_blackpoint:
+                # resembles more realistic photo
+                f = interp1d(x, y, fill_value=(x[0], x[-1]), bounds_error=False, assume_sorted=True)
+                img[:, :, i] = f(img[:, :, i]).astype(img.dtype)
+            else:
+                f = interp1d(x, y, bounds_error=True, assume_sorted=True)
+                img[:, :, i] = f(img[:, :, i].clip(x[0], x[-1])).astype(img.dtype)
+        return img
+            
 
 
 class InvBetaDataset(Dataset):
@@ -337,6 +429,93 @@ class AugInvGammaDataset(Dataset):
             image += np.random.randn(*image.shape) * self.noise_level
         image *= 255
         image = np.clip(image, 0, 255).astype(np.uint8)
+
+        if self.transform:
+            if self.albu:
+                image = self.transform(image=np.array(image))['image']
+                image = (image / 255).float() if self.floatify else image
+            else:
+                # torchvision, requires PIL.Image
+                image = self.transform(PIL.Image.fromarray(image))
+
+        if self.tensor_transform:
+            image = self.tensor_transform(image)
+
+        return image, labels if self.labeled else image
+
+
+class AugInvBetaDataset(Dataset):
+    """Images are transformed according to randomly drawn curve parameters
+    
+    Floatify, inv-curve-transform, noise, blur, uint8, crop/resize, tensorize"""
+
+    def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
+                 return_path_attr=None):
+        """
+        Args:
+            df (pd.DataFrame):                First row must contain the image file paths
+            image_root (string, Path):        Root directory for df.image_path
+            transform (callable, optional):   Optional transform to be applied on the first
+                                              element (image) of a sample.
+            labeled (bool, optional):         if True, return curve parameters as regression target
+            return_path_attr (str, optional): return Path attribute `return_path_attr`
+
+        """
+        self.df = df.reset_index(drop=True)
+        self.image_root = cfg.image_root
+        self.transform = transform
+        self.tensor_transform = tensor_transform
+        self.albu = transform and transform.__module__.startswith('albumentations')
+        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
+        self.labeled = labeled
+        self.return_path_attr = return_path_attr
+        self.dist_a = torch.distributions.normal.Normal(0, 0.5)
+        self.dist_b = torch.distributions.normal.Normal(0.4, 0.25)
+        self.dist_bp = torch.distributions.half_normal.HalfNormal(0.02)
+        self.use_batch_tfms = cfg.use_batch_tfms
+        if self.use_batch_tfms:
+            self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
+        self.noise_level = cfg.noise_level
+        self.curve_tfm_on_device = cfg.curve_tfm_on_device
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, index):
+
+        fn = os.path.join(self.image_root, self.df.iloc[index, 0])
+        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
+            bytes_data = gcsfs.read(fn)
+            image = PIL.Image.open(io.BytesIO(bytes_data))
+        else:
+            assert os.path.exists(fn), f'{fn} not found'
+            image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
+
+        n_channels = image.shape[-1]
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
+        
+        labels = [dist.sample((n_channels,)) for dist in [self.dist_a, self.dist_b, self.dist_bp]]
+        curves = Curve(*tuple(p.numpy() for p in labels), create_blackpoint=True)
+        labels = torch.stack(labels)
+        labels = labels.transpose(0, 1)  # channel first
+        assert labels.shape == (n_channels, 3)
+
+        if self.use_batch_tfms:
+            # just resize to double cfg.size and tensorize for collocation
+            if self.curve_tfm_on_device:
+                image = torch.tensor(image.transpose(2, 0, 1))  # channel first
+                image = self.presize(image)
+                curves = torch.tensor(curves.get_inverse_curves(), dtype=torch.float32)
+                assert curves.shape == (n_channels, 256)
+                assert curves.dtype == labels.dtype, f'{curves.dtype} != {labels.dtype}'
+                return image, torch.cat([labels, curves], axis=1)
+            else:
+                image = curves.apply_inverse_pdf(image)
+                image = torch.tensor(image.transpose(2, 0, 1))  # channel first
+                image = self.presize(image)
+                return image, labels
+
+        image = curves.apply_inverse_pdf(image)
 
         if self.transform:
             if self.albu:

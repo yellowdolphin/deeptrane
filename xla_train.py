@@ -134,10 +134,23 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
-        if cfg.use_batch_tfms and cfg.curve and (cfg.curve == 'gamma'):
+        if cfg.use_batch_tfms and cfg.curve:
             # batch transforms for autolevels TPU training
-            inputs = inputs.float() / 255
-            inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
+
+            if cfg.curve == 'gamma':
+                inputs = inputs.float() / 255
+                inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
+
+            elif cfg.curve == 'beta':
+                if cfg.curve_tfm_on_device:
+                    # labels: (N, C, 3), curves: (N, C, 256)
+                    labels, curves = labels[:, :, :3], labels[:, :, 3:]
+                    for i, img_curves in enumerate(curves):
+                        for j, curve in enumerate(img_curves):
+                            inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
+
+                inputs = inputs / 255
+
             if cfg.noise_level:
                 inputs += torch.randn_like(inputs) * cfg.noise_level
 
@@ -211,9 +224,14 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             cls_loss = criterion(preds, labels)
             loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
         elif cfg.loss_weights is not None:
-            _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
-            _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
-            loss = sum(w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels))
+            # I think this is wrong, labels have shape (N, C, n_loss_weights):
+            #_preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
+            #_labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
+            #loss = sum(w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels))
+            _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+            _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+            weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
+            loss = sum(weighted_losses)
 
             # alternative code
             #_preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
