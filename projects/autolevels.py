@@ -73,6 +73,9 @@ def init(cfg):
     elif cfg.curve == 'beta':
         cfg.dataset_class = AugInvBetaDataset
         #cfg.channel_size = 9  # set in config file
+        cfg.targets = (['target_gamma', 'target_bp'] if cfg.channel_size == 6 else
+                       ['target_a', 'target_b', 'target_bp'])
+
 
 def read_csv(cfg):
     return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
@@ -644,7 +647,14 @@ def parse_tfrecord(cfg, example):
                                      features['height'], features['width'])
     
     if cfg.curve == 'beta':
-        features['target'] = tf.reshape(features['target'], [-1])
+        # split target into 2 (3) components for weighted loss
+        if cfg.channel_size == 6:
+            features['target_gamma'] = features['target'][0, :]
+            features['target_bp'] = features['target'][1, :]
+        else:
+            features['target_a'] = features['target'][0, :]
+            features['target_b'] = features['target'][1, :]
+            features['target_bp'] = features['target'][2, :]
     
     # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict

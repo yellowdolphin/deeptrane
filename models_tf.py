@@ -504,7 +504,15 @@ def get_pretrained_model(cfg, strategy, inference=False):
             output = tf.keras.layers.Softmax(dtype='float32')(features)
         else:
             assert cfg.channel_size, 'set cfg.channel_size in project or config file!'
-            output = tf.keras.layers.Dense(cfg.channel_size, name='regressor')(embed)
+            if cfg.curve and (cfg.channel_size == 6):
+                out_gamma = tf.keras.layers.Dense(3, name='regressor_gamma')(embed)
+                out_bp = tf.keras.layers.Dense(3, name='regressor_bp')(embed)
+            elif cfg.curve and (cfg.channel_size == 9):
+                out_a = tf.keras.layers.Dense(3, name='regressor_a')(embed)
+                out_b = tf.keras.layers.Dense(3, name='regressor_b')(embed)
+                out_bp = tf.keras.layers.Dense(3, name='regressor_bp')(embed)
+            else:
+                output = tf.keras.layers.Dense(cfg.channel_size, name='regressor')(embed)
 
         if cfg.aux_loss:
             assert cfg.n_aux_classes, 'set cfg.n_aux_classes in project or config file!'
@@ -512,9 +520,12 @@ def get_pretrained_model(cfg, strategy, inference=False):
             aux_output = tf.keras.layers.Softmax(dtype='float32', name='aux')(aux_features)
 
         # Outputs
-        if cfg.curve and (cfg.curve == 'beta'):
-            outputs = [output[:3], output[3:]]  # gamma, bp
-            #outputs = [output[:3], output[3:6], output[6:]]  # a, b, bp
+        if cfg.curve and (cfg.channel_size == 6):
+            # slicing does not work, output shapes are still [?, 6]
+            #outputs = [output[:3], output[3:]]  # gamma, bp
+            outputs = [out_gamma, out_bp]
+        elif cfg.curve and (cfg.channel_size == 9):
+            outputs = [out_a, out_b, out_bp]
         else:
             outputs = [output]
         if cfg.aux_loss and not inference:
@@ -562,12 +573,19 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         if cfg.aux_loss:
             loss_weights=(1 - cfg.aux_loss, cfg.aux_loss)
-        elif cfg.curve and cfg.curve == 'beta':
+        elif cfg.curve and (cfg.channel_size == 6):
             # gamma, bp
             loss_weights = (1, 0.03 ** 2)  # error goal: 0.03, 1
+            assert len(loss_weights) == len(outputs)
+        elif cfg.curve and (cfg.channel_size == 9):
+            # a, b, bp
+            loss_weights = (1, 1, 1)
+            assert len(loss_weights) == len(outputs)
         else:
             loss_weights = None
 
+        print("model.outputs:", model.outputs)
+        print("loss_weights:", loss_weights)
         model.compile(
             optimizer=optimizer,
             loss='sparse_categorical_crossentropy' if cfg.classes else 'mean_squared_error',
