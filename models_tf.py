@@ -575,7 +575,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             loss_weights=(1 - cfg.aux_loss, cfg.aux_loss)
         elif cfg.curve and (cfg.channel_size == 6):
             # gamma, bp
-            loss_weights = (1, 0.03 ** 2)  # error goal: 0.03, 1
+            loss_weights = (1, 0.01 ** 2)  # error goal: 0.01, 1
             assert len(loss_weights) == len(outputs)
         elif cfg.curve and (cfg.channel_size == 9):
             # a, b, bp
@@ -583,9 +583,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
             assert len(loss_weights) == len(outputs)
         else:
             loss_weights = None
+        if loss_weights:
+            print("Loss weights:", *loss_weights)
 
-        print("model.outputs:", model.outputs)
-        print("loss_weights:", loss_weights)
         model.compile(
             optimizer=optimizer,
             loss='sparse_categorical_crossentropy' if cfg.classes else 'mean_squared_error',
