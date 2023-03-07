@@ -32,6 +32,7 @@ cfg = dict(
     lr_min = 1e-6,
     save_best = 'loss',
     augmentation = 'autolevels_aug_tf',
+    noise_level = 0.05,
 
 # Model
     arch_name = 'efnv1b1',

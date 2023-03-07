@@ -539,19 +539,39 @@ class AugInvBetaDataset(Dataset):
 
 def get_curves(target):
     # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
-    curves = tf.range(0., 256., delta=1., dtype=tf.float32)[None, :]
-    curves = tf.math.pow(curves, target[0, :, None])
-    curves = curves * ((255. - target[1, :, None]) / 255.) + target[1, :, None]
+    # curves: (256, C)
+    gamma, bp = target[0, :], target[1, :]  # iter over symbolic tensor not allowed!
+    curves = tf.range(0., 256., delta=1., dtype=tf.float32)[:, None]
+    curves = tf.math.pow(curves, gamma[None, :])
+    curves = curves * ((255. - bp[None, :]) / 255.) + bp[None, :]
     return curves
 
 
 def curve_tfm(image, target):
+    # image: channel last
     # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
-    bp, gamma = target
+    gamma, bp = target[0, :], target[1, :]  # iter over symbolic tensor not allowed!
     bp = bp[None, None, :] / 255.
     image = image * (1. - bp) + bp
     image = tf.math.pow(image, gamma[None, None, :])
     return image
+
+
+@tf.function
+def map_index(image, curves):
+    # OperatorNotAllowedInGraphError: Iterating over a symbolic `tf.Tensor` is not allowed
+    #for i, curve in enumerate(curves):
+    #    image[:, :, i] = curve[image[:, :, i]]
+    # No fancy indexing in TF:
+    #for i in range(3):
+    #    image[:, :, i] = curves[:, i][image[:, :, i]]
+    # Use tf.gather_nd instead:
+    image = tf.cast(image, tf.int32)
+    curves = tf.cast(curves, tf.float32)
+    assert curves.shape[-1] in {1, 3}
+    channel_idx = tf.ones_like(image, dtype=tf.int32) * tf.range(3)[None, None, :]
+    indices = tf.stack([image, channel_idx], axis=-1)
+    return tf.gather_nd(curves, indices)
 
 
 def decode_image(cfg, image_data, target, height, width):
@@ -567,12 +587,12 @@ def decode_image(cfg, image_data, target, height, width):
         image = preprocess_input(image, mode=cfg.normalize)
     elif cfg.curve == 'beta':
         # (a) try index mapping
-        image = tf.cast(image, tf.uint8)
-        curves = get_curves(target)  # (C,)
-        for i, curve in enumerate(curves):
-            image[:, :, i] = curve[image[:, :, i]]
+        image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
+        curves = get_curves(target)  # (256, C)
+        image = map_index(image, curves)
         # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
-        image += tf.random.normal((height, width, 3)) * cfg.noise_level
+        if cfg.noise_level:
+            image += tf.random.normal((height, width, 3)) * cfg.noise_level
         image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
         image /= 255.0
 
