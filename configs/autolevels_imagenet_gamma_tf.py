@@ -7,8 +7,8 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = ['gs://kds-66d2509d8ed1fac4ce99f332d51d26f9af971eabb5065876dfacb331', 
-                 'gs://kds-f058bded3d5395ae576efd1f1deae330f01cbc5dc9042f04ea4fe3eb'],
+    gcs_paths = ['gs://kds-50b51bb7865eccae72e678aa287f97ea1f9da4ee799bda0644529755', 
+                 'gs://kds-65b73032f4312842aea8cb47624e59b3f1514575250454969aefe372'],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -19,11 +19,11 @@ cfg = dict(
     num_folds = 4,
     use_folds = [0],
     train_on_all = False,
-    size = (128, 128),
+    size = (256, 256),
     multilabel = False,
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue
     bs = 128,
-    epochs = 1,
+    epochs = 4,
     batch_verbose = 1,
     lr = 1e-3,
     one_cycle = True,
@@ -34,7 +34,7 @@ cfg = dict(
     augmentation = 'autolevels_aug_tf',
 
 # Model
-    arch_name = 'efnv1b1',
+    arch_name = 'efnv2s',
     bn_eps = 1e-5,
     #rst_path = '/kaggle/input/cassava-deeptrane-rst',
     #rst_name = '',
