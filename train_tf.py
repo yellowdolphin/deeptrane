@@ -44,7 +44,7 @@ cfg.save_yaml()
 
 # Config consistency checks
 if cfg.rst_name is not None:
-    rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
+    rst_file = Path(cfg.rst_path) / cfg.rst_name
     assert rst_file.exists(), f'{rst_file} not found'  # fail early
 cfg.out_dir = Path(cfg.out_dir)
 
