@@ -72,7 +72,7 @@ def init(cfg):
         cfg.channel_size = 3
     elif cfg.curve == 'beta':
         cfg.dataset_class = AugInvBetaDataset
-        #cfg.channel_size = 9  # set in config file
+        assert cfg.channel_size, "Set channel_size in config file!"
         cfg.targets = (['target_gamma', 'target_bp'] if cfg.channel_size == 6 else
                        ['target_a', 'target_b', 'target_bp'])
 
@@ -230,8 +230,7 @@ class Curve():
             else:
                 f = interp1d(x, y, bounds_error=True, assume_sorted=True)
                 img[:, :, i] = f(img[:, :, i].clip(x[0], x[-1])).astype(img.dtype)
-        return img
-            
+        return img            
 
 
 class InvBetaDataset(Dataset):
@@ -555,8 +554,8 @@ def curve_tfm(image, target):
     # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
     gamma, bp = target[0, :], target[1, :]  # iter over symbolic tensor not allowed!
     bp = bp[None, None, :] / 255.
-    image = image * (1. - bp) + bp
     image = tf.math.pow(image, gamma[None, None, :])
+    image = image * (1. - bp) + bp
     return image
 
 
@@ -589,22 +588,23 @@ def decode_image(cfg, image_data, target, height, width):
         from keras.applications.imagenet_utils import preprocess_input
         image = preprocess_input(image, mode=cfg.normalize)
     elif cfg.curve == 'beta':
-        # (a) try index mapping
-        image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
-        curves = get_curves(target)  # (256, C)
-        image = map_index(image, curves)
-        # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
-        if cfg.noise_level:
-            image += tf.random.normal((height, width, 3)) * cfg.noise_level
-        image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
-        image /= 255.0
+        if False:
+            # (a) try index mapping
+            image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
+            curves = get_curves(target)  # (256, C)
+            image = map_index(image, curves)
+            # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
+            if cfg.noise_level:
+                image += tf.random.normal((height, width, 3)) * cfg.noise_level
+            image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
+            image /= 255.0
 
         # (b) try curve transform the image
-        #image = tf.cast(image, tf.float32)
-        #image = image + tf.random.uniform((height, width, 3))
-        #image /= 255.0
-        #image = curve_tfm(image, target)
-        #image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
+        image = tf.cast(image, tf.float32)
+        image = image + tf.random.uniform((height, width, 3))
+        image /= 255.0
+        image = curve_tfm(image, target)
+        image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
 
     elif cfg.curve == 'gamma':
         image = tf.cast(image, tf.float32)

@@ -157,7 +157,7 @@ for use_fold in cfg.use_folds:
 
     t0 = perf_counter()
 
-    print(f'Training {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
+    print(f'\nTraining {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
           f'step_size={step_size}, lr={cfg.lr} on fold {use_fold}')
     cfg.rst_epoch = cfg.rst_epoch or 0
 
