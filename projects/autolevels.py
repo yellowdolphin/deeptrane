@@ -47,8 +47,12 @@ def init(cfg):
         image/channels                 int64_list        0.005 kB
         image/filename                 bytes_list        0.022 kB"""
         #cfg.tfrec_format = {'encoded': tf.io.FixedLenFeature([], tf.string)}
-        cfg.tfrec_format = {'image/encoded': tf.io.FixedLenFeature([], tf.string)}
-        cfg.data_format = {'image': 'image/encoded'}
+        cfg.tfrec_format = {'image/encoded': tf.io.FixedLenFeature([], tf.string),
+                            'image/height': tf.io.FixedLenFeature([], tf.int64),
+                            'image/width': tf.io.FixedLenFeature([], tf.int64)}
+        cfg.data_format = {'image': 'image/encoded',
+                           'height': 'image/height',
+                           'width': 'image/width'}
         cfg.inputs = ['image']
         cfg.targets = ['target']
 
@@ -550,7 +554,7 @@ def curve_tfm(image, target):
     return image
 
 
-def decode_image(cfg, image_data, target):
+def decode_image(cfg, image_data, target, height, width):
     "Decode image and apply inverse curve transform according to target"
     
     image = tf.image.decode_jpeg(image_data, channels=3)
@@ -567,20 +571,21 @@ def decode_image(cfg, image_data, target):
         curves = get_curves(target)  # (C,)
         for i, curve in enumerate(curves):
             image[:, :, i] = curve[image[:, :, i]]
-        image += tf.random.normal(image.shape) * cfg.noise_level
+        # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
+        image += tf.random.normal((height, width, 3)) * cfg.noise_level
         image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
         image /= 255.0
 
         # (b) try curve transform the image
         #image = tf.cast(image, tf.float32)
-        #image = image + tf.random.uniform(image.shape)
+        #image = image + tf.random.uniform((height, width, 3))
         #image /= 255.0
         #image = curve_tfm(image, target)
         #image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
 
     elif cfg.curve == 'gamma':
         image = tf.cast(image, tf.float32)
-        image = image + tf.random.uniform(image.shape)
+        image = image + tf.random.uniform((height, width, 3))
         image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
         image /= 255.0
         image = tf.math.pow(image, target[None, None, :])
@@ -613,7 +618,10 @@ def parse_tfrecord(cfg, example):
         bp = tfd.HalfNormal(scale=40.).sample([3])
         features['target'] = tf.stack([gamma, bp])
 
-    features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'])
+    features['height'] = example[cfg.data_format['height']]
+    features['width'] = example[cfg.data_format['width']]
+    features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'],
+                                     features['height'], features['width'])
     
     # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict
