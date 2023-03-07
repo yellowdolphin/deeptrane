@@ -540,8 +540,8 @@ class AugInvBetaDataset(Dataset):
 def get_curves(target):
     # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
     curves = tf.range(0., 256., delta=1., dtype=tf.float32)[None, :]
-    curves = tf.math.pow(curves, target[0, :])
-    curves = curves * ((255. - target[1, :]) / 255.) + target[1, :]
+    curves = tf.math.pow(curves, target[0, :, None])
+    curves = curves * ((255. - target[1, :, None]) / 255.) + target[1, :, None]
     return curves
 
 
