@@ -643,6 +643,9 @@ def parse_tfrecord(cfg, example):
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'],
                                      features['height'], features['width'])
     
+    if cfg.curve == 'beta':
+        features['target'] = tf.reshape(features['target'], [-1])
+    
     # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict
     inputs = tuple(features[key] for key in cfg.inputs)
