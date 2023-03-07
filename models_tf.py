@@ -512,7 +512,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
             aux_output = tf.keras.layers.Softmax(dtype='float32', name='aux')(aux_features)
 
         # Outputs
-        outputs = [output]
+        if cfg.curve and (cfg.curve == 'beta'):
+            outputs = [output[:3], output[3:]]  # gamma, bp
+            #outputs = [output[:3], output[3:6], output[6:]]  # a, b, bp
+        else:
+            outputs = [output]
         if cfg.aux_loss and not inference:
             outputs.append(aux_output)
 
@@ -556,10 +560,18 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         metrics = [metrics_classes[m] for m in cfg.metrics]
 
+        if cfg.aux_loss:
+            loss_weights=(1 - cfg.aux_loss, cfg.aux_loss)
+        elif cfg.curve and cfg.curve == 'beta':
+            # gamma, bp
+            loss_weights = (1, 0.03 ** 2)  # error goal: 0.03, 1
+        else:
+            loss_weights = None
+
         model.compile(
             optimizer=optimizer,
             loss='sparse_categorical_crossentropy' if cfg.classes else 'mean_squared_error',
-            loss_weights=(1 - cfg.aux_loss, cfg.aux_loss) if cfg.aux_loss else None,
+            loss_weights=loss_weights,
             metrics=metrics)
 
         check_model_inputs(cfg, model)

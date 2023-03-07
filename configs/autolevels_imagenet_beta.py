@@ -32,6 +32,8 @@ cfg = dict(
 
 # Model
     arch_name = 'mobilevitv2_100',
+    #channel_size = 6,  # gamma, bp
+    channel_size = 9,  # a, b, bp
     scale_output_layer = 1.0,
     use_gem = False,
     bn_eps = 1e-5,

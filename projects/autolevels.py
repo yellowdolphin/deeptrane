@@ -68,7 +68,7 @@ def init(cfg):
         cfg.channel_size = 3
     elif cfg.curve == 'beta':
         cfg.dataset_class = AugInvBetaDataset
-        cfg.channel_size = 9
+        #cfg.channel_size = 9  # set in config file
 
 def read_csv(cfg):
     return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
@@ -531,6 +531,25 @@ class AugInvBetaDataset(Dataset):
         return image, labels if self.labeled else image
 
 
+# TF data pipeline --------------------------------------------------------
+
+def get_curves(target):
+    # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
+    curves = tf.range(0., 256., delta=1., dtype=tf.float32)[None, :]
+    curves = tf.math.pow(curves, target[0, :])
+    curves = curves * ((255. - target[1, :]) / 255.) + target[1, :]
+    return curves
+
+
+def curve_tfm(image, target):
+    # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
+    bp, gamma = target
+    bp = bp[None, None, :] / 255.
+    image = image * (1. - bp) + bp
+    image = tf.math.pow(image, gamma[None, None, :])
+    return image
+
+
 def decode_image(cfg, image_data, target):
     "Decode image and apply inverse curve transform according to target"
     
@@ -542,13 +561,31 @@ def decode_image(cfg, image_data, target):
     if cfg.normalize in ['torch', 'tf', 'caffe']:
         from keras.applications.imagenet_utils import preprocess_input
         image = preprocess_input(image, mode=cfg.normalize)
+    elif cfg.curve == 'beta':
+        # (a) try index mapping
+        image = tf.cast(image, tf.uint8)
+        curves = get_curves(target)  # (C,)
+        for i, curve in enumerate(curves):
+            image[:, :, i] = curve[image[:, :, i]]
+        image += tf.random.normal(image.shape) * cfg.noise_level
+        image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
+        image /= 255.0
+
+        # (b) try curve transform the image
+        #image = tf.cast(image, tf.float32)
+        #image = image + tf.random.uniform(image.shape)
+        #image /= 255.0
+        #image = curve_tfm(image, target)
+        #image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
+
+    elif cfg.curve == 'gamma':
+        image = tf.cast(image, tf.float32)
+        image = image + tf.random.uniform(image.shape)
+        image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
+        image /= 255.0
+        image = tf.math.pow(image, target[None, None, :])
     else:
         image = tf.cast(image, tf.float32) / 255.0
-
-    if cfg.curve == 'gamma':
-        image = tf.math.pow(image, target[None, None, :])
-    elif cfg.curve == 'beta':
-        raise NotImplementedError
 
     return image
 
@@ -571,7 +608,10 @@ def parse_tfrecord(cfg, example):
     if cfg.curve == 'gamma':
         features['target'] = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
     elif cfg.curve == 'beta':
-        raise NotImplementedError
+        # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
+        gamma = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
+        bp = tfd.HalfNormal(scale=40.).sample([3])
+        features['target'] = tf.stack([gamma, bp])
 
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'])
     
