@@ -204,7 +204,7 @@ class Curve():
         bp = blackpoint / 500
         return cls(a, b, bp, eps)
 
-    def get_inverse_curves(self):
+    def get_inverse_curves(self, channel_last=False):
         y = np.linspace(0, 255, 10000)
         xs = self.pdf(y)
         curves = []
@@ -217,7 +217,8 @@ class Curve():
                 f = interp1d(x, y, bounds_error=True, assume_sorted=True)
                 support = np.arange(256).clip(x[0], x[-1])
             curves.append(f(support))
-        return np.stack(curves)  # channels first
+        
+        return np.stack(curves, axis=-1) if channel_last else np.stack(curves)
     
     def apply_inverse_pdf(self, img):
         y = np.linspace(0, 255, 10000)
@@ -542,12 +543,15 @@ class AugInvBetaDataset(Dataset):
 def get_curves(target):
     # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
     # curves: (256, C)
-    gamma, bp = target[0, :], target[1, :]  # iter over symbolic tensor not allowed!
-    curves = tf.range(0., 256., delta=1., dtype=tf.float32)[:, None]
-    curves = tf.math.pow(curves, gamma[None, :])
-    curves = curves * ((255. - bp[None, :]) / 255.) + bp[None, :]
-    return curves
+    if target.shape[0] == 2:
+        gamma, bp = target[0, :], target[1, :]  # iter over symbolic tensor not allowed!
+        curves = tf.range(0., 256., delta=1., dtype=tf.float32)[:, None]
+        curves = tf.math.pow(curves, gamma[None, :])
+        curves = curves * ((255. - bp[None, :]) / 255.) + bp[None, :]
+        return curves
 
+    a, b, bp = target[0, :], target[1, :], target[2, :]
+    return Curve(a, b, bp).get_inverse_curves(channel_last=True)
 
 def curve_tfm(image, target):
     # image: channel last
@@ -558,8 +562,43 @@ def curve_tfm(image, target):
     image = image * (1. - bp) + bp
     return image
 
+def curve_tfm6(image, target):
+    # image: channel last
+    # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
+    gamma, bp = target[0, :], target[1, :]
+    bp = bp[None, :] / 255.
+    x = tf.range(256, dtype=tf.float32)
+    ys = tf.math.pow(x[:, None], gamma[None, :]) * (1. - bp) + bp
+    #channels = [interp1d_tf(x, ys[:, c], image[:, :, c]) for c in range(3)]  # super slow
+    #return tf.stack(channels, axis=-1)
+    return tf.math.pow(image, gamma[None, None, :]) * (1. - bp[None, :, :]) + bp[None, :, :]
 
-@tf.function
+def interp1d_tf(x, y, inp):
+    # Make sure input values are tensors
+    #x = tf.convert_to_tensor(x, dtype=tf.float32)
+    #y = tf.convert_to_tensor(y, dtype=tf.float32)
+    #inp = tf.cast(tf.convert_to_tensor(inp), dtype=tf.float32)
+    
+    # Find the interpolation indices
+    c = tf.math.count_nonzero(tf.expand_dims(inp, axis=-1) >= x, axis=-1)
+    idx0 = tf.maximum(c - 1, 0)
+    idx1 = tf.minimum(c, tf.size(x, out_type=c.dtype) - 1)
+    
+    # Get interpolation X and Y values
+    x0 = tf.gather(x, idx0)
+    x1 = tf.gather(x, idx1)
+    f0 = tf.gather(y, idx0)
+    f1 = tf.gather(y, idx1)
+    
+    # Compute interpolation coefficient
+    x_diff = x1 - x0
+    alpha = (inp - x0) / tf.where(x_diff > 0, x_diff, tf.ones_like(x_diff))
+    alpha = tf.clip_by_value(alpha, 0, 1)
+    
+    # Compute interpolation
+    return f0 * (1 - alpha) + f1 * alpha
+
+
 def map_index(image, curves):
     # OperatorNotAllowedInGraphError: Iterating over a symbolic `tf.Tensor` is not allowed
     #for i, curve in enumerate(curves):
@@ -570,7 +609,7 @@ def map_index(image, curves):
     # Use tf.gather_nd instead:
     image = tf.cast(image, tf.int32)
     curves = tf.cast(curves, tf.float32)
-    assert curves.shape[-1] in {1, 3}
+    #assert curves.shape[-1] in {1, 3}
     channel_idx = tf.ones_like(image, dtype=tf.int32) * tf.range(3)[None, None, :]
     indices = tf.stack([image, channel_idx], axis=-1)
     return tf.gather_nd(curves, indices)
@@ -588,8 +627,10 @@ def decode_image(cfg, image_data, target, height, width):
         from keras.applications.imagenet_utils import preprocess_input
         image = preprocess_input(image, mode=cfg.normalize)
     elif cfg.curve == 'beta':
-        if False:
-            # (a) try index mapping
+        if True:
+            # (a) index mapping
+            # 1 ep efnv2s size=128 tf@colab: 50.83 min/epoch (with tf.function and assertions)
+            # 1 ep efnv2s size=256 tf@colab: 35.57 min/epoch (no tf.function, no assertions)
             image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
             curves = get_curves(target)  # (256, C)
             image = map_index(image, curves)
@@ -598,13 +639,16 @@ def decode_image(cfg, image_data, target, height, width):
                 image += tf.random.normal((height, width, 3)) * cfg.noise_level
             image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
             image /= 255.0
-
-        # (b) try curve transform the image
-        image = tf.cast(image, tf.float32)
-        image = image + tf.random.uniform((height, width, 3))
-        image /= 255.0
-        image = curve_tfm(image, target)
-        image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
+        else:
+            # (b) curve transform the image
+            # 1 ep efnv2s size=128 tf@colab: 37.28 min/epoch
+            # 1 ep efnv2s size=256 tf@colab: 39.71 min/epoch
+            image = tf.cast(image, tf.float32)
+            image = image + tf.random.uniform((height, width, 3))
+            image /= 255.0
+            #image = curve_tfm(image, target)
+            image = curve_tfm6(image, target)  # super slow, OOM@cpu, occ tpu issues
+            image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
 
     elif cfg.curve == 'gamma':
         image = tf.cast(image, tf.float32)
