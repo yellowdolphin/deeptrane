@@ -540,7 +540,7 @@ class AugInvBetaDataset(Dataset):
 
 # TF data pipeline --------------------------------------------------------
 
-def get_curves(target):
+def get_curves(target, eps=0.1):
     # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
     # curves: (256, C)
     if target.shape[0] == 2:
@@ -551,7 +551,20 @@ def get_curves(target):
         return curves
 
     a, b, bp = target[0, :], target[1, :], target[2, :]
-    return Curve(a, b, bp).get_inverse_curves(channel_last=True)
+    alpha = 1 + tf.exp(a)
+    beta = 1 / (1 + tf.exp(-(10 * b)))  # sigmoid
+    blackpoint = 500 * bp
+    y = tf.range(0., 256., delta=0.1, dtype=tf.float32)
+    support = tf.clip_by_value(y, 1e-3, 255) / 255 * (1 - eps)
+    support = support[:, None]
+    alpha = alpha[None, :]
+    beta = beta[None, :]
+    blackpoint = blackpoint[None, :]
+    xs = tf.math.pow(support, alpha - 1) * tf.math.pow(1 - support, beta - 1)  # pdf(support)
+    xs = blackpoint + (255 - blackpoint) * xs / xs[-1, :]
+    q = tf.range(0., 256., delta=1.0, dtype=tf.float32)
+    curves = [interp1d_tf(xs[:, c], y, q) for c in range(3)]
+    return tf.stack(curves, axis=-1)
 
 def curve_tfm(image, target):
     # image: channel last
@@ -662,6 +675,11 @@ def decode_image(cfg, image_data, target, height, width):
     return image
 
 
+dist_a = tfd.Normal(0.0, scale=0.5)
+dist_b = tfd.Normal(0.4, scale=0.25)
+dist_bp = tfd.HalfNormal(scale=0.02)
+
+
 def parse_tfrecord(cfg, example):
     """This TFRecord parser extracts the features defined in cfg.tfrec_format.
 
@@ -679,11 +697,20 @@ def parse_tfrecord(cfg, example):
 
     if cfg.curve == 'gamma':
         features['target'] = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
-    elif cfg.curve == 'beta':
+    elif cfg.curve == 'beta' and cfg.channel_size == 2:
         # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
         gamma = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
         bp = tfd.HalfNormal(scale=40.).sample([3])
         features['target'] = tf.stack([gamma, bp])
+    else:
+        #dist_a = tfd.Normal(0.0, scale=0.5)
+        #dist_b = tfd.Normal(0.4, scale=0.25)
+        #dist_bp = tfd.HalfNormal(scale=0.02)
+        a = dist_a.sample([3])
+        b = dist_b.sample([3])
+        bp = dist_bp.sample([3])
+        features['target'] = tf.stack([a, b, bp])
+
 
     features['height'] = example[cfg.data_format['height']]
     features['width'] = example[cfg.data_format['width']]

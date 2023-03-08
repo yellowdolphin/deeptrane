@@ -36,8 +36,8 @@ cfg = dict(
 
 # Model
     arch_name = 'efnv1b1',
-    channel_size = 6,  # gamma, bp
-    #channel_size = 9,  # a, b, bp
+    #channel_size = 6,  # gamma, bp
+    channel_size = 9,  # a, b, bp
     bn_eps = 1e-5,
     #rst_path = '/kaggle/input/cassava-deeptrane-rst',
     #rst_name = '',

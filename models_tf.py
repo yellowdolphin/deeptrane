@@ -575,11 +575,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
             loss_weights=(1 - cfg.aux_loss, cfg.aux_loss)
         elif cfg.curve and (cfg.channel_size == 6):
             # gamma, bp
-            loss_weights = (1, 0.01 ** 2)  # error goal: 0.01, 1
+            loss_weights = cfg.loss_weights or (1, 0.01 ** 2)  # error goal: 0.01, 1
             assert len(loss_weights) == len(outputs)
         elif cfg.curve and (cfg.channel_size == 9):
             # a, b, bp
-            loss_weights = (1, 1, 1)
+            loss_weights = cfg.loss_weights or (1, 1, 1)
             assert len(loss_weights) == len(outputs)
         else:
             loss_weights = None
