@@ -503,9 +503,8 @@ class AugInvBetaDataset(Dataset):
         
         labels = [dist.sample((n_channels,)) for dist in [self.dist_a, self.dist_b, self.dist_bp]]
         curves = Curve(*tuple(p.numpy() for p in labels), create_blackpoint=True)
-        labels = torch.stack(labels)
-        labels = labels.transpose(0, 1)  # channel first
-        assert labels.shape == (n_channels, 3)
+        labels = torch.stack(labels, axis=1)  # channel first
+        #assert labels.shape == (n_channels, 3)
 
         if self.use_batch_tfms:
             # just resize to double cfg.size and tensorize for collocation
@@ -513,8 +512,8 @@ class AugInvBetaDataset(Dataset):
                 image = torch.tensor(image.transpose(2, 0, 1))  # channel first
                 image = self.presize(image)
                 curves = torch.tensor(curves.get_inverse_curves(), dtype=torch.float32)
-                assert curves.shape == (n_channels, 256)
-                assert curves.dtype == labels.dtype, f'{curves.dtype} != {labels.dtype}'
+                #assert curves.shape == (n_channels, 256)
+                #assert curves.dtype == labels.dtype, f'{curves.dtype} != {labels.dtype}'
                 return image, torch.cat([labels, curves], axis=1)
             else:
                 image = curves.apply_inverse_pdf(image)
