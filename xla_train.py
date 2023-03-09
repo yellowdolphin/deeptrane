@@ -173,9 +173,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 else:
                     # (b): map curves with torch.gather (slightly faster)
                     # curves must be expanded to have same shape as inputs (except dim=2)
-                    #inputs = inputs.to(torch.int64)  # not necessary
                     expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
-                    inputs = torch.gather(expanded_curves, dim=2, index=inputs)
+                    inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
 
             else:
                 inputs = inputs.float()
@@ -353,7 +352,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
                 expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
-                inputs = torch.gather(expanded_curves, dim=2, index=inputs)
+                inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
             else:
                 inputs = inputs.float()
 
@@ -393,16 +392,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         if cfg.classes:
             assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
         if cfg.loss_weights is not None:
-            _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
-            _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
+            _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+            _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
             weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
             loss = sum(weighted_losses)
-
-            # alternative code
-            #_preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
-            #_labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
-            #loss2 = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
-            #assert loss2 == loss, f'loss: {loss}, loss2: {loss2}'
         else:
             loss = criterion(preds, labels)
         loss_meter.update(loss.item(), inputs.size(0))  # 1 aten/iter but no performance drop
@@ -422,7 +415,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     else:
         avg_loss = loss_meter.average
     if cfg.loss_weights is not None:
-        xm.master_print('valid loss components:', [f'{m.average:.5f}' for m in weighted_loss_meters])
+        xm.master_print('valid loss components:', '\t'.join([f'{m.average:.5f}' for m in weighted_loss_meters]))
 
     # mesh_reduce metrics
     if metrics:

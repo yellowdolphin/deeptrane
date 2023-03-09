@@ -78,6 +78,8 @@ def init(cfg):
 
 
 def read_csv(cfg):
+    if cfg.DEBUG:
+        return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id']).sample(frac=0.01)
     return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
 
 
