@@ -586,12 +586,7 @@ def curve_tfm6(image, target):
     #return tf.stack(channels, axis=-1)
     return tf.math.pow(image, gamma[None, None, :]) * (1. - bp[None, :, :]) + bp[None, :, :]
 
-def interp1d_tf(x, y, inp):
-    # Make sure input values are tensors
-    #x = tf.convert_to_tensor(x, dtype=tf.float32)
-    #y = tf.convert_to_tensor(y, dtype=tf.float32)
-    #inp = tf.cast(tf.convert_to_tensor(inp), dtype=tf.float32)
-    
+def interp1d_tf(x, y, inp):    
     # Find the interpolation indices
     c = tf.math.count_nonzero(tf.expand_dims(inp, axis=-1) >= x, axis=-1)
     idx0 = tf.maximum(c - 1, 0)
@@ -659,7 +654,7 @@ def decode_image(cfg, image_data, target, height, width):
             image = tf.cast(image, tf.float32)
             image = image + tf.random.uniform((height, width, 3))
             image /= 255.0
-            #image = curve_tfm(image, target)
+            #image = curve_tfm(image, target)  # image tfm with tf ops is fast 
             image = curve_tfm6(image, target)  # super slow, OOM@cpu, occ tpu issues
             image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
 
@@ -703,9 +698,6 @@ def parse_tfrecord(cfg, example):
         bp = tfd.HalfNormal(scale=40.).sample([3])
         features['target'] = tf.stack([gamma, bp])
     else:
-        #dist_a = tfd.Normal(0.0, scale=0.5)
-        #dist_b = tfd.Normal(0.4, scale=0.25)
-        #dist_bp = tfd.HalfNormal(scale=0.02)
         a = dist_a.sample([3])
         b = dist_b.sample([3])
         bp = dist_bp.sample([3])

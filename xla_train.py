@@ -157,11 +157,26 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
-                for i, img_curves in enumerate(curves):
-                    for j, curve in enumerate(img_curves):
-                        inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
 
-            inputs = inputs.float()
+                if False:
+                    # (a): map curves via elementwise assignment
+                    inputs = inputs.to(torch.int64)
+                    transformed = torch.empty(size=inputs.size(), dtype=curves.dtype, device=inputs.device) 
+                    for i, img_curves in enumerate(curves):
+                        for j, curve in enumerate(img_curves):
+                            transformed[i, j, :, :] = curve[inputs[i, j, :, :]]
+                    inputs = transformed
+                    del transformed
+
+                else:
+                    # (b): map curves with torch.gather (slightly faster)
+                    # curves must be expanded to have same shape as inputs (except dim=2)
+                    #inputs = inputs.to(torch.int64)  # not necessary
+                    expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
+                    inputs = torch.gather(expanded_curves, dim=2, index=inputs)
+
+            else:
+                inputs = inputs.float()
 
             if cfg.curve == 'gamma':
                 inputs = (inputs + torch.rand_like(inputs)).clamp(max=255)
