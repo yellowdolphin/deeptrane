@@ -38,6 +38,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     optimizer.zero_grad()
     loss_meter = AverageMeter(xm)
     if cfg.use_aux_loss: seg_loss_meter = AverageMeter(xm)
+    if cfg.loss_weights is not None:
+        weighted_loss_meters = [AverageMeter(xm) for _ in cfg.loss_weights]
 
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
@@ -274,6 +276,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             loss_meter.update(loss.item() * cfg.n_acc, inputs.size(0))  # 1 aten/iter, but no performance drop
             #loss_meter.update(loss.detach() * cfg.n_acc, inputs.size(0))  # recursion!
             #xm.add_step_closure(loss_meter.update, args=(loss.item(), cfg.n_acc * inputs.size(0)))  # recursion!
+        if cfg.loss_weights is not None:
+            for i, m in enumerate(weighted_loss_meters):
+                m.update(weighted_losses[i].item() * cfg.n_acc, inputs.size(0))
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
@@ -282,6 +287,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 f'current_loss {loss_meter.current:.5f}']
             if cfg.use_aux_loss:
                 info_strings.append(f'seg_loss {seg_loss_meter.current:.5f}')
+            if cfg.loss_weights is not None:
+                info_strings.extend([f'{m.current:.5f}' for m in weighted_loss_meters])
             info_strings.append(f'avg_loss {loss_meter.average:.5f}')
             info_strings.append(f'lr {optimizer.param_groups[-1]["lr"] / cfg.n_replicas:7.1e}')
             info_strings.append(f'mom {optimizer.param_groups[-1]["betas"][0]:.3f}')
@@ -307,6 +314,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
     model.eval()
     if not cfg.pudae_valid:
         loss_meter = AverageMeter(xm)
+    if cfg.loss_weights is not None:
+        weighted_loss_meters = [AverageMeter(xm) for _ in cfg.loss_weights]
     if metrics: 
         metrics.to(device)
 
@@ -343,11 +352,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
-                for i, img_curves in enumerate(curves):
-                    for j, curve in enumerate(img_curves):
-                        inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
-
-            inputs = inputs.float()
+                expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
+                inputs = torch.gather(expanded_curves, dim=2, index=inputs)
+            else:
+                inputs = inputs.float()
 
             if cfg.curve == 'gamma':
                 inputs = (inputs + torch.rand_like(inputs)).clamp(max=255)
@@ -387,18 +395,22 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         if cfg.loss_weights is not None:
             _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
             _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
-            loss = sum(w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels))
+            weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
+            loss = sum(weighted_losses)
 
             # alternative code
-            _preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
-            _labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
-            loss2 = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
-            assert loss2 == loss, f'loss: {loss}, loss2: {loss2}'
+            #_preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
+            #_labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
+            #loss2 = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
+            #assert loss2 == loss, f'loss: {loss}, loss2: {loss2}'
         else:
             loss = criterion(preds, labels)
         loss_meter.update(loss.item(), inputs.size(0))  # 1 aten/iter but no performance drop
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
+        if cfg.loss_weights is not None:
+            for i, m in enumerate(weighted_loss_meters):
+                m.update(weighted_losses[i].item() * cfg.n_acc, inputs.size(0))
 
         # torchmetrics
         if metrics:
@@ -409,6 +421,8 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         avg_loss = 0
     else:
         avg_loss = loss_meter.average
+    if cfg.loss_weights is not None:
+        xm.master_print('valid loss components:', [f'{m.average:.5f}' for m in weighted_loss_meters])
 
     # mesh_reduce metrics
     if metrics:

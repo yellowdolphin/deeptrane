@@ -31,6 +31,7 @@ cfg = dict(
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 1e-6,
     save_best = 'loss',
+    loss_weights = [1.0, 2.0, 25.0],  # a, b, bp
     augmentation = 'autolevels_aug_tf',
     noise_level = 0.05,
 
