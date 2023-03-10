@@ -592,6 +592,6 @@ def get_pretrained_model(cfg, strategy, inference=False):
             loss_weights=loss_weights,
             metrics=metrics)
 
-        check_model_inputs(cfg, model)
+    check_model_inputs(cfg, model)
 
-        return model
+    return model
