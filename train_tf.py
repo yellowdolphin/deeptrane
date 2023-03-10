@@ -131,13 +131,13 @@ for use_fold in cfg.use_folds:
     valid_batches_per_epoch = cfg.num_valid_images // dataloader_bs
     steps_per_epoch = batches_per_epoch // cfg.n_acc   ## check: float possible? is last opt step skipped?
     valid_steps_per_epoch = valid_batches_per_epoch // cfg.n_acc
-    cfg.valid_steps = cfg.valid_steps or valid_steps_per_epoch
+    cfg.validation_steps = cfg.validation_steps or valid_steps_per_epoch
     step_size = cfg.bs * cfg.n_replicas * cfg.n_acc
     if hasattr(train_dataset, 'batch_size'): 
         print("dataset.batch_size:", train_dataset.batch_size)
     print("dataloader_bs:", dataloader_bs)
     print("batches_per_epoch:", batches_per_epoch)
-    print("valid_steps:", cfg.valid_steps)
+    print("validation_steps:", cfg.validation_steps)
 
     # Training callbacks
     csv_logger = tf.keras.callbacks.CSVLogger(f'{cfg.out_dir}/metrics_fold{use_fold}.csv')
@@ -169,7 +169,7 @@ for use_fold in cfg.use_folds:
     history = model.fit(train_dataset,
                         validation_data=valid_dataset,
                         steps_per_epoch=batches_per_epoch,
-                        validation_steps=cfg.valid_steps,
+                        validation_steps=cfg.validation_steps,
                         epochs=cfg.epochs - cfg.rst_epoch,
                         callbacks=[lr_callback, save_best, csv_logger],
                         verbose=cfg.batch_verbose,

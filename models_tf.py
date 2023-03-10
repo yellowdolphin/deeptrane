@@ -599,8 +599,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
     if steps_per_execution > 1:
         print(f"Model compiled with steps_per_execution={steps_per_execution}")
-        if not cfg.valid_steps:
-            print("Warning: validation will fail with steps_per_execution > 1 if valid_steps cannot be inferred.")
+        if not cfg.validation_steps:
+            print("Warning: validation will fail with steps_per_execution > 1 if validation_steps cannot be inferred.")
 
     check_model_inputs(cfg, model)
 
