@@ -21,6 +21,7 @@ cfg = dict(
     augmentation = 'tfms_004',
     n_replicas = 1,
     bs = 8,
+    steps_per_execution = 1,  # TF only, increase for performance (check callbacks, training behavior)
     epochs = 1,
     batch_verbose = None,
     do_class_sampling = False,

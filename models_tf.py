@@ -544,6 +544,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
             freeze_bn(model.layers[1])  # freeze only backbone BN
             #model.layers[1].layers[2].trainable = True  # unfreeze stem BN
 
+        # The following can probably be moved out of the strategy.scope...
+
         if cfg.use_custom_training_loop: return model
 
         optimizer = (
@@ -586,11 +588,19 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if loss_weights:
             print("Loss weights:", *loss_weights)
 
+        steps_per_execution = cfg.steps_per_execution or 1
+
         model.compile(
             optimizer=optimizer,
             loss='sparse_categorical_crossentropy' if cfg.classes else 'mean_squared_error',
             loss_weights=loss_weights,
-            metrics=metrics)
+            metrics=metrics,
+            steps_per_execution=steps_per_execution)
+
+    if steps_per_execution > 1:
+        print(f"Model compiled with steps_per_execution={steps_per_execution}")
+        if not cfg.valid_steps:
+            print("Warning: validation will fail with steps_per_execution > 1 if valid_steps cannot be inferred.")
 
     check_model_inputs(cfg, model)
 

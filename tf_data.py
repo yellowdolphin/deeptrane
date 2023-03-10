@@ -237,6 +237,7 @@ def get_dataset(cfg, project, mode='train'):
 
     dataset = tf.data.TFRecordDataset(filenames, num_parallel_reads=AUTO)
     dataset = dataset.cache() if cfg.cache_data else dataset
+    # TODO: test if parallel tfrec reading can also be used in mode='valid':
     dataset = dataset.with_options(ignore_order) if shuffle else dataset
     if project and hasattr(project, 'parse_tfrecord'):
         dataset = dataset.map(partial(project.parse_tfrecord, cfg), num_parallel_calls=AUTO)

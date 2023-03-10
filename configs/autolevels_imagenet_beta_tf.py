@@ -23,6 +23,7 @@ cfg = dict(
     multilabel = False,
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue
     bs = 128,
+    steps_per_execution = 1,  # increase for performance (check callbacks, training behavior)
     epochs = 1,
     batch_verbose = 1,
     lr = 1e-3,

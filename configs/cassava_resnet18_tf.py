@@ -17,6 +17,7 @@ cfg = dict(
     multilabel = False,
     size = (128, 128),
     bs = 128,
+    steps_per_execution = 1,  # increase for performance (check callbacks, training behavior)
     n_acc = 1,
     epochs = 10,
     batch_verbose = 1,
