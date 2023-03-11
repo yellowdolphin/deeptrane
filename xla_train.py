@@ -174,7 +174,15 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                     # (b): map curves with torch.gather (slightly faster)
                     # curves must be expanded to have same shape as inputs (except dim=2)
                     expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
+                    if not cfg.noise_level:
+                        # add uniform noise to mask uint8 discretization
+                        inputs_plus_one = (inputs.to(torch.int64) + 1).clamp(0, 255)
                     inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
+                    if not cfg.noise_level:
+                        inputs_plus_one = torch.gather(expanded_curves, dim=2, index=inputs_plus_one)
+                        noise_range = inputs_plus_one - inputs
+                        noise = torch.rand_like(inputs) * noise_range
+                        inputs += noise
 
             else:
                 inputs = inputs.float()
@@ -352,7 +360,15 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
                 expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
+                if not cfg.noise_level:
+                    # add uniform noise to mask uint8 discretization
+                    inputs_plus_one = (inputs.to(torch.int64) + 1).clamp(0, 255)
                 inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
+                if not cfg.noise_level:
+                    inputs_plus_one = torch.gather(expanded_curves, dim=2, index=inputs_plus_one)
+                    noise_range = inputs_plus_one - inputs
+                    noise = torch.rand_like(inputs) * noise_range
+                    inputs += noise
             else:
                 inputs = inputs.float()
 

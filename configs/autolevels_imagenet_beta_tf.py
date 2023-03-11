@@ -34,7 +34,7 @@ cfg = dict(
     save_best = 'loss',
     loss_weights = [1.0, 2.0, 25.0],  # a, b, bp
     augmentation = 'autolevels_aug_tf',
-    noise_level = 0.05,
+    noise_level = None,               # else: adds uniform noise to mask uint8 discretization
 
 # Model
     arch_name = 'efnv1b1',
