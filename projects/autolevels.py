@@ -608,7 +608,7 @@ def interp1d_tf(x, y, inp):
     return f0 * (1 - alpha) + f1 * alpha
 
 
-def map_index(image, curves, add_noise=True, height=None, width=None):
+def map_index(image, curves, add_uniform_noise=True, height=None, width=None):
     # OperatorNotAllowedInGraphError: Iterating over a symbolic `tf.Tensor` is not allowed
     #for i, curve in enumerate(curves):
     #    image[:, :, i] = curve[image[:, :, i]]
@@ -617,14 +617,14 @@ def map_index(image, curves, add_noise=True, height=None, width=None):
     #    image[:, :, i] = curves[:, i][image[:, :, i]]
     # Use tf.gather_nd instead:
     image = tf.cast(image, tf.int32)
-    if add_noise: image_plus_one = tf.clip_by_value(image + 1, 0, 255)
+    if add_uniform_noise: image_plus_one = tf.clip_by_value(image + 1, 0, 255)
     curves = tf.cast(curves, tf.float32)
     #assert curves.shape[-1] in {1, 3}
     channel_idx = tf.ones_like(image, dtype=tf.int32) * tf.range(3)[None, None, :]
     indices = tf.stack([image, channel_idx], axis=-1)
-    if add_noise: indices_plus_one = tf.stack([image_plus_one, channel_idx], axis=-1)
+    if add_uniform_noise: indices_plus_one = tf.stack([image_plus_one, channel_idx], axis=-1)
     image = tf.gather_nd(curves, indices)
-    if add_noise: 
+    if add_uniform_noise: 
         image_plus_one = tf.gather_nd(curves, indices_plus_one)
         noise_range = image_plus_one - image
         noise = tf.random.uniform((height, width, 3)) * noise_range
@@ -634,6 +634,8 @@ def map_index(image, curves, add_noise=True, height=None, width=None):
 
 def decode_image(cfg, image_data, target, height, width):
     "Decode image and apply inverse curve transform according to target"
+    # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
+    # => read height, width features from tfrec.
     
     image = tf.image.decode_jpeg(image_data, channels=3)
     
@@ -642,20 +644,19 @@ def decode_image(cfg, image_data, target, height, width):
 
     if cfg.normalize in ['torch', 'tf', 'caffe']:
         from keras.applications.imagenet_utils import preprocess_input
-        image = preprocess_input(image, mode=cfg.normalize)
-    elif cfg.curve == 'beta':
+        return preprocess_input(image, mode=cfg.normalize)
+    
+    if cfg.curve is None:
+        return tf.cast(image, tf.float32) / 255.0
+
+    if cfg.curve == 'beta':
         if True:
             # (a) index mapping
             # 1 ep efnv2s size=128 tf@colab: 50.83 min/epoch (with tf.function and assertions)
             # 1 ep efnv2s size=256 tf@colab: 35.57 min/epoch (no tf.function, no assertions)
             image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
             curves = get_curves(target)  # (256, C)
-            image = map_index(image, curves, add_noise=(not cfg.noise_level), height=height, width=width)
-            # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
-            if cfg.noise_level:
-                image += tf.random.normal((height, width, 3)) * cfg.noise_level
-                image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
-            image /= 255.0
+            image = map_index(image, curves, cfg.add_uniform_noise, height, width)
         else:
             # (b) curve transform the image
             # 1 ep efnv2s size=128 tf@colab: 37.28 min/epoch
@@ -669,12 +670,19 @@ def decode_image(cfg, image_data, target, height, width):
 
     elif cfg.curve == 'gamma':
         image = tf.cast(image, tf.float32)
-        image = image + tf.random.uniform((height, width, 3))
-        image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=255.)
-        image /= 255.0
+        if cfg.add_uniform_noise:
+            image += tf.random.uniform((height, width, 3))
+
+    image /= 255.0
+
+    if cfg.noise_level:
+        rnd_factor = tf.random.uniform(())
+        image += cfg.noise_level * rnd_factor * tf.random.normal((height, width, 3))
+
+    image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
+
+    if cfg.curve == 'gamma':
         image = tf.math.pow(image, target[None, None, :])
-    else:
-        image = tf.cast(image, tf.float32) / 255.0
 
     return image
 
