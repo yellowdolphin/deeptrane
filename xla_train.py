@@ -594,6 +594,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         #_lrs = [lr / cfg.n_replicas for lr in listify(max_lrs)]
         _lrs = [lr for lr in listify(max_lrs)]
         xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in _lrs)}")
+        if hasattr(scheduler, 'step'):
+            xm.master_print(f"Batchwise stepping:", hasattr(scheduler, 'batchwise'))
 
     # Maybe freeze body
     if hasattr(model, 'body') and lr_body == 0:
