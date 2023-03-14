@@ -253,7 +253,12 @@ def get_tf_tfms(cfg, mode='train'):
             # tfa.image.cutout is currently broken, issue #2384
             #if flags.cutout and tf.random.uniform([]) < 0.75:
             #    area = 2 * int((size * flags.cutout) ** 2 / 2)
-            #    image = tfa.image.random_cutout(image, mask_size=area, constant_values=220)            
+            #    image = tfa.image.random_cutout(image, mask_size=area, constant_values=220)
+
+            if flags.noise_level:
+                rnd_factor = tf.random.uniform(())
+                image += cfg.noise_level * rnd_factor * tf.random.normal((*cfg.size, 3))
+                image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
 
             if isinstance(inputs, tuple):
                 inputs = (image, *inputs[1:])
