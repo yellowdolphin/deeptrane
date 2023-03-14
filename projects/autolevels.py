@@ -675,7 +675,7 @@ def decode_image(cfg, image_data, target, height, width):
 
     image /= 255.0
 
-    if cfg.noise_level:
+    if cfg.noise_level and not cfg.rnd_noise_after_gamma:
         rnd_factor = tf.random.uniform(())
         image += cfg.noise_level * rnd_factor * tf.random.normal((height, width, 3))
 
@@ -683,6 +683,11 @@ def decode_image(cfg, image_data, target, height, width):
 
     if cfg.curve == 'gamma':
         image = tf.math.pow(image, target[None, None, :])
+
+    if cfg.noise_level and cfg.rnd_noise_after_gamma:
+        rnd_factor = tf.random.uniform(())
+        image += cfg.noise_level * rnd_factor * tf.random.normal((height, width, 3))
+        image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
 
     return image
 
