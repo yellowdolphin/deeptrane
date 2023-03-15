@@ -228,7 +228,7 @@ def get_dataset(cfg, project, mode='train'):
     if cfg.DEBUG: tf.print(f'urls for mode "{mode}":', filenames)
     shuffle = cfg.shuffle_buffer or 2048 if mode == 'train' else None
     ignore_order = tf.data.Options()
-    ignore_order.experimental_deterministic = False  # faster
+    ignore_order.experimental_deterministic = False  # enables parallel data streaming, loses order
     tfms = get_tf_tfms(cfg, mode)
     data_format = cfg.data_format  # assume is mode agnostic for now
     bs = cfg.bs
@@ -237,7 +237,7 @@ def get_dataset(cfg, project, mode='train'):
 
     dataset = tf.data.TFRecordDataset(filenames, num_parallel_reads=AUTO)
     dataset = dataset.cache() if cfg.cache_data else dataset
-    # TODO: test if parallel tfrec reading can also be used in mode='valid':
+    # This drastically speeds up data flow, disable only if order matters and tfrec have no id feature:
     dataset = dataset.with_options(ignore_order) if mode != 'test' else dataset
     if project and hasattr(project, 'parse_tfrecord'):
         dataset = dataset.map(partial(project.parse_tfrecord, cfg), num_parallel_calls=AUTO)

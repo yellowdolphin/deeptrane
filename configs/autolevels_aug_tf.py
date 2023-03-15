@@ -9,5 +9,5 @@ cfg = dict(
     saturation       = None,
     contrast         = None,
     brightness       = None,
-    noise_level      = 0.05,  # random normal noise after resize
+    noise_level      = 0.0,  # random normal noise after resize
 )
