@@ -32,9 +32,8 @@ cfg = dict(
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 1e-6,
     save_best = 'loss',
-    add_uniform_noise = True,   # add uniform noise to mask uint8 discretization
+    add_uniform_noise = False,  # add uniform noise to mask uint8 discretization
     noise_level = 0.05,         # random normal noise (augmentation)
-    rnd_noise_after_gamma = False,
     augmentation = 'autolevels_aug_tf',
 
 # Model
