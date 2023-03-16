@@ -195,16 +195,16 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
+            # Random Noise
+            if cfg.noise_level:
+                rnd_factor = torch.rand(1, device=inputs.device)
+                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)                
+
             inputs = TF.resize(inputs, cfg.size)
 
             # RandomHorizontalFlip (OK)
             if torch.rand(1) > 0.5:
                 inputs = TF.hflip(inputs)
-
-            # Random Noise
-            if cfg.noise_level:
-                rnd_factor = torch.rand(1, device=inputs.device)
-                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)                
 
             #if cfg.size[1] > cfg.size[0]:
             #    # train on 90-deg rotated nybg2021 images
