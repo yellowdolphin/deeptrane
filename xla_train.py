@@ -193,14 +193,16 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             inputs /= 255
 
             if cfg.curve == 'gamma':
+                inputs = inputs.clamp(0.0, 1.0)  # necessary???
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
             # Random Noise
             if cfg.noise_level:
                 rnd_factor = torch.rand(1, device=inputs.device)
-                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)                
+                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
+                inputs = inputs.clamp(0.0, 1.0)
 
-            inputs = TF.resize(inputs, cfg.size)
+            inputs = TF.resize(inputs, cfg.size, antialias=True)
 
             # RandomHorizontalFlip (OK)
             if torch.rand(1) > 0.5:
@@ -365,8 +367,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
+
+            inputs = inputs.clamp(0.0, 1.0)  # should not be necessary
                 
-            inputs = TF.resize(inputs, cfg.size)  # also try earlier
+            inputs = TF.resize(inputs, cfg.size, antialias=True)
 
         # forward
         with torch.no_grad():

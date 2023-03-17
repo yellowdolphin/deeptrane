@@ -5,6 +5,8 @@ import pandas as pd
 import cv2
 import torch
 from torch.utils.data import Dataset
+import torchvision
+print("[ √ ] torchvision:", torchvision.__version__)
 import torchvision.transforms as TT
 from torchvision.transforms.functional import InterpolationMode
 from scipy.interpolate import interp1d
@@ -683,7 +685,7 @@ def decode_image(cfg, image_data, target, height, width):
     if cfg.noise_level:
         rnd_factor = tf.random.uniform(())
         image += cfg.noise_level * rnd_factor * tf.random.normal((height, width, 3))
-        image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
+        #image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)  # does it matter?
 
     return image
 
