@@ -45,7 +45,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     if cfg.use_batch_tfms:
         #import torchvision.transforms as TT
         import torchvision.transforms.functional as TF
-        #from torchvision.transforms.functional import InterpolationMode
+        # antialias is currently stalling xla compiling and False by default, but
+        # will default to True in v0.17
+        cfg.antialias = cfg.antialias or False
 
         # TT.Random* tfms disable fast TPU execution!
         #batch_tfms = torch.nn.Sequential(
@@ -83,6 +85,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     n_iter = len(dataloader)
     iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
     #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
+    if cfg.DEBUG:
+        xm.master_print("Epoch {epoch} / {cfg.epochs}, train {n_iter} batches")
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -156,6 +160,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             #width = int((scale_min + (1 - scale_min) * r1) * cfg.size[1])
             #inputs = TF.resized_crop(inputs, top, left, height, width, cfg.size)
 
+            assert inputs.dtype == torch.uint8, f'unexpected inputs dtype {inputs.dtype}'
+
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
@@ -193,7 +199,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             inputs /= 255
 
             if cfg.curve == 'gamma':
-                inputs = inputs.clamp(0.0, 1.0)  # necessary???
+                #inputs = inputs.clamp(0.0, 1.0)  # necessary???
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
             # Random Noise
@@ -202,7 +208,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
                 inputs = inputs.clamp(0.0, 1.0)
 
-            inputs = TF.resize(inputs, cfg.size, antialias=True)
+            inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
             # RandomHorizontalFlip (OK)
             if torch.rand(1) > 0.5:
@@ -368,9 +374,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
-            inputs = inputs.clamp(0.0, 1.0)  # should not be necessary
+            # Random Noise
+            #if cfg.noise_level:
+            #    rnd_factor = torch.rand(1, device=inputs.device)
+            #    inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
+            #    inputs = inputs.clamp(0.0, 1.0)
                 
-            inputs = TF.resize(inputs, cfg.size, antialias=True)
+            inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
         # forward
         with torch.no_grad():

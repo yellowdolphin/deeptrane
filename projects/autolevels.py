@@ -713,6 +713,7 @@ def parse_tfrecord(cfg, example):
         bp = tfd.HalfNormal(scale=40.).sample([3])
         features['target'] = tf.stack([gamma, bp])
     else:
+        # do not instantiate tfd classes globally: TF allocates half of GPU!
         dist_a = tfd.Normal(0.0, scale=0.5)
         dist_b = tfd.Normal(0.4, scale=0.25)
         dist_bp = tfd.HalfNormal(scale=0.02)
