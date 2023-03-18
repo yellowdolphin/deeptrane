@@ -690,11 +690,6 @@ def decode_image(cfg, image_data, target, height, width):
     return image
 
 
-dist_a = tfd.Normal(0.0, scale=0.5)
-dist_b = tfd.Normal(0.4, scale=0.25)
-dist_bp = tfd.HalfNormal(scale=0.02)
-
-
 def parse_tfrecord(cfg, example):
     """This TFRecord parser extracts the features defined in cfg.tfrec_format.
 
@@ -718,6 +713,9 @@ def parse_tfrecord(cfg, example):
         bp = tfd.HalfNormal(scale=40.).sample([3])
         features['target'] = tf.stack([gamma, bp])
     else:
+        dist_a = tfd.Normal(0.0, scale=0.5)
+        dist_b = tfd.Normal(0.4, scale=0.25)
+        dist_bp = tfd.HalfNormal(scale=0.02)
         a = dist_a.sample([3])
         b = dist_b.sample([3])
         bp = dist_bp.sample([3])
