@@ -148,7 +148,7 @@ class OptimizableCurve(torch.nn.Module):
 
 
 class Curve():
-    def __init__(self, a=1, b=1, bp=0, eps=0.1, create_blackpoint=False):
+    def __init__(self, a=1, b=1, bp=0, eps=0.1, alpha_scale=1, beta_decay=10, create_blackpoint=False):
         """Set of Beta distributions, PDF and inverse PDF
 
         a: log(alpha parameter)
@@ -162,6 +162,8 @@ class Curve():
         self.bp = np.array(bp, dtype=float)
         assert self.a.shape == self.b.shape == self.bp.shape, 'parameter shape mismatch'
         self.eps = float(eps)
+        self.alpha_scale = float(alpha_scale)
+        self.beta_decay = float(beta_decay)
         self.max_x = 1 - self.eps
         self.create_blackpoint = create_blackpoint
 
@@ -199,8 +201,8 @@ class Curve():
         return blackpoint + (255 - blackpoint) * y / y_norm
 
     def transformed_parameters(self):
-        alpha = 1 + np.exp(self.a)
-        beta = 1 / (1 + np.exp(-(10 * self.b)))  # sigmoid
+        alpha = 1 + self.alpha_scale * np.exp(self.a)
+        beta = 1 / (1 + np.exp(-(self.beta_decay * self.b)))  # sigmoid
         blackpoint = 500 * self.bp
         return alpha, beta, blackpoint
 
@@ -483,9 +485,11 @@ class AugInvBetaDataset(Dataset):
         self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
         self.labeled = labeled
         self.return_path_attr = return_path_attr
-        self.dist_a = torch.distributions.normal.Normal(0, 0.5)
-        self.dist_b = torch.distributions.normal.Normal(0.4, 0.25)
-        self.dist_bp = torch.distributions.half_normal.HalfNormal(0.02)
+        self.dist_a = torch.distributions.normal.Normal(0, cfg.a_sigma or 0.5)
+        self.dist_b = torch.distributions.normal.Normal(cfg.b_mean or 0.4, cfg.b_sigma or 0.25)
+        self.dist_bp = torch.distributions.half_normal.HalfNormal(cfg.bp_sigma or 0.02)
+        self.alpha_scale = cfg.alpha_scale or 1
+        self.beta_decay = cfg.beta_decay or 10
         self.use_batch_tfms = cfg.use_batch_tfms
         if self.use_batch_tfms:
             self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
@@ -509,7 +513,8 @@ class AugInvBetaDataset(Dataset):
         assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
         
         labels = [dist.sample((n_channels,)) for dist in [self.dist_a, self.dist_b, self.dist_bp]]
-        curves = Curve(*tuple(p.numpy() for p in labels), create_blackpoint=True)
+        curves = Curve(*tuple(p.numpy() for p in labels), create_blackpoint=True, 
+                       alpha_scale=self.alpha_scale, beta_decay=self.beta_decay)
         labels = torch.stack(labels, axis=1)  # channel first
         #assert labels.shape == (n_channels, 3)
 
@@ -546,7 +551,7 @@ class AugInvBetaDataset(Dataset):
 
 # TF data pipeline --------------------------------------------------------
 
-def get_curves(target, eps=0.1):
+def get_curves(target, eps=0.1, alpha_scale=1, beta_decay=10):
     # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
     # curves: (256, C)
     if target.shape[0] == 2:
@@ -557,8 +562,8 @@ def get_curves(target, eps=0.1):
         return curves
 
     a, b, bp = target[0, :], target[1, :], target[2, :]
-    alpha = 1 + tf.exp(a)
-    beta = 1 / (1 + tf.exp(-(10 * b)))  # sigmoid
+    alpha = 1 + alpha_scale * tf.exp(a)
+    beta = 1 / (1 + tf.exp(-(beta_decay * b)))  # sigmoid
     blackpoint = 500 * bp
     y = tf.range(0., 256., delta=0.1, dtype=tf.float32)
     support = tf.clip_by_value(y, 1e-3, 255) / 255 * (1 - eps)
@@ -660,7 +665,7 @@ def decode_image(cfg, image_data, target, height, width):
             # 1 ep efnv2s size=128 tf@colab: 50.83 min/epoch (with tf.function and assertions)
             # 1 ep efnv2s size=256 tf@colab: 35.57 min/epoch (no tf.function, no assertions)
             image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
-            curves = get_curves(target)  # (256, C)
+            curves = get_curves(target, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
             image = map_index(image, curves, cfg.add_uniform_noise, height, width)
         else:
             # (b) curve transform the image
@@ -717,9 +722,9 @@ def parse_tfrecord(cfg, example):
         features['target'] = tf.stack([gamma, bp])
     else:
         # do not instantiate tfd classes globally: TF allocates half of GPU!
-        dist_a = tfd.Normal(0.0, scale=0.5)
-        dist_b = tfd.Normal(0.4, scale=0.25)
-        dist_bp = tfd.HalfNormal(scale=0.02)
+        dist_a = tfd.Normal(0.0, scale=cfg.a_sigma or 0.5)
+        dist_b = tfd.Normal(cfg.b_mean or 0.4, scale=cfg.b_sigma or 0.25)
+        dist_bp = tfd.HalfNormal(scale=cfg.bp_sigma or 0.02)
         a = dist_a.sample([3])
         b = dist_b.sample([3])
         bp = dist_bp.sample([3])

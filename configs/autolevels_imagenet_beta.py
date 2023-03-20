@@ -27,6 +27,12 @@ cfg = dict(
     pct_start = 0.25,                 # default: 0.3, from Chest14: 0.6, pipeline1: 0
     save_best = 'valid_loss',
     loss_weights = [1.0, 2.0, 25.0],  # a, b, bp
+    a_sigma = 0.5,
+    b_mean = 0.4,
+    b_sigma = 0.25,
+    bp_sigma = 0.02,
+    alpha_scale = 1.0,
+    beta_decay = 10.0,
 
 # Model
     arch_name = 'mobilevitv2_100',
