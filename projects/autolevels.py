@@ -196,7 +196,7 @@ class Curve():
         x = np.clip(x, 1e-3, None) / 255 * (1 - self.eps)
         y = np.power(x, alpha - 1) * np.power(1 - x, beta - 1)
         # normalization depends on alpha, beta and must be calculated image/channel-wise
-        hw_axes = [i for i, (a, b) in enumerate(zip(alpha.shape, x.shape)) if b > a]
+        hw_axes = tuple(i for i, (a, b) in enumerate(zip(alpha.shape, x.shape)) if b > a)
         y_norm = y.max(axis=hw_axes, keepdims=True)
         return blackpoint + (255 - blackpoint) * y / y_norm
 

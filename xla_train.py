@@ -86,7 +86,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
     #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
     if cfg.DEBUG:
-        xm.master_print("Epoch {epoch} / {cfg.epochs}, train {n_iter} batches")
+        xm.master_print(f"Epoch {epoch} / {cfg.epochs}, train {n_iter} batches")
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -160,7 +160,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             #width = int((scale_min + (1 - scale_min) * r1) * cfg.size[1])
             #inputs = TF.resized_crop(inputs, top, left, height, width, cfg.size)
 
-            assert inputs.dtype == torch.uint8, f'unexpected inputs dtype {inputs.dtype}'
+            if cfg.DEBUG:
+                assert inputs.dtype == torch.uint8, f'unexpected inputs dtype {inputs.dtype}'
 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
@@ -254,19 +255,18 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             cls_loss = criterion(preds, labels)
             loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
         elif cfg.loss_weights is not None:
-            # I think this is wrong, labels have shape (N, C, n_loss_weights):
-            #_preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
-            #_labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1).transpose(0, 1)
-            #loss = sum(w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels))
             _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
             _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
             weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
             loss = sum(weighted_losses)
 
-            # alternative code
-            #_preds = preds.reshape(preds.shape[0], *cfg.loss_weights.shape, -1)
-            #_labels = labels.reshape(labels.shape[0], *cfg.loss_weights.shape, -1)
-            #loss = sum(w * criterion(_preds[:, i, :], _labels[:, i, :]) for i, w in enumerate(cfg.loss_weights))
+            # DEBUG nan loss
+            if any([torch.isnan(l.detach()) for l in weighted_losses]):
+                xm.master_print("NaN loss detected.")
+                xm.master_print("losses:", weighted_losses)
+                xm.master_print("labels:", _labels)
+                xm.master_print("preds:", _preds)
+
         else:
             loss = criterion(preds, labels)
 
