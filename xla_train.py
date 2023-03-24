@@ -375,10 +375,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
             # Random Noise
-            #if cfg.noise_level:
-            #    rnd_factor = torch.rand(1, device=inputs.device)
-            #    inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
-            #    inputs = inputs.clamp(0.0, 1.0)
+            if cfg.noise_level:
+                rnd_factor = torch.rand(1, device=inputs.device)
+                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
+                inputs = inputs.clamp(0.0, 1.0)
                 
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 

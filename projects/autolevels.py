@@ -410,7 +410,7 @@ class AugInvGammaDataset(Dataset):
         self.use_batch_tfms = cfg.use_batch_tfms
         if self.use_batch_tfms:
             self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
-        self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
+        self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.6)
         self.noise_level = cfg.noise_level
 
     def __len__(self):
