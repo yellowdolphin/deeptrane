@@ -28,6 +28,8 @@ cfg = dict(
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     save_best = 'valid_loss',
+    no_signal = True,
+    fake_data = 'on_device',
 
 # Model
     arch_name = 'mobilevitv2_100',

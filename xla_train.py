@@ -93,8 +93,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
         # extract inputs and labels
         if cfg.fake_data == 'on_device':
             inputs, labels = (
-                torch.zeros(cfg.bs, 3, *cfg.size, device=device),
-                torch.zeros(cfg.bs, dtype=torch.int64, device=device))
+                torch.ones(cfg.bs, 3, *cfg.size, dtype=torch.uint8, device=device) * 128,
+                torch.exp(torch.randn(cfg.bs, 3, device=device) * 0.6))
+                #torch.zeros(cfg.bs, dtype=torch.int64, device=device))
         #elif cfg.use_batch_tfms:
             # resize and collate images, labels
             #samples = [next(sample_iterator) for _ in range(cfg.bs)]
@@ -199,8 +200,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
             inputs /= 255
 
-            if cfg.curve == 'gamma':
-                #inputs = inputs.clamp(0.0, 1.0)  # necessary???
+            if cfg.curve == 'gamma' and not cfg.no_signal:
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
             # Random Noise
@@ -343,8 +343,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         # extract inputs and labels
         if cfg.fake_data == 'on_device':
             inputs, labels = (
-                torch.zeros(cfg.bs, 3, *cfg.size, device=device),
-                torch.zeros(cfg.bs, dtype=torch.int64, device=device))
+                torch.ones(cfg.bs, 3, *cfg.size, dtype=torch.uint8, device=device) * 128,
+                torch.exp(torch.randn(cfg.bs, 3, device=device) * 0.6))
+                #torch.zeros(cfg.bs, dtype=torch.int64, device=device))
         elif cfg.filetype == 'tfds':
             inputs, labels = FloatTensor(batch[0]['inp1']), LongTensor(batch[0]['inp2'])
             inputs = inputs.permute((0, 3, 1, 2))  #.contiguous()  # mem? speed?
@@ -371,7 +372,7 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
             inputs /= 255
 
-            if cfg.curve == 'gamma':
+            if cfg.curve == 'gamma' and not cfg.no_signal:
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
             # Random Noise
@@ -467,7 +468,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
     # Dataloaders
     if cfg.fake_data == 'on_device':
-        train_loader, valid_loader = None, None
+        is_valid = metadata.is_valid if hasattr(metadata, 'is_valid') else (metadata.fold == use_fold)
+        n_valid = sum(is_valid)
+        n_train = len(is_valid) - n_valid
+        train_loader, valid_loader = np.arange(n_train // cfg.bs // 8), np.arange(n_valid // cfg.bs // 8)
 
     elif cfg.fake_data:
         train_loader, valid_loader = get_fakedata_loaders(cfg, device)

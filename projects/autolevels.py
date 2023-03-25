@@ -714,7 +714,8 @@ def parse_tfrecord(cfg, example):
     features = {}
 
     if cfg.curve == 'gamma':
-        features['target'] = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
+        #features['target'] = tf.math.exp(tfd.Normal(0.0, 0.6).sample([3]))
+        features['target'] = tf.math.exp(tfd.Uniform(low=-1.6, high=1.0).sample([3]))
     elif cfg.curve == 'beta' and cfg.channel_size == 2:
         # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
         gamma = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
@@ -735,6 +736,13 @@ def parse_tfrecord(cfg, example):
     features['width'] = example[cfg.data_format['width']]
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'],
                                      features['height'], features['width'])
+    
+    if cfg.curve == 'gamma':
+        # predict mix of log_gamma and relative_log_gamma
+        log_gamma = tf.math.log(features['target'])
+        relative_log_gamma = log_gamma - tf.math.reduce_mean(log_gamma, keepdims=True)
+        abs_weight = 0.3
+        features['target'] = (1 - abs_weight) * relative_log_gamma + abs_weight * log_gamma
     
     if cfg.curve == 'beta':
         # split target into 2 (3) components for weighted loss

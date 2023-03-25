@@ -520,6 +520,13 @@ def get_pretrained_model(cfg, strategy, inference=False):
             aux_output = tf.keras.layers.Softmax(dtype='float32', name='aux')(aux_features)
 
         # Outputs
+        if cfg.curve and (cfg.channel_size == 3):
+            # predict mix of log_gamma and relative_log_gamma
+            log_gamma = output
+            relative_log_gamma = log_gamma - tf.math.reduce_mean(log_gamma, axis=1, keepdims=True)
+            abs_weight = 0.3
+            outputs = [(1 - abs_weight) * relative_log_gamma + abs_weight * log_gamma]
+
         if cfg.curve and (cfg.channel_size == 6):
             # slicing does not work, output shapes are still [?, 6]
             #outputs = [output[:3], output[3:]]  # gamma, bp
