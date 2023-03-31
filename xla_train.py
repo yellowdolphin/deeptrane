@@ -155,8 +155,10 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
+            # Random Noise
             if cfg.noise_level:
-                inputs += torch.randn_like(inputs) * cfg.noise_level
+                rnd_factor = torch.rand(1, device=inputs.device)
+                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
@@ -343,8 +345,11 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             inputs /= 255
 
             inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
+
+            # Random Noise
             if cfg.noise_level:
-                inputs += torch.randn_like(inputs) * cfg.noise_level
+                rnd_factor = torch.rand(1, device=inputs.device)
+                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
