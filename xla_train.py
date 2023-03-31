@@ -135,21 +135,25 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
         if cfg.use_batch_tfms and cfg.curve:
-            # batch transforms for autolevels TPU training
+            if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
+                # labels: (N, C, 3), curves: (N, C, 256)
+                labels, curves = labels[:, :, :3], labels[:, :, 3:]
+                for i, img_curves in enumerate(curves):
+                    for j, curve in enumerate(img_curves):
+                        inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
+
+            inputs = inputs.float()
 
             if cfg.curve == 'gamma':
-                inputs = inputs.float() / 255
+                inputs = (inputs + torch.rand_like(inputs)).clamp(max=255)
+
+            inputs /= 255
+
+            if (cfg.curve == 'beta') and cfg.noise_level:
+                inputs += torch.randn_like(inputs) * cfg.noise_level
+
+            if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
-
-            elif cfg.curve == 'beta':
-                if cfg.curve_tfm_on_device:
-                    # labels: (N, C, 3), curves: (N, C, 256)
-                    labels, curves = labels[:, :, :3], labels[:, :, 3:]
-                    for i, img_curves in enumerate(curves):
-                        for j, curve in enumerate(img_curves):
-                            inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
-
-                inputs = inputs / 255
 
             if cfg.noise_level:
                 inputs += torch.randn_like(inputs) * cfg.noise_level
@@ -323,9 +327,21 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 torch.zeros(cfg.bs, 3, *cfg.size, device=device),
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
-        if cfg.use_batch_tfms and cfg.curve and (cfg.curve == 'gamma'):
-            # batch transforms for autolevels TPU training
-            inputs = inputs.float() / 255
+        if cfg.use_batch_tfms:
+            if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
+                # labels: (N, C, 3), curves: (N, C, 256)
+                labels, curves = labels[:, :, :3], labels[:, :, 3:]
+                for i, img_curves in enumerate(curves):
+                    for j, curve in enumerate(img_curves):
+                        inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
+
+            inputs = inputs.float()
+
+            if cfg.curve == 'gamma':
+                inputs = (inputs + torch.rand_like(inputs)).clamp(max=255)
+
+            inputs /= 255
+
             inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
             if cfg.noise_level:
                 inputs += torch.randn_like(inputs) * cfg.noise_level
