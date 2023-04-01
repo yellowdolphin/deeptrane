@@ -422,9 +422,9 @@ class AugInvGammaDataset(Dataset):
             image = self.presize(image)
 
             # append rnd_factor for noise_level
-            #if self.noise_level:
-            #    rnd_factor = torch.rand(1)
-            #    labels = torch.cat(labels, rnd_factor)
+            if self.noise_level:
+                rnd_factor = torch.rand(1)
+                labels = torch.cat(labels, rnd_factor)
             return image, labels
 
         # this is slow on CPU, use batch tfms to do it on TPU
