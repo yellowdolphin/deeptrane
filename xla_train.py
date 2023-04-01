@@ -142,6 +142,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                     for j, curve in enumerate(img_curves):
                         inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
 
+            elif (cfg.curve == 'gamma') and cfg.noise_level:
+                labels, rnd_factor = labels[:, :-1], labels[:, -1]
+
             inputs = inputs.float()
 
             if cfg.curve == 'gamma':
@@ -159,15 +162,16 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if cfg.noise_level:
                 # Using a random number for the entire batch causes "dynamic overfitting":
                 # - All TPU cores (ranks) have the same random seed, hence 8 * bs examples train with
-                #   same random number
-                # - The model apparently finds a way to adapt to the current rnd_factor, lowering loss
-                # - valid_loss is significantly higher if noise_level differs from 
-                #   rnd_factor(last train iter) * noise_level
+                #   same random number (no difference between torch.rand and torch.zeros().uniform_())
+                # - valid_loss is significantly higher despite same augmentation
+                # - The model apparently finds a way to adapt to the current rnd_factor, lowering loss...
+                # - But this is impossible: optimizer steps only once per 8 * bs examples!!!
                 #rnd_factor = torch.rand(1, device=inputs.device)
                 #inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
                 #print(f"batch {batch_idx} rank {xm.get_ordinal()} rnd_factor {rnd_factor.item():.6f}")
-                labels, rnd_factor = labels[:, :-1], labels[:, -1]
                 inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
+                #print(f"batch {batch_idx} rank {xm.get_ordinal()} torch.rand {torch.rand(1).item():.6f}")
+                #print(f"batch {batch_idx} rank {xm.get_ordinal()} torch.zeros.uniform_ {torch.zeros(1, device=inputs.device).uniform_().item():.6f}")
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
@@ -346,6 +350,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                     for j, curve in enumerate(img_curves):
                         inputs[i, j, :, :] = curve[inputs[i, j, :, :]]
 
+            elif (cfg.curve == 'gamma') and cfg.noise_level:
+                labels, rnd_factor = labels[:, :-1], labels[:, -1]
+
             inputs = inputs.float()
 
             if cfg.curve == 'gamma':
@@ -359,7 +366,6 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             if cfg.noise_level:
                 #rnd_factor = torch.rand(1, device=inputs.device)
                 #inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
-                labels, rnd_factor = labels[:, :-1], labels[:, -1]
                 inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
 
             # quantize, mimick a normal ImageDataset
@@ -624,6 +630,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         '   lr    ', 'min_train  min_total'])
     xm.master_print("\n", epoch_summary_header)
     xm.master_print("=" * (len(epoch_summary_header) + 2))
+
 
     for epoch in range(rst_epoch, rst_epoch + cfg.epochs):
 
