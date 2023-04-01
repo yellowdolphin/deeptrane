@@ -164,6 +164,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if cfg.DEBUG:
                 assert inputs.dtype == torch.uint8, f'unexpected inputs dtype {inputs.dtype}'
 
+            if (cfg.curve == 'gamma') and cfg.noise_level:
+                labels, rnd_factor = labels[:, :3], labels[:, 3]
+
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
@@ -200,14 +203,13 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
 
             inputs /= 255
 
-            if cfg.curve == 'gamma' and not cfg.no_signal:
+            if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
             # Random Noise
             if cfg.noise_level:
-                rnd_factor = torch.rand(1, device=inputs.device)
-                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
-                inputs = inputs.clamp(0.0, 1.0)
+                inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
+                #inputs = inputs.clamp(0.0, 1.0)
 
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
@@ -362,6 +364,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
         if cfg.use_batch_tfms:
+            if (cfg.curve == 'gamma') and cfg.noise_level:
+                labels, rnd_factor = labels[:, :3], labels[:, 3]
+
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
@@ -372,14 +377,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
 
             inputs /= 255
 
-            if cfg.curve == 'gamma' and not cfg.no_signal:
+            if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
 
             # Random Noise
             if cfg.noise_level:
-                rnd_factor = torch.rand(1, device=inputs.device)
-                inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
-                inputs = inputs.clamp(0.0, 1.0)
+                inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
+                #inputs = inputs.clamp(0.0, 1.0)
                 
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
