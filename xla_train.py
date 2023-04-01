@@ -159,6 +159,9 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if cfg.noise_level:
                 rnd_factor = torch.rand(1, device=inputs.device)
                 inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
+                print(f"batch {batch_idx} rank {xm.get_ordinal()} rnd_factor {rnd_factor.item():.6f}")
+                #labels, rnd_factor = labels[:-1], labels[-1]
+                #inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
@@ -349,7 +352,9 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             # Random Noise
             if cfg.noise_level:
                 rnd_factor = torch.rand(1, device=inputs.device)
+                #labels, rnd_factor = labels[:-1], labels[-1]
                 inputs += cfg.noise_level * rnd_factor * torch.randn_like(inputs)
+                #inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
 
             # quantize, mimick a normal ImageDataset
             inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)

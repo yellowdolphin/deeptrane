@@ -417,9 +417,14 @@ class AugInvGammaDataset(Dataset):
         labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
 
         if self.use_batch_tfms:
-            # just resize to double cfg.size and tensorize for collocation
+            # resize to double cfg.size and tensorize for collocation
             image = torch.tensor(image.transpose(2, 0, 1))  # channel first
             image = self.presize(image)
+
+            # append rnd_factor for noise_level
+            #if self.noise_level:
+            #    rnd_factor = torch.rand(1)
+            #    labels = torch.cat(labels, rnd_factor)
             return image, labels
 
         # this is slow on CPU, use batch tfms to do it on TPU
