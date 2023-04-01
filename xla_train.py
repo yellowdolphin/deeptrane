@@ -174,7 +174,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
                 #print(f"batch {batch_idx} rank {xm.get_ordinal()} torch.zeros.uniform_ {torch.zeros(1, device=inputs.device).uniform_().item():.6f}")
 
             # quantize, mimick a normal ImageDataset
-            inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
+            #inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
 
         # image batch_tfms
         if cfg.use_batch_tfms:
@@ -202,7 +202,8 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if torch.rand(1) > 0.5:
                 inputs = TF.hflip(inputs)
 
-            inputs = inputs.float() / 255
+            #inputs = inputs.float() / 255
+
             #if cfg.size[1] > cfg.size[0]:
             #    # train on 90-deg rotated nybg2021 images
             #    inputs = inputs.transpose(-2,-1)
@@ -369,10 +370,10 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
 
             # quantize, mimick a normal ImageDataset
-            inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
+            #inputs = (inputs * 255).clamp(0, 255).to(torch.uint8)
 
         if cfg.use_batch_tfms:
-            inputs = inputs.float() / 255
+            #inputs = inputs.float() / 255
             inputs = TF.resize(inputs, cfg.size)
 
         # forward
