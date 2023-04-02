@@ -504,6 +504,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
             output = tf.keras.layers.Softmax(dtype='float32')(features)
         else:
             assert cfg.channel_size, 'set cfg.channel_size in project or config file!'
+            if cfg.curve and (cfg.channel_size == 3):
+                output = tf.keras.layers.Dense(cfg.channel_size, name='log_gamma')(embed)
             if cfg.curve and (cfg.channel_size == 6):
                 out_gamma = tf.keras.layers.Dense(3, name='regressor_gamma')(embed)
                 out_bp = tf.keras.layers.Dense(3, name='regressor_bp')(embed)
@@ -521,13 +523,12 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         # Outputs
         if cfg.curve and (cfg.channel_size == 3):
-            # predict mix of log_gamma and relative_log_gamma
+            # predict relative log_gamma, absolute log_gamma
             log_gamma = output
-            relative_log_gamma = log_gamma - tf.math.reduce_mean(log_gamma, axis=1, keepdims=True)
-            abs_weight = 0.3
-            outputs = [(1 - abs_weight) * relative_log_gamma + abs_weight * log_gamma]
-
-        if cfg.curve and (cfg.channel_size == 6):
+            relative_log_gamma = tf.subtract(log_gamma, tf.math.reduce_mean(log_gamma, axis=1, keepdims=True),
+                                             name='rel_log_gamma')
+            outputs = [relative_log_gamma, log_gamma]
+        elif cfg.curve and (cfg.channel_size == 6):
             # slicing does not work, output shapes are still [?, 6]
             #outputs = [output[:3], output[3:]]  # gamma, bp
             outputs = [out_gamma, out_bp]
@@ -590,6 +591,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
             # a, b, bp
             loss_weights = cfg.loss_weights or (1, 1, 1)
             assert len(loss_weights) == len(outputs)
+        elif cfg.curve and (cfg.channel_size == 3):
+            loss_weights = cfg.loss_weights or (0.7, 0.3)  # relative log_gamma, absolute log_gamma
         else:
             loss_weights = None
         if loss_weights:

@@ -7,8 +7,8 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = ['gs://kds-db49684767281a4c3c356e13b3231ea6eecc14cff1b1f6d38ce17448', 
-                 'gs://kds-d85cbeeee1d56acdc87697191f68660cd06425056cdc2de0148b1609'],
+    gcs_paths = ['gs://kds-0a22e7cebe19faf078ec2d2bebe0312b193fa0b3d7c00f11994a4464', 
+                 'gs://kds-5c6b0fa8d0443cf01492a1515fbb072e056e10b0be4d0884650fe3a9'],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -31,6 +31,7 @@ cfg = dict(
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 1e-6,
+    loss_weights = [0.7, 0.3],
     save_best = 'loss',
     add_uniform_noise = False,  # add uniform noise to mask uint8 discretization
     noise_level = 0.05,         # random normal noise (augmentation)

@@ -72,6 +72,7 @@ def init(cfg):
     if cfg.curve == 'gamma':
         cfg.dataset_class = AugInvGammaDataset
         cfg.channel_size = 3
+        cfg.targets = ['target_rel', 'target_abs']
     elif cfg.curve == 'beta':
         cfg.dataset_class = AugInvBetaDataset
         assert cfg.channel_size, "Set channel_size in config file!"
@@ -748,8 +749,8 @@ def parse_tfrecord(cfg, example):
         # predict mix of log_gamma and relative_log_gamma
         log_gamma = tf.math.log(features['target'])
         relative_log_gamma = log_gamma - tf.math.reduce_mean(log_gamma, keepdims=True)
-        abs_weight = 0.3
-        features['target'] = (1 - abs_weight) * relative_log_gamma + abs_weight * log_gamma
+        features['target_rel'] = relative_log_gamma
+        features['target_abs'] = log_gamma
     
     if cfg.curve == 'beta':
         # split target into 2 (3) components for weighted loss
