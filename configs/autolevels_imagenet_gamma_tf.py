@@ -33,8 +33,9 @@ cfg = dict(
     lr_min = 1e-6,
     loss_weights = [0.7, 0.3],
     save_best = 'loss',
-    add_uniform_noise = False,  # add uniform noise to mask uint8 discretization
-    noise_level = 0.05,         # random normal noise (augmentation)
+    add_uniform_noise = 0.75,  # add uniform noise to mask uint8 discretization [bool|float]
+    noise_level = 0.05,        # random normal noise (augmentation)
+    random_blackpoint_shift = 20,
     augmentation = 'autolevels_aug_tf',
 
 # Model

@@ -54,6 +54,8 @@ if not cfg.DEBUG:
 
 # Installs and imports
 install_model_libs(cfg)
+import torch  # temporary: import prior to tf to work around 2.0 import issue
+print("[ √ ] torch:", torch.__version__)
 import tensorflow as tf
 print("[ √ ] tf:", tf.__version__)
 if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:

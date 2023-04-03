@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import cv2
+print("import torch...")
 import torch
 from torch.utils.data import Dataset
 import torchvision
@@ -689,7 +690,8 @@ def decode_image(cfg, image_data, target, height, width):
     elif cfg.curve == 'gamma':
         image = tf.cast(image, tf.float32)
         if cfg.add_uniform_noise:
-            image += tf.random.uniform((height, width, 3))
+            if (cfg.add_uniform_noise is True) or (tf.random.uniform([]) < cfg.add_uniform_noise):
+                image += tf.random.uniform((height, width, 3))
 
     image /= 255.0
 
@@ -698,10 +700,16 @@ def decode_image(cfg, image_data, target, height, width):
     if cfg.curve == 'gamma':
         image = tf.math.pow(image, target[None, None, :])
 
+    if cfg.random_blackpoint_shift:
+        bp_shift = cfg.random_blackpoint_shift / 255 * tf.random.normal((3,))
+        image += bp_shift[None, None, :]
+        image /= (1 + bp_shift[None, None, :])
+
     if cfg.noise_level:
         rnd_factor = tf.random.uniform(())
         image += cfg.noise_level * rnd_factor * tf.random.normal((height, width, 3))
-        #image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)  # does it matter?
+    
+    image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)  # does it matter?
 
     return image
 
@@ -746,7 +754,7 @@ def parse_tfrecord(cfg, example):
                                      features['height'], features['width'])
     
     if cfg.curve == 'gamma':
-        # predict mix of log_gamma and relative_log_gamma
+        # predict relative log_gamma and absolute log_gamma
         log_gamma = tf.math.log(features['target'])
         relative_log_gamma = log_gamma - tf.math.reduce_mean(log_gamma, keepdims=True)
         features['target_rel'] = relative_log_gamma

@@ -506,7 +506,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
             assert cfg.channel_size, 'set cfg.channel_size in project or config file!'
             if cfg.curve and (cfg.channel_size == 3):
                 output = tf.keras.layers.Dense(cfg.channel_size, name='log_gamma')(embed)
-            if cfg.curve and (cfg.channel_size == 6):
+                #out_rel = tf.keras.layers.Dense(cfg.channel_size, name='rel_log_gamma')(embed)
+                #out_abs = tf.keras.layers.Dense(cfg.channel_size, name='abs_log_gamma')(embed)
+            elif cfg.curve and (cfg.channel_size == 6):
                 out_gamma = tf.keras.layers.Dense(3, name='regressor_gamma')(embed)
                 out_bp = tf.keras.layers.Dense(3, name='regressor_bp')(embed)
             elif cfg.curve and (cfg.channel_size == 9):
@@ -528,6 +530,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             relative_log_gamma = tf.subtract(log_gamma, tf.math.reduce_mean(log_gamma, axis=1, keepdims=True),
                                              name='rel_log_gamma')
             outputs = [relative_log_gamma, log_gamma]
+            #outputs = [out_rel, out_abs]
         elif cfg.curve and (cfg.channel_size == 6):
             # slicing does not work, output shapes are still [?, 6]
             #outputs = [output[:3], output[3:]]  # gamma, bp
