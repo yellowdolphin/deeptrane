@@ -412,8 +412,10 @@ class AugInvGammaDataset(Dataset):
         self.use_batch_tfms = cfg.use_batch_tfms
         if self.use_batch_tfms:
             self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
-        self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
+        #self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
+        self.dist_log_gamma = torch.distributions.uniform.Uniform(-1.6, 1.0)
         self.noise_level = cfg.noise_level
+        self.dist_bp = torch.distributions.normal.Normal(0, cfg.random_blackpoint_shift / 255) if cfg.random_blackpoint_shift else None
 
     def __len__(self):
         return len(self.df)
@@ -431,18 +433,26 @@ class AugInvGammaDataset(Dataset):
         n_channels = image.shape[2]
         assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
 
-        # draw gamma (label)
-        labels = torch.exp(self.dist_log_gamma.sample((n_channels,)))
+        # draw gamma, create labels
+        abs_log_gamma = self.dist_log_gamma.sample((n_channels,))
+        gamma = torch.exp(abs_log_gamma)
+        rel_log_gamma = abs_log_gamma - torch.mean(abs_log_gamma)
+        labels = torch.cat((gamma, abs_log_gamma, rel_log_gamma))
 
         if self.use_batch_tfms:
-            # resize to double cfg.size and tensorize for collocation
-            image = torch.tensor(image.transpose(2, 0, 1))  # channel first
-            image = self.presize(image)
-
             # append rnd_factor for noise_level
             if self.noise_level:
                 rnd_factor = torch.rand(1)
                 labels = torch.cat((labels, rnd_factor))
+
+            # append random blackpoint shift
+            if self.dist_bp:
+                rnd_bp_shift = self.dist_bp.sample((n_channels,))
+                labels = torch.cat((labels, rnd_bp_shift))
+
+            # resize image to double cfg.size and tensorize for collocation
+            image = torch.tensor(image.transpose(2, 0, 1))  # channel first
+            image = self.presize(image)
 
             return image, labels
 

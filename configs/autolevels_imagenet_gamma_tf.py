@@ -16,13 +16,13 @@ cfg = dict(
 
 # Training
     seed = 42,
-    num_folds = 4,
+    num_folds = 5,
     use_folds = [0],
     train_on_all = False,
-    size = (256, 256),
+    size = (384, 384),
     multilabel = False,
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue
-    bs = 128,
+    bs = 64,
     steps_per_execution = 1,  # increase for performance (check callbacks, training behavior)
     epochs = 4,
     batch_verbose = 1,
@@ -31,10 +31,10 @@ cfg = dict(
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 1e-6,
-    loss_weights = [0.7, 0.3],
+    loss_weights = [0.6, 0.4],
     save_best = 'loss',
     add_uniform_noise = 0.75,  # add uniform noise to mask uint8 discretization [bool|float]
-    noise_level = 0.05,        # random normal noise (augmentation)
+    noise_level = 0.03,        # random normal noise (augmentation)
     random_blackpoint_shift = 20,
     augmentation = 'autolevels_aug_tf',
 

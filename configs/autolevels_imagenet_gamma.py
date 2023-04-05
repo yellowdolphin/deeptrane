@@ -10,16 +10,18 @@ cfg = dict(
     #filetype = 'tfrec',  # tfds or wds
 
 # Training
-    num_folds = 4,
+    num_folds = 5,
     use_folds = [0],
     train_on_all = False,
     size = (128, 128),
-    add_uniform_noise = False,  # add uniform noise to mask uint8 discretization
-    noise_level = 0.05,         # random normal noise (augmentation)
-    augmentation = 'tfms_004',  # ignored if use_batch_tfms
+    loss_weights = [0.6, 0.4],
+    add_uniform_noise = 0.75,      # add uniform noise to mask uint8 discretization (p)
+    noise_level = 0.03,            # random normal noise (augmentation)
+    random_blackpoint_shift = 20,
+    augmentation = 'tfms_004',     # ignored if use_batch_tfms
     use_batch_tfms = True,
     n_replicas = 8,
-    no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue
+    no_macro_metrics = True,       # otherwise slow valid + 8-TPU-issue
     bs = 64,
     epochs = 1,
     batch_verbose = 1,

@@ -164,8 +164,15 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             if cfg.DEBUG:
                 assert inputs.dtype == torch.uint8, f'unexpected inputs dtype {inputs.dtype}'
 
-            if (cfg.curve == 'gamma') and cfg.noise_level:
-                labels, rnd_factor = labels[:, :3], labels[:, 3]
+            if cfg.curve == 'gamma':
+                # unpack labels: (gamma, abs_log_gamma, rel_log_gamma, rnd_factor, bp_shift)
+                if cfg.noise_level or cfg.random_blackpoint_shift:
+                    labels, rnd_vars = labels[:, :9], labels[:, 9:]
+                    if cfg.noise_level: rnd_factor = rnd_vars[:, 0]
+                    if cfg.random_blackpoint_shift: bp_shift = rnd_vars[:, -3:]
+                gamma, abs_log_gamma, rel_log_gamma = labels[:, :3], labels[:, 3:6], labels[:, 6:]
+                if cfg.loss_weights is None:
+                    labels = gamma
 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
@@ -204,12 +211,15 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             inputs /= 255
 
             if cfg.curve == 'gamma':
-                inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
+                inputs = torch.pow(inputs, gamma[:, :, None, None])  # channel first
+
+            if cfg.random_blackpoint_shift:
+                inputs = (inputs + bp_shift[:, :, None, None]) / (1 + bp_shift[:, :, None, None])
 
             # Random Noise
             if cfg.noise_level:
                 inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
-                #inputs = inputs.clamp(0.0, 1.0)
+                inputs = inputs.clamp(0.0, 1.0)
 
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
@@ -256,18 +266,25 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
             seg_loss = seg_crit(seg_logits, masks)
             cls_loss = criterion(preds, labels)
             loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
-        elif cfg.loss_weights is not None:
-            _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
-            _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+        if cfg.loss_weights is not None:
+            if cfg.curve == 'gamma':
+                _preds = [preds - torch.mean(preds, dim=1, keepdim=True), preds]
+                _labels = [rel_log_gamma, abs_log_gamma]
+            elif cfg.curve == 'beta':
+                _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+                _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+            else:
+                _preds, _labels = preds, labels
+
             weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
             loss = sum(weighted_losses)
 
             # DEBUG nan loss
-            if any([torch.isnan(l.detach()) for l in weighted_losses]):
-                xm.master_print("NaN loss detected.")
-                xm.master_print("losses:", weighted_losses)
-                xm.master_print("labels:", _labels)
-                xm.master_print("preds:", _preds)
+            #if any([torch.isnan(l.detach()) for l in weighted_losses]):
+            #    xm.master_print("NaN loss detected.")
+            #    xm.master_print("losses:", weighted_losses)
+            #    xm.master_print("labels:", _labels)
+            #    xm.master_print("preds:", _preds)
 
         else:
             loss = criterion(preds, labels)
@@ -364,8 +381,13 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
                 torch.zeros(cfg.bs, dtype=torch.int64, device=device))
 
         if cfg.use_batch_tfms:
-            if (cfg.curve == 'gamma') and cfg.noise_level:
-                labels, rnd_factor = labels[:, :3], labels[:, 3]
+            if cfg.curve == 'gamma':
+                # unpack labels: (gamma, abs_log_gamma, rel_log_gamma, rnd_factor, bp_shift)
+                if cfg.noise_level or cfg.random_blackpoint_shift:
+                    labels, rnd_vars = labels[:, :9], labels[:, 9:]
+                    if cfg.noise_level: rnd_factor = rnd_vars[:, 0]
+                    if cfg.random_blackpoint_shift: bp_shift = rnd_vars[:, -3:]
+                gamma, abs_log_gamma, rel_log_gamma = labels[:, :3], labels[:, 3:6], labels[:, 6:]
 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
@@ -378,12 +400,19 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
             inputs /= 255
 
             if cfg.curve == 'gamma':
-                inputs = torch.pow(inputs, labels[:, :, None, None])  # channel first
+                inputs = torch.pow(inputs, gamma[:, :, None, None])  # channel first
+
+            # Don't augment valid inputs for now...
+
+            # Random blackpoint shift
+            #if cfg.random_blackpoint_shift:
+            #    inputs = (inputs + bp_shift[:, :, None, None]) / (1 + bp_shift[:, :, None, None])
+
 
             # Random Noise
-            if cfg.noise_level:
-                inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
-                #inputs = inputs.clamp(0.0, 1.0)
+            #if cfg.noise_level:
+            #    inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
+            #    inputs = inputs.clamp(0.0, 1.0)
                 
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
@@ -409,13 +438,22 @@ def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None)
         assert preds.detach().size()[1] == (cfg.n_classes or cfg.channel_size), f'preds have wrong shape {preds.detach().size()}'
         if cfg.classes:
             assert labels.max() < cfg.n_classes, f'largest label out of bound: {labels.max()}'
+
         if cfg.loss_weights is not None:
-            _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
-            _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+            if cfg.curve == 'gamma':
+                _preds = [preds - torch.mean(preds, dim=1, keepdim=True), preds]
+                _labels = [rel_log_gamma, abs_log_gamma]
+            elif cfg.curve == 'beta':
+                _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+                _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+            else:
+                _preds, _labels = preds, labels
+
             weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
             loss = sum(weighted_losses)
         else:
             loss = criterion(preds, labels)
+
         loss_meter.update(loss.item(), inputs.size(0))  # 1 aten/iter but no performance drop
         #loss_meter.update(loss.detach(), inputs.size(0))  # recursion!
         #xm.add_step_closure(loss_meter.update, args=(loss.item(), inputs.size(0)))  # recursion!
