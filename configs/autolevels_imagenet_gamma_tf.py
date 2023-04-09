@@ -7,8 +7,7 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = ['gs://kds-0a22e7cebe19faf078ec2d2bebe0312b193fa0b3d7c00f11994a4464', 
-                 'gs://kds-5c6b0fa8d0443cf01492a1515fbb072e056e10b0be4d0884650fe3a9'],
+    gcs_paths = [],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -21,6 +20,7 @@ cfg = dict(
     train_on_all = False,
     size = (384, 384),
     multilabel = False,
+    metrics = ['curve_rmse'],
     no_macro_metrics = True,  # otherwise slow valid + 8-TPU-issue
     bs = 64,
     steps_per_execution = 1,  # increase for performance (check callbacks, training behavior)

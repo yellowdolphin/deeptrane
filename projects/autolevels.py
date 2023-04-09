@@ -11,6 +11,7 @@ print("[ √ ] torchvision:", torchvision.__version__)
 import torchvision.transforms as TT
 from torchvision.transforms.functional import InterpolationMode
 from scipy.interpolate import interp1d
+from torchmetrics import MeanSquaredError
 
 
 try:
@@ -645,7 +646,7 @@ def map_index(image, curves, add_uniform_noise=True, height=None, width=None):
     #for i in range(3):
     #    image[:, :, i] = curves[:, i][image[:, :, i]]
     # Use tf.gather_nd instead:
-    image = tf.cast(image, tf.int32)
+    image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
     if add_uniform_noise: image_plus_one = tf.clip_by_value(image + 1, 0, 255)
     curves = tf.cast(curves, tf.float32)
     #assert curves.shape[-1] in {1, 3}
@@ -679,23 +680,9 @@ def decode_image(cfg, image_data, target, height, width):
         return tf.cast(image, tf.float32) / 255.0
 
     if cfg.curve == 'beta':
-        if True:
-            # (a) index mapping
-            # 1 ep efnv2s size=128 tf@colab: 50.83 min/epoch (with tf.function and assertions)
-            # 1 ep efnv2s size=256 tf@colab: 35.57 min/epoch (no tf.function, no assertions)
-            image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
-            curves = get_curves(target, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
-            image = map_index(image, curves, cfg.add_uniform_noise, height, width)
-        else:
-            # (b) curve transform the image
-            # 1 ep efnv2s size=128 tf@colab: 37.28 min/epoch
-            # 1 ep efnv2s size=256 tf@colab: 39.71 min/epoch
-            image = tf.cast(image, tf.float32)
-            image = image + tf.random.uniform((height, width, 3))
-            image /= 255.0
-            #image = curve_tfm(image, target)  # image tfm with tf ops is fast 
-            image = curve_tfm6(image, target)  # super slow, OOM@cpu, occ tpu issues
-            image = tf.clip_by_value(image, clip_value_min=0., clip_value_max=1.)
+        curves = get_curves(target, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
+        image = map_index(image, curves, cfg.add_uniform_noise, height, width)
+        #curves = tf.reshape(curves, (-1,))
 
     elif cfg.curve == 'gamma':
         image = tf.cast(image, tf.float32)
@@ -791,3 +778,41 @@ def parse_tfrecord(cfg, example):
 def count_data_items(filenames, tfrec_filename_pattern=None):
     "Got number of items from idx files"
     return np.sum([391 if 'validation' in fn else 1252 for fn in filenames])
+
+
+class TFCurveRMSE(tf.keras.metrics.MeanSquaredError):
+    def __init__(self, name='curve_rmse', curve='gamma', **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.curve = curve
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        support = tf.cast(tf.linspace(0, 1, 256), dtype=self._dtype)
+        if self.curve == 'gamma':
+            # (256,) ** (N, 3) -> (N, 3, 256)
+            y_true = tf.pow(support[None, None, :], tf.exp(y_true)[:, :, None])
+            y_pred = tf.pow(support[None, None, :], tf.exp(y_pred)[:, :, None])
+
+        return super().update_state(y_true, y_pred, sample_weight)
+    
+    def result(self):
+        return tf.sqrt(super().result()) * 255
+
+
+class CurveRMSE(MeanSquaredError):
+    def __init__(self, curve='gamma', squared=False):
+        super().__init__(squared=squared)
+        self.curve = curve
+
+    def update(self, preds: torch.Tensor, target: torch.Tensor):
+        assert preds.shape == target.shape
+
+        support = torch.linspace(0, 1, 256, dtype=preds.dtype)
+        if self.curve == 'gamma':
+            # (256,) ** (N, 3) -> (N, 3, 256)
+            target = torch.pow(support[None, None, :], torch.exp(target)[:, :, None])
+            preds = torch.pow(support[None, None, :], torch.exp(preds)[:, :, None])
+
+        return super().update(preds, target)
+    
+    def compute(self):
+        return super().compute() * 255

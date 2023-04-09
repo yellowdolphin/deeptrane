@@ -21,6 +21,7 @@ cfg = dict(
     augmentation = 'tfms_004',     # ignored if use_batch_tfms
     use_batch_tfms = True,
     n_replicas = 8,
+    metrics = ['curve_rmse'],
     no_macro_metrics = True,       # otherwise slow valid + 8-TPU-issue
     bs = 64,
     epochs = 1,

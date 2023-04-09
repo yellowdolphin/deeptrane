@@ -30,7 +30,7 @@ from torch import FloatTensor, LongTensor
 torch.set_default_tensor_type('torch.FloatTensor')
 
 
-def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, scheduler, device):
+def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, scheduler, device):
 
     # initialize
     batch_start = time.perf_counter()
@@ -85,8 +85,6 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     n_iter = len(dataloader)
     iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
     #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
-    if cfg.DEBUG:
-        xm.master_print(f"Epoch {epoch} / {cfg.epochs}, train {n_iter} batches")
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -339,7 +337,7 @@ def train_fn(model, cfg, xm, epoch, dataloader, criterion, seg_crit, optimizer, 
     return loss_meter.average
 
 
-def valid_fn(model, cfg, xm, epoch, dataloader, criterion, device, metrics=None):
+def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
 
     # initialize
     model.eval()
@@ -588,6 +586,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, **dist_args)
     if 'eAP5' in cfg.metrics:
         metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
+    if 'curve_rmse' in cfg.metrics:
+        from projects.autolevels import CurveRMSE
+        metrics['curve_rmse'] = CurveRMSE(curve=cfg.curve)
+
     metrics = tm.MetricCollection(metrics, compute_groups=cfg.metric_compute_groups)
     # metric_compute_groups: don't use if metrics use modifying kwargs like 'num_classes', 'threshold', 'top_k'
     # Issue: If different metrics yield same values, set compute_groups=False!
@@ -686,9 +688,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     xm.master_print("\n", epoch_summary_header)
     xm.master_print("=" * (len(epoch_summary_header) + 2))
 
-    for epoch in range(rst_epoch, rst_epoch + cfg.epochs):
+    for epoch in range(rst_epoch, cfg.epochs):
 
         # Data for verbose info
+        xm.master_print(f"Epoch {epoch + 1} / {cfg.epochs}, starting at {time.strftime('%a, %d %b %Y %H:%M:%S +0000')}")
         epoch_start = time.perf_counter()
         current_lr = optimizer.param_groups[-1]["lr"]
         if hasattr(scheduler, 'get_last_lr'):
@@ -700,8 +703,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
             train_loader.sampler.set_epoch(epoch)
 
-        # Training
-
+        # Training Step
         if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
             # ParallelLoader requires instantiation per epoch
             dataloader = pl.ParallelLoader(train_loader, [device],
@@ -712,7 +714,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             dataloader = train_loader
 
         train_loss = train_fn(model, cfg, xm,
-                              epoch       = epoch + 1, 
                               dataloader  = dataloader,
                               criterion   = criterion,
                               seg_crit    = seg_crit,
@@ -720,7 +721,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                               scheduler   = scheduler,
                               device      = device)
 
-        # Validation
+        # Validation Step
         valid_start = time.perf_counter()
 
         if cfg.train_on_all:
@@ -737,7 +738,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
 
             #valid_loss, old_valid_metrics, valid_metrics = valid_fn(model, cfg, xm,
             valid_loss, valid_metrics = valid_fn(model, cfg, xm,
-                                                 epoch       = epoch + 1,
                                                  dataloader  = dataloader,
                                                  criterion   = criterion,
                                                  device      = device,
@@ -789,10 +789,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         if model_score > best_model_score or not cfg.save_best:
             if cfg.save_best:
                 best_model_score = model_score
-                #xm.master_print(f'{cfg.save_best or "valid_loss"} improved.')
+                xm.master_print(f'{cfg.save_best or "valid_loss"} improved.')
                 fn = cfg.out_dir / f'{model_name}_best_{cfg.save_best}'
             else:
-                fn = cfg.out_dir / f'{model_name}_ep{epoch+1}'
+                fn = cfg.out_dir / f'{model_name}_ep{epoch + 1}'
 
             #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
             xm.save(model.state_dict(), f'{fn}.pth')
