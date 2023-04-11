@@ -171,6 +171,9 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 gamma, abs_log_gamma, rel_log_gamma = labels[:, :3], labels[:, 3:6], labels[:, 6:]
                 if cfg.loss_weights is None:
                     labels = gamma
+            elif (cfg.curve == 'free') and cfg.noise_level:
+                # use same noise_level on all channels
+                labels, rnd_factor = labels[:, :, :256], labels[:, 0, 256]
 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
@@ -200,13 +203,30 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                         noise = torch.rand_like(inputs) * noise_range
                         inputs += noise
 
+            elif cfg.curve == 'free':
+                # labels are the target curves: (N, C, 256)
+                # map curves with torch.gather
+                # curves must be expanded to have same shape as inputs (except dim=2)
+                expanded_curves = labels[..., None].expand(-1, -1, -1, inputs.size(-1))
+                if cfg.add_uniform_noise:
+                    # add uniform noise to mask uint8 discretization
+                    inputs_plus_one = (inputs.to(torch.int64) + 1).clamp(0, 255)
+                inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
+                if cfg.add_uniform_noise:
+                    inputs_plus_one = torch.gather(expanded_curves, dim=2, index=inputs_plus_one)
+                    noise_range = inputs_plus_one - inputs
+                    noise = torch.rand_like(inputs) * noise_range
+                    inputs += noise
+                labels = labels.reshape(labels.shape[0], -1)
+
             else:
                 inputs = inputs.float()
 
             if cfg.add_uniform_noise and (cfg.curve == 'gamma'):
                 inputs = (inputs + torch.rand_like(inputs)).clamp(max=255)
 
-            inputs /= 255
+            if cfg.curve != 'free':
+                inputs /= 255
 
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, gamma[:, :, None, None])  # channel first
@@ -386,16 +406,35 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
                     if cfg.noise_level: rnd_factor = rnd_vars[:, 0]
                     if cfg.random_blackpoint_shift: bp_shift = rnd_vars[:, -3:]
                 gamma, abs_log_gamma, rel_log_gamma = labels[:, :3], labels[:, 3:6], labels[:, 6:]
+            elif (cfg.curve == 'free') and cfg.noise_level:
+                # use same noise_level on all channels
+                labels, rnd_factor = labels[:, :, :256], labels[:, 0, 256]
 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
                 labels, curves = labels[:, :, :3], labels[:, :, 3:]
                 expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
                 inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
+            elif cfg.curve == 'free':
+                # labels are the target curves: (N, C, 256)
+                # map curves with torch.gather
+                # curves must be expanded to have same shape as inputs (except dim=2)
+                expanded_curves = labels[..., None].expand(-1, -1, -1, inputs.size(-1))
+                if cfg.add_uniform_noise:
+                    # add uniform noise to mask uint8 discretization
+                    inputs_plus_one = (inputs.to(torch.int64) + 1).clamp(0, 255)
+                inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
+                if cfg.add_uniform_noise:
+                    inputs_plus_one = torch.gather(expanded_curves, dim=2, index=inputs_plus_one)
+                    noise_range = inputs_plus_one - inputs
+                    noise = torch.rand_like(inputs) * noise_range
+                    inputs += noise
+                labels = labels.reshape(labels.shape[0], -1)
             else:
                 inputs = inputs.float()
 
-            inputs /= 255
+            if cfg.curve != 'free':
+                inputs /= 255
 
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, gamma[:, :, None, None])  # channel first

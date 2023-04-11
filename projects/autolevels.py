@@ -80,6 +80,10 @@ def init(cfg):
         assert cfg.channel_size, "Set channel_size in config file!"
         cfg.targets = (['target_gamma', 'target_bp'] if cfg.channel_size == 6 else
                        ['target_a', 'target_b', 'target_bp'])
+    else:
+        cfg.dataset_class = AugInvCurveDataset
+        cfg.channel_size = 256 * 3
+        cfg.targets = ['target_curve']
 
 
 def read_csv(cfg):
@@ -567,6 +571,86 @@ class AugInvBetaDataset(Dataset):
             image = self.tensor_transform(image)
 
         return image, labels if self.labeled else image
+
+
+class AugInvCurveDataset(Dataset):
+    """Images are mapped on device using the randomly generated target_curve"""
+
+    def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
+                 return_path_attr=None):
+        """
+        Args:
+            df (pd.DataFrame):                First row must contain the image file paths
+            image_root (string, Path):        Root directory for df.image_path
+            transform (callable, optional):   Optional transform to be applied on the first
+                                              element (image) of a sample.
+            labeled (bool, optional):         if True, return target_curve
+            return_path_attr (str, optional): return Path attribute `return_path_attr`
+
+        """
+        self.df = df.reset_index(drop=True)
+        self.image_root = cfg.image_root
+        self.transform = transform
+        self.tensor_transform = tensor_transform
+        self.albu = transform and transform.__module__.startswith('albumentations')
+        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
+        self.labeled = labeled
+        self.return_path_attr = return_path_attr
+        self.use_batch_tfms = cfg.use_batch_tfms
+        if self.use_batch_tfms:
+            self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
+        #self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
+        self.dist_log_gamma = torch.distributions.uniform.Uniform(*cfg.log_gamma_range) if cfg.log_gamma_range else None
+        self.dist_a = torch.distributions.normal.Normal(0, cfg.a_sigma or 0.5) if cfg.a_sigma else None
+        self.dist_b = torch.distributions.normal.Normal(cfg.b_mean or 0.4, cfg.b_sigma) if cfg.b_sigma else None
+        self.dist_bp = torch.distributions.normal.Normal(0, cfg.bp_sigma / 255) if cfg.bp_sigma else None
+        self.noise_level = cfg.noise_level
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, index):
+
+        fn = os.path.join(self.image_root, self.df.iloc[index, 0])
+        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
+            bytes_data = gcsfs.read(fn)
+            image = PIL.Image.open(io.BytesIO(bytes_data))
+        else:
+            assert os.path.exists(fn), f'{fn} not found'
+            image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
+
+        n_channels = image.shape[2]
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
+
+        # Generate curve (C, 256)
+        support = torch.linspace(0, 1, 256, dtype=torch.float32)
+        if self.dist_log_gamma:
+            log_gamma = self.dist_log_gamma.sample((n_channels,))
+            gamma = torch.exp(log_gamma)
+            curve = torch.pow(support[None, :], gamma[:, None])
+        elif self.dist_a and self.dist_b:
+            a = self.dist_a.sample((n_channels,))
+            b = self.dist_b.sample((n_channels,))
+            curve = Curve(a, b).get_inverse_curves()
+            assert curve.shape == (n_channels, 256), f"wrong curve shape: {curve.shape}"
+            assert curve.dtype == torch.float32, f"wrong curve dtype: {curve.dtype}"
+        else:
+            curve = support
+        if self.dist_bp:
+            bp_shift = self.dist_bp.sample((n_channels,))
+            curve = (curve + bp_shift[:, None]) / (1 + bp_shift[:, None])        
+
+        assert self.use_batch_tfms, 'AugInvCurveDataset only supports batch_tfms'
+        # append rnd_factor for noise_level -> (C, 257)
+        if self.noise_level:
+            rnd_factor = torch.rand(1).repeat(3)
+            curve = torch.cat((curve, rnd_factor[:, None]), dim=1)
+
+        # resize image to double cfg.size and tensorize for collocation
+        image = torch.tensor(image.transpose(2, 0, 1))  # channel first
+        image = self.presize(image)
+
+        return image, curve
 
 
 # TF data pipeline --------------------------------------------------------
