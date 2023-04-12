@@ -349,6 +349,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             batch_start = time.perf_counter()
         if cfg.DEBUG and batch_idx == 1:
             xm.master_print(f"train inputs: {inputs.shape}, value range: {inputs.min():.2f} ... {inputs.max():.2f}")
+        break
 
     # scheduler step after epoch
     if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'):

@@ -643,7 +643,7 @@ class AugInvCurveDataset(Dataset):
             assert curve.dtype == torch.float32, f"wrong curve dtype: {curve.dtype}"
         if self.dist_bp:
             bp_shift = self.dist_bp.sample((n_channels,))
-            curve = (curve + bp_shift[:, None]) / (1 + bp_shift[:, None])
+            curve = (curve + bp_shift[:, None]).clip(0, None) / (1 + bp_shift[:, None])
 
         assert self.use_batch_tfms, 'AugInvCurveDataset only supports batch_tfms'
         # append rnd_factor for noise_level -> (C, 257)
@@ -786,6 +786,7 @@ def decode_image(cfg, image_data, target, height, width):
     if cfg.curve != 'free':
         image /= 255.0
 
+    #tf.print("image:", image.shape, tf.reduce_min(image), tf.reduce_mean(image), tf.reduce_max(image))
     image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
 
     if cfg.curve == 'gamma':
@@ -864,9 +865,11 @@ def parse_tfrecord(cfg, example):
             assert curve.dtype == tf.float32, f"wrong curve dtype: {curve.dtype}"
         if dist_bp:
             bp_shift = dist_bp.sample([3])
+            #curve = tf.clip_by_value((curve + bp_shift[:, None]) / (1 + bp_shift[:, None]), 0, 1)
             curve = (curve + bp_shift[:, None]) / (1 + bp_shift[:, None])
 
         features['target'] = curve
+        #tf.print("curve:", curve.shape, tf.reduce_min(curve), tf.reduce_mean(curve), tf.reduce_max(curve))
 
     features['height'] = example[cfg.data_format['height']]
     features['width'] = example[cfg.data_format['width']]

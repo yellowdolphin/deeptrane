@@ -7,8 +7,8 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = ['gs://kds-c4b1956f70b95739834bd074b1774b6e6afc0b72633bab2d37881069', 
-                 'gs://kds-e59ac4bb2831c493814f84c5474564f2dc101c6f3f89e21762a1d378'],
+    gcs_paths = ['gs://kds-172ee6d07b7bef033a15a775d2a410b236bb43ac4893717e0b93d964', 
+                 'gs://kds-043649cfc71e31b1e092dacc21d7c1fd75c7481c0138be8a66e7259d'],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -48,8 +48,9 @@ cfg = dict(
     #rst_name = '',
     optimizer = "Adam",  # Adam, AdamW, SGD
     wd = 5e-2,
-    dropout_ps = [0],
-    lin_ftrs = [768],
+    dropout_ps = [0, 0, 0, 0],
+    lin_ftrs = [9, 768, 768, 768],
+    act_head = 'silu',
 )
 
 cfg["tags"] = cfg["name"].split("_")

@@ -484,7 +484,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
             for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
                 embed = tf.keras.layers.Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
-                embed = tf.keras.layers.Dense(out_channels, activation='relu', name=f"FC_{i}")(embed)
+                embed = tf.keras.layers.Dense(out_channels, activation=cfg.act_head, name=f"FC_{i}")(embed)
                 embed = BatchNorm(cfg, bn_type=cfg.bn_head, name=f"BN_{i}")(embed) if cfg.bn_head else embed
             embed = tf.keras.layers.Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
                 embed) if final_dropout else embed
@@ -537,6 +537,10 @@ def get_pretrained_model(cfg, strategy, inference=False):
             outputs = [out_gamma, out_bp]
         elif cfg.curve and (cfg.channel_size == 9):
             outputs = [out_a, out_b, out_bp]
+        elif cfg.curve and (cfg.curve == 'free'):
+            # We don't care about curve outside the valid range
+            #outputs = [tf.clip_by_value(output, 0, 1, name='clipped_curve')]
+            outputs = [output]
         else:
             outputs = [output]
         if cfg.aux_loss and not inference:

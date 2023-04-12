@@ -156,7 +156,7 @@ for use_fold in cfg.use_folds:
         model = project.get_pretrained_model(cfg, strategy)
     else:
         model = get_pretrained_model(cfg, strategy)
-    model.summary()
+    model.summary(line_length=120)
 
     if cfg.rst_path and cfg.rst_name:
         model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
