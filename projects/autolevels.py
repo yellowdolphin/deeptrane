@@ -13,6 +13,7 @@ from torchvision.transforms.functional import InterpolationMode
 from scipy.interpolate import interp1d
 
 try:
+    import torchmetrics as tm
     from torchmetrics import MeanSquaredError
 except ModuleNotFoundError:
     from utils.general import quietly_run
