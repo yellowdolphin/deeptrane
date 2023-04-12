@@ -11,8 +11,15 @@ print("[ √ ] torchvision:", torchvision.__version__)
 import torchvision.transforms as TT
 from torchvision.transforms.functional import InterpolationMode
 from scipy.interpolate import interp1d
-from torchmetrics import MeanSquaredError
 
+try:
+    from torchmetrics import MeanSquaredError
+except ModuleNotFoundError:
+    from utils.general import quietly_run
+    quietly_run('pip install torchmetrics')
+    import torchmetrics as tm
+    from torchmetrics import MeanSquaredError
+print("[ √ ] torchmetrics:", tm.__version__)
 
 try:
     import albumentations as alb
@@ -21,7 +28,6 @@ except ModuleNotFoundError:
     quietly_run('pip install albumentations')
     import albumentations as alb
 print("[ √ ] albumentations:", alb.__version__)
-
 
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -83,7 +89,7 @@ def init(cfg):
     else:
         cfg.dataset_class = AugInvCurveDataset
         cfg.channel_size = 256 * 3
-        cfg.targets = ['target_curve']
+        cfg.targets = ['target']
 
 
 def read_csv(cfg):
@@ -623,22 +629,20 @@ class AugInvCurveDataset(Dataset):
         assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
 
         # Generate curve (C, 256)
-        support = torch.linspace(0, 1, 256, dtype=torch.float32)
+        curve = torch.linspace(0, 1, 256, dtype=torch.float32)
         if self.dist_log_gamma:
             log_gamma = self.dist_log_gamma.sample((n_channels,))
             gamma = torch.exp(log_gamma)
-            curve = torch.pow(support[None, :], gamma[:, None])
+            curve = torch.pow(curve[None, :], gamma[:, None])
         elif self.dist_a and self.dist_b:
             a = self.dist_a.sample((n_channels,))
             b = self.dist_b.sample((n_channels,))
             curve = Curve(a, b).get_inverse_curves()
             assert curve.shape == (n_channels, 256), f"wrong curve shape: {curve.shape}"
             assert curve.dtype == torch.float32, f"wrong curve dtype: {curve.dtype}"
-        else:
-            curve = support
         if self.dist_bp:
             bp_shift = self.dist_bp.sample((n_channels,))
-            curve = (curve + bp_shift[:, None]) / (1 + bp_shift[:, None])        
+            curve = (curve + bp_shift[:, None]) / (1 + bp_shift[:, None])
 
         assert self.use_batch_tfms, 'AugInvCurveDataset only supports batch_tfms'
         # append rnd_factor for noise_level -> (C, 257)
@@ -774,7 +778,12 @@ def decode_image(cfg, image_data, target, height, width):
             if (cfg.add_uniform_noise is True) or (tf.random.uniform([]) < cfg.add_uniform_noise):
                 image += tf.random.uniform((height, width, 3))
 
-    image /= 255.0
+    elif cfg.curve == 'free':
+        curves = tf.transpose(target)
+        image = map_index(image, curves, cfg.add_uniform_noise, height, width)
+
+    if cfg.curve != 'free':
+        image /= 255.0
 
     image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
 
@@ -818,7 +827,7 @@ def parse_tfrecord(cfg, example):
         gamma = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
         bp = tfd.HalfNormal(scale=40.).sample([3])
         features['target'] = tf.stack([gamma, bp])
-    else:
+    elif cfg.curve == 'beta':
         # do not instantiate tfd classes globally: TF allocates half of GPU!
         dist_a = tfd.Normal(0.0, scale=cfg.a_sigma or 0.5)
         dist_b = tfd.Normal(cfg.b_mean or 0.4, scale=cfg.b_sigma or 0.25)
@@ -827,20 +836,49 @@ def parse_tfrecord(cfg, example):
         b = dist_b.sample([3])
         bp = dist_bp.sample([3])
         features['target'] = tf.stack([a, b, bp])
+    elif cfg.curve == 'free':
+        dist_log_gamma = tfd.Uniform(*cfg.log_gamma_range) if cfg.log_gamma_range else None
+        dist_a = tfd.Normal(0.0, scale=cfg.a_sigma or 0.5) if cfg.a_sigma else None
+        dist_b = tfd.Normal(cfg.b_mean or 0.4, scale=cfg.b_sigma) if cfg.b_sigma else None
+        dist_bp = tfd.Normal(0.0, cfg.bp_sigma / 255) if cfg.bp_sigma else None
 
+        # Generate curve (C, 256)
+        curve = tf.linspace(0.0, 1.0, 256)
+        if dist_log_gamma:
+            log_gamma = dist_log_gamma.sample([3])
+            gamma = tf.math.exp(log_gamma)
+            curve = tf.math.pow(curve[None, :], gamma[:, None])
+        elif dist_a and dist_b:
+            a = dist_a.sample([3])
+            b = dist_b.sample([3])
+            beta_decay = cfg.beta_decay or 10
+            alpha = 1 + tf.exp(a)[:, None]
+            beta = 1 / (1 + tf.exp(-(beta_decay * b)))[:, None]  # sigmoid
+            y = tf.linspace(1e-3, 0.9, 2000)[None, :]
+            xs = tf.pow(y, alpha - 1) * tf.pow(1 - y, beta - 1)  # pdf(y)
+            q = tf.linspace(0.0, 255.0, 256)
+            #q = tf.range(0.0, 256.0, delta=1.0, dtype=tf.float32)
+            curve = tf.stack([interp1d_tf(xs[c, :], y, q) for c in range(3)])
+            assert curve.shape == (3, 256), f"wrong curve shape: {curve.shape}"
+            assert curve.dtype == tf.float32, f"wrong curve dtype: {curve.dtype}"
+        if dist_bp:
+            bp_shift = dist_bp.sample([3])
+            curve = (curve + bp_shift[:, None]) / (1 + bp_shift[:, None])
+
+        features['target'] = curve
 
     features['height'] = example[cfg.data_format['height']]
     features['width'] = example[cfg.data_format['width']]
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'],
                                      features['height'], features['width'])
-    
+
     if cfg.curve == 'gamma':
         # predict relative log_gamma and absolute log_gamma
         log_gamma = tf.math.log(features['target'])
         relative_log_gamma = log_gamma - tf.math.reduce_mean(log_gamma, keepdims=True)
         features['target_rel'] = relative_log_gamma
         features['target_abs'] = log_gamma
-    
+
     if cfg.curve == 'beta':
         # split target into 2 (3) components for weighted loss
         if cfg.channel_size == 6:
@@ -850,7 +888,10 @@ def parse_tfrecord(cfg, example):
             features['target_a'] = features['target'][0, :]
             features['target_b'] = features['target'][1, :]
             features['target_bp'] = features['target'][2, :]
-    
+
+    if cfg.curve == 'free':
+        features['target'] = tf.reshape(features['target'], [cfg.channel_size])  # match model output
+
     # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict
     inputs = tuple(features[key] for key in cfg.inputs)
