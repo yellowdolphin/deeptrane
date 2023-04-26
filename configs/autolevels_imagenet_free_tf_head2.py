@@ -7,8 +7,8 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = ['gs://kds-172ee6d07b7bef033a15a775d2a410b236bb43ac4893717e0b93d964', 
-                 'gs://kds-043649cfc71e31b1e092dacc21d7c1fd75c7481c0138be8a66e7259d'],
+    gcs_paths = ['gs://kds-113f370f9b0589ad47dbba2c8a74c838547c20cb353ebfe7ef52cd70', 
+                 'gs://kds-b94314b236f09db1ada3be0dcaaea755284396b7ae057d2bb4d0f259'],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -33,12 +33,18 @@ cfg = dict(
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 1e-6,
     save_best = 'loss',
-    log_gamma_range = [-1.6, 1.0],
-    a_sigma = None,
-    b_sigma = None,
-    bp_sigma = 20,
-    add_uniform_noise = 0.75,  # add uniform noise to mask uint8 discretization [bool|float]
-    noise_level = 0.03,        # random normal noise (augmentation)
+    predict_inverse = True,
+    log_gamma_range = [-1.4, 1.1],
+    curve4_loga_range = (-1.6, 0.0),
+    curve4_b_range = (0.4, 1.2),
+    curve3_a_range = (0.34, 1.06),
+    curve3_beta_range = (0.5, 1),
+    blackpoint_range = (-30, 20),   # x-offset
+    blackpoint2_range = (-25, 20),  # y-offset
+    p_gamma = 1.,                  # probability for using Gamma curve
+    p_beta = 0.,                  # probability for using Beta PDF rather than Curve4
+    add_uniform_noise = 0.75,       # add uniform noise to mask uint8 discretization [bool|float]
+    noise_level = 0.03,             # random normal noise (augmentation)
     augmentation = 'autolevels_aug_tf',
 
 # Model

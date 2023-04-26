@@ -171,9 +171,16 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 gamma, abs_log_gamma, rel_log_gamma = labels[:, :3], labels[:, 3:6], labels[:, 6:]
                 if cfg.loss_weights is None:
                     labels = gamma
-            elif (cfg.curve == 'free') and cfg.noise_level:
-                # use same noise_level on all channels
-                labels, rnd_factor = labels[:, :, :256], labels[:, 0, 256]
+            elif (cfg.curve == 'free'):
+                # unpack labels
+                if cfg.noise_level:
+                    # use same noise_level on all channels
+                    labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
+                if cfg.predict_inverse:
+                    # split labels into (target, tfms)
+                    labels, tfms = labels[:, :, :256], labels[:, :, 256:]
+                else:
+                    tfms = labels
 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
@@ -204,10 +211,9 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                         inputs += noise
 
             elif cfg.curve == 'free':
-                # labels are the target curves: (N, C, 256)
-                # map curves with torch.gather
+                # map tfms (N, C, 256) with torch.gather
                 # curves must be expanded to have same shape as inputs (except dim=2)
-                expanded_curves = labels[..., None].expand(-1, -1, -1, inputs.size(-1))
+                expanded_curves = tfms[..., None].expand(-1, -1, -1, inputs.size(-1))
                 if cfg.add_uniform_noise:
                     # add uniform noise to mask uint8 discretization
                     inputs_plus_one = (inputs.to(torch.int64) + 1).clamp(0, 255)
@@ -275,6 +281,8 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             #    inputs = TF.pad(inputs, padding, padding_mode='reflect')
             #    inputs = TF.rotate(inputs, angle, resample=0)
             #    inputs = TF.crop(inputs, top, left, height, width)
+        elif cfg.curve == 'free':
+            labels = labels.reshape(labels.shape[0], -1)
 
         # forward and backward pass
         preds = model(inputs, labels) if model.requires_labels else model(inputs)
@@ -407,9 +415,18 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
                     if cfg.noise_level: rnd_factor = rnd_vars[:, 0]
                     if cfg.random_blackpoint_shift: bp_shift = rnd_vars[:, -3:]
                 gamma, abs_log_gamma, rel_log_gamma = labels[:, :3], labels[:, 3:6], labels[:, 6:]
-            elif (cfg.curve == 'free') and cfg.noise_level:
-                # use same noise_level on all channels
-                labels, rnd_factor = labels[:, :, :256], labels[:, 0, 256]
+            elif (cfg.curve == 'free'):
+                # unpack labels
+                if cfg.noise_level:
+                    # use same noise_level on all channels
+                    labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
+                if cfg.predict_inverse:
+                    # split labels into (target, tfms)
+                    labels, tfms = labels[:, :, :256], labels[:, :, 256:]
+                else:
+                    tfms = labels
+                #for i, tfm in enumerate(tfms):
+                #    xm.master_print(f"tfm{i:03d}:", tfm.min().item(), tfm.mean().item(), tfm.max().item())
 
             if (cfg.curve == 'beta') and cfg.curve_tfm_on_device:
                 # labels: (N, C, 3), curves: (N, C, 256)
@@ -417,10 +434,9 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
                 expanded_curves = curves[..., None].expand(-1, -1, -1, inputs.size(-1))
                 inputs = torch.gather(expanded_curves, dim=2, index=inputs.to(torch.int64))
             elif cfg.curve == 'free':
-                # labels are the target curves: (N, C, 256)
-                # map curves with torch.gather
+                # map tfms (N, C, 256) with torch.gather
                 # curves must be expanded to have same shape as inputs (except dim=2)
-                expanded_curves = labels[..., None].expand(-1, -1, -1, inputs.size(-1))
+                expanded_curves = tfms[..., None].expand(-1, -1, -1, inputs.size(-1))
                 if cfg.add_uniform_noise:
                     # add uniform noise to mask uint8 discretization
                     inputs_plus_one = (inputs.to(torch.int64) + 1).clamp(0, 255)
@@ -440,19 +456,15 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, gamma[:, :, None, None])  # channel first
 
-            # Don't augment valid inputs for now...
-
-            # Random blackpoint shift
-            #if cfg.random_blackpoint_shift:
-            #    inputs = (inputs + bp_shift[:, :, None, None]) / (1 + bp_shift[:, :, None, None])
-
-
             # Random Noise
-            #if cfg.noise_level:
-            #    inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
-            #    inputs = inputs.clamp(0.0, 1.0)
+            if cfg.noise_level:
+                inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
+                inputs = inputs.clamp(0.0, 1.0)
                 
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
+
+        elif cfg.curve == "free":
+            labels = labels.reshape(labels.shape[0], -1)
 
         # forward
         with torch.no_grad():
