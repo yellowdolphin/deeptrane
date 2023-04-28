@@ -844,7 +844,7 @@ class AugInvCurveDataset2(Dataset):
             b = self.dist_curve4_b(n_channels).astype(np.float32)
             curve = Curve4(a, b, bp, bp2)
         tfm = curve(support[None, :])
-        print("Curve_params:", *[p[0].item() for p in curve.params])
+        #print("Curve_params:", *[p[0].item() for p in curve.params])
         target = curve.inverse(support[None, :]) if self.predict_inverse else tfm
         target = torch.tensor(target)
         assert target.shape == (n_channels, 256), f"wrong target shape: {target.shape}"
@@ -1066,134 +1066,122 @@ def parse_tfrecord(cfg, example):
         # Generate curve (C, 256)
         # 3 Options: 
         # - use numpy class, convert to tf.tensor
-        #    -> works for debugging but rng produces identical params for each example!
+        #    -> works for debugging but np.random produces identical params for all examples!
         #    -> actually, this is not a np problem, should work with np.random.rand*()
         # - inline code with TF Ops here
         # - upgrade function get_curves
 
-        #rng = np.random.default_rng()  # does not work: same params in each call
         support = np.linspace(0.0, 1.0, 256, dtype=np.float32)
-        #bp = rng.uniform(*cfg.blackpoint_range, 3).astype(np.float32)
-        #bp2 = rng.uniform(*cfg.blackpoint2_range, 3).astype(np.float32)
-        #bp = tfd.Uniform(*cfg.blackpoint_range).sample([3])  #[:, None] / 255
-        bp = tf.random.uniform([3], *cfg.blackpoint_range)[:, None] / 255
-        bp2 = tfd.Uniform(*cfg.blackpoint2_range).sample([3])[:, None] / 255
-        #tfm = tf.linspace(0.0, 1.0, 256)[None, :]
-        #target = tf.linspace(0.0, 1.0, 256)[None, :]
+        # A
+        bp = np.random.uniform(*cfg.blackpoint_range, 3).astype(np.float32)
+        bp2 = np.random.uniform(*cfg.blackpoint2_range, 3).astype(np.float32)
+        
+        # B
+        ##bp = tfd.Uniform(*cfg.blackpoint_range).sample([3])  #[:, None] / 255
+        #bp = tf.random.uniform([3], *cfg.blackpoint_range)[:, None] / 255
+        #bp2 = tfd.Uniform(*cfg.blackpoint2_range).sample([3])[:, None] / 255
 
-        #if tf.random.uniform([]) < cfg.p_gamma:  # TypeError: To be compatible with tf.function, Python functions must return zero or more Tensors
-        #if tf.random.uniform([]) < cfg.add_uniform_noise:  # this works though! cfg.add_uniform_noise = 0.75
-        #    print(f"if tf.random.uniform() < {cfg.add_uniform_noise} worked")
-        #else:
-        #    print(f"if tf.random.uniform() < {cfg.add_uniform_noise} worked")
-
-        #if rng.uniform() < cfg.p_gamma:
-        if tf.random.uniform([]) < cfg.p_gamma:
-            #log_gamma = rng.uniform(*cfg.log_gamma_range, 3).astype(np.float32)
-            #gamma = np.exp(log_gamma)
-            #curve = Curve0(gamma, bp, bp2)
-            #assert all([p.dtype == np.float32 for p in curve.params]), str([p.dtype == np.float32 for p in curve.params])
-            log_gamma = tfd.Uniform(*cfg.log_gamma_range).sample([3])
-            gamma = tf.exp(log_gamma)[:, None]
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
-            x = tf.pow(x, gamma)
-            x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
-            if cfg.predict_inverse:
-                x = support[None, :]
-                x = (x - bp2) / (1 - bp2)
-                x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
-                x = tf.pow(x, 1 / gamma)
-                x = (x - bp) / (1 - bp)
-                target = tf.clip_by_value(x, 0, 1)
-            else:
-                target = tfm
-
-        #elif rng.uniform() < cfg.p_beta:
-        elif tf.random.uniform([]) < cfg.p_beta:
-            #a = rng.uniform(*cfg.curve3_a_range, 3).astype(np.float32)
-            #alpha = np.exp(a)
-            #beta = rng.uniform(*cfg.curve3_beta_range, 3).astype(np.float32)
-            #curve = Curve3(alpha, beta, bp, bp2)
-            a = tfd.Uniform(*cfg.curve3_a_range).sample([3])
-            alpha = tf.exp(a)[:, None]
-            beta = tfd.Uniform(*cfg.curve3_beta_range).sample([3])[:, None]
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-            x = x * 0.9                              # reduce slope at whitepoint
-            x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
-            x /= x[:, -1:]                                      # normalize
-            x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
-            #y = tf.linspace(1e-3, 0.9, 2000)[None, :]
-            #xs = tf.pow(y, alpha - 1) * tf.pow(1 - y, beta - 1)  # pdf(y)
-            #q = tf.linspace(0.0, 255.0, 256)
-            #q = tf.range(0.0, 256.0, delta=1.0, dtype=tf.float32)
-            #tfm = tf.stack([interp1d_tf(xs[c, :], y, q) for c in range(3)])
-            #assert tfm.shape == (3, 256), f"wrong tfm shape: {tfm.shape}"
-            #assert tfm.dtype == tf.float32, f"wrong tfm dtype: {tfm.dtype}"
-
-            if cfg.predict_inverse:
-                # float64 avoids div-by-zero below
-                x = tf.cast(support, tf.float64)
-                y = tf.linspace(1e-6, 1 - 1e-6, 2000)
-                y = tf.cast(y, tf.float64)
-                bp = tf.cast(bp, tf.float64)
-                bp2 = tf.cast(bp2, tf.float64)
-                alpha = tf.cast(alpha, tf.float64)
-                beta = tf.cast(beta, tf.float64)
-                #pdfs = self.__call__(y[None, :])
-                pdfs = bp + y[None, :] * (1 - bp)
-                pdfs = tf.clip_by_value(pdfs, 1e-6, 1 - 1e-6)  # avoid nan
-                pdfs = pdfs * 0.9                              # reduce slope at whitepoint
-                pdfs = tf.pow(pdfs, alpha - 1) * tf.pow(1 - pdfs, beta - 1)  # unnormalized PDF(x)
-                pdfs /= pdfs[:, -1:]                                         # normalize
-                pdfs = pdfs * (1 - bp2) + bp2
-                pdfs = tf.clip_by_value(pdfs, 0, 1)
-                target = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
-                target = tf.cast(tf.clip_by_value(target, 0, 1), tf.float32)
-            else:
-                target = tfm
-        else:
-            #a = np.exp(rng.uniform(*cfg.curve4_loga_range, 3).astype(np.float32))
-            #b = rng.uniform(*cfg.curve4_b_range, 3).astype(np.float32)
-            #curve = Curve4(a, b, bp, bp2)
-            a = tf.exp(tfd.Uniform(*cfg.curve4_loga_range).sample([3]))[:, None]
-            b = tfd.Uniform(*cfg.curve4_b_range).sample([3])[:, None]
-            π_half = 0.5 * tf.constant(np.pi)
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-            x = 1 - tf.cos(π_half * x ** a) ** b
-            x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
-            if cfg.predict_inverse:
-                x = (x - bp2) / (1 - bp2)
-                x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-                x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
-                x = (x - bp) / (1 - bp)
-                target = tf.clip_by_value(x, 0, 1)
-            else:
-                target = tfm
-            #target = tf.clip_by_value(bp + target * (1 - bp), curve4_x_min, curve4_x_max)
-            #a = tf.exp(dist_curve4_loga.sample([3]))[:, None]
-            #b = dist_curve4_b.sample([3])[:, None]
-            #if tf.random.uniform([]) < 0.5:
-            #    tfm = 1 - tf.cos(π_half * tfm ** a) ** b
-            #    target = π_half**(-1 / a) * tf.arccos((1 - target)**(1 / b))**(1 / a)
+        # A
+        if np.random.random_sample() < cfg.p_gamma:
+        # B
+        #if tf.random.uniform([]) < cfg.p_gamma:
+            # A
+            log_gamma = np.random.uniform(*cfg.log_gamma_range, 3).astype(np.float32)
+            gamma = np.exp(log_gamma)
+            curve = Curve0(gamma, bp, bp2)
+            assert all([p.dtype == np.float32 for p in curve.params]), str([p.dtype == np.float32 for p in curve.params])
+            # B
+            #log_gamma = tfd.Uniform(*cfg.log_gamma_range).sample([3])
+            #gamma = tf.exp(log_gamma)[:, None]
+            #x = support[None, :]
+            #x = bp + x * (1 - bp)
+            #x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+            #x = tf.pow(x, gamma)
+            #x = x * (1 - bp2) + bp2
+            #tfm = tf.clip_by_value(x, 0, 1)
+            #if cfg.predict_inverse:
+            #    x = support[None, :]
+            #    x = (x - bp2) / (1 - bp2)
+            #    x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+            #    x = tf.pow(x, 1 / gamma)
+            #    x = (x - bp) / (1 - bp)
+            #    target = tf.clip_by_value(x, 0, 1)
             #else:
-            #    tfm = π_half**(-1 / a) * tf.arccos((1 - tfm)**(1 / b))**(1 / a)
-            #    target = 1 - tf.cos(π_half * target ** a) ** b
+            #    target = tfm
 
-        #tfm = curve(support[None, :])
+        # A
+        elif np.random.random_sample() < cfg.p_beta:
+        # B
+        #elif tf.random.uniform([]) < cfg.p_beta:
+            # A
+            a = np.random.uniform(*cfg.curve3_a_range, 3).astype(np.float32)
+            alpha = np.exp(a)
+            beta = np.random.uniform(*cfg.curve3_beta_range, 3).astype(np.float32)
+            curve = Curve3(alpha, beta, bp, bp2)
+            # B
+            #a = tfd.Uniform(*cfg.curve3_a_range).sample([3])
+            #alpha = tf.exp(a)[:, None]
+            #beta = tfd.Uniform(*cfg.curve3_beta_range).sample([3])[:, None]
+            #x = support[None, :]
+            #x = bp + x * (1 - bp)
+            #x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+            #x = x * 0.9                              # reduce slope at whitepoint
+            #x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
+            #x /= x[:, -1:]                                      # normalize
+            #x = x * (1 - bp2) + bp2
+            #tfm = tf.clip_by_value(x, 0, 1)
+            #
+            #if cfg.predict_inverse:
+                # float64 avoids div-by-zero below
+                #x = tf.cast(support, tf.float64)
+                #y = tf.linspace(1e-6, 1 - 1e-6, 2000)
+                #y = tf.cast(y, tf.float64)
+                #bp = tf.cast(bp, tf.float64)
+                #bp2 = tf.cast(bp2, tf.float64)
+                #alpha = tf.cast(alpha, tf.float64)
+                #beta = tf.cast(beta, tf.float64)
+                #pdfs = bp + y[None, :] * (1 - bp)
+                #pdfs = tf.clip_by_value(pdfs, 1e-6, 1 - 1e-6)  # avoid nan
+                #pdfs = pdfs * 0.9                              # reduce slope at whitepoint
+                #pdfs = tf.pow(pdfs, alpha - 1) * tf.pow(1 - pdfs, beta - 1)  # unnormalized PDF(x)
+                #pdfs /= pdfs[:, -1:]                                         # normalize
+                #pdfs = pdfs * (1 - bp2) + bp2
+                #pdfs = tf.clip_by_value(pdfs, 0, 1)
+                #target = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
+                #target = tf.cast(tf.clip_by_value(target, 0, 1), tf.float32)
+            #else:
+            #    target = tfm
+        else:
+            # A
+            a = np.exp(np.random.uniform(*cfg.curve4_loga_range, 3).astype(np.float32))
+            b = np.random.uniform(*cfg.curve4_b_range, 3).astype(np.float32)
+            curve = Curve4(a, b, bp, bp2)
+            # B
+            #a = tf.exp(tfd.Uniform(*cfg.curve4_loga_range).sample([3]))[:, None]
+            #b = tfd.Uniform(*cfg.curve4_b_range).sample([3])[:, None]
+            #π_half = 0.5 * tf.constant(np.pi)
+            #x = support[None, :]
+            #x = bp + x * (1 - bp)
+            #x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+            #x = 1 - tf.cos(π_half * x ** a) ** b
+            #x = x * (1 - bp2) + bp2
+            #tfm = tf.clip_by_value(x, 0, 1)
+            #if cfg.predict_inverse:
+            #    x = (x - bp2) / (1 - bp2)
+            #    x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+            #    x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
+            #    x = (x - bp) / (1 - bp)
+            #    target = tf.clip_by_value(x, 0, 1)
+            #else:
+            #    target = tfm
+
+        # A
+        tfm = curve(support[None, :])
         #print("support:", support.shape)  # (256,)
         #print("curve params:", [p.shape for p in curve.params])  # [(3,), (3,), (3,)]
         #print("tfm:", tfm.shape)  # (3, 256)
-        #target = curve.inverse(support[None, :]) if cfg.predict_inverse else tfm
-        #tfm = tf.constant(tfm)
+        target = curve.inverse(support[None, :]) if cfg.predict_inverse else tfm
+        tfm = tf.constant(tfm)
         #print("target:", target.shape)  # (3, 256)
         target = tf.reshape(target, [cfg.channel_size])
         
@@ -1205,7 +1193,7 @@ def parse_tfrecord(cfg, example):
         #    curve = (1 - bp2) * curve + bp2
 
         features['target'] = tfm
-        #tf.print("tfm:", tfm.shape, tf.reduce_min(tfm), tf.reduce_mean(tfm), tf.reduce_max(tfm))  # tfm: TensorShape([3, 256]) 0 0.598787069 1
+        tf.print("tfm:", tfm.shape, tf.reduce_min(tfm), tf.reduce_mean(tfm), tf.reduce_max(tfm))  # tfm: TensorShape([3, 256]) 0 0.598787069 1
 
     features['height'] = example[cfg.data_format['height']]
     features['width'] = example[cfg.data_format['width']]
