@@ -30,7 +30,12 @@ but there are issues:
 import math
 
 import tensorflow as tf
+from tensorflow.keras import initializers
+from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax, BatchNormalization,
+                                     GlobalAveragePooling2D, GlobalMaxPooling2D, concatenate)
 import tensorflow_addons as tfa  # for tfa.optimizers, tfa.metrics
+
+initializer = initializers.VarianceScaling(seed=42)  # keras default for Dense layer
 
 # if cfg.arch_name.startswith('efnv1'):
 #     import efficientnet.tfkeras as efn
@@ -334,7 +339,7 @@ def get_margin(cfg):
 
 def BatchNorm(cfg, bn_type, name=None):
     if bn_type == 'batch_norm':
-        return tf.keras.layers.BatchNormalization(name=name)
+        return BatchNormalization(name=name)
     if bn_type == 'sync_bn':
         return tf.keras.layers.experimental.SyncBatchNormalization(name=name)
     if bn_type == 'layer_norm':
@@ -343,15 +348,15 @@ def BatchNorm(cfg, bn_type, name=None):
     #    import tensorflow_addons as tfa
     #    return tfa.layers.InstanceNormalization()  # nan loss
     if bn_type == 'instance_norm':
-        return tf.keras.layers.BatchNormalization(virtual_batch_size=cfg.bs, name=name)
+        return BatchNormalization(virtual_batch_size=cfg.bs, name=name)
     if bn_type:
-        return tf.keras.layers.BatchNormalization(name=name)  # default
+        return BatchNormalization(name=name)  # default
     raise ValueError(f'{bn_type} is no recognized bn_type')
 
 
 def freeze_bn(model):
     for layer in model.layers:
-        if isinstance(layer, tf.keras.layers.BatchNormalization):
+        if isinstance(layer, BatchNormalization):
             layer.trainable = False
             assert layer.trainable is False, f'could not freeze {layer.name}'
 
@@ -401,9 +406,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         # Inputs
         input_shape = (*cfg.size, 3)
-        inputs = [tf.keras.layers.Input(shape=input_shape, name='image')]
+        inputs = [Input(shape=input_shape, name='image')]
         if cfg.arcface and not inference:
-            inputs.append(tf.keras.layers.Input(shape=(), name='target'))
+            inputs.append(Input(shape=(), name='target'))
 
         # Body
         efnv1 = cfg.arch_name.startswith('efnv1')
@@ -424,7 +429,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         elif cfg.instance_norm:
             from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
-                                                 tf.keras.layers.BatchNormalization,
+                                                 BatchNormalization,
                                                  keep_weights=True,
                                                  virtual_batch_size=1)
 
@@ -432,38 +437,38 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if efnv1:
             x = pretrained_model(inputs[0])
             if cfg.pool == 'flatten':
-                embed = tf.keras.layers.Flatten()(x)
+                embed = Flatten()(x)
             elif cfg.pool == 'fc':
-                embed = tf.keras.layers.Flatten()(x)
-                embed = tf.keras.layers.Dropout(0.1)(embed)
-                embed = tf.keras.layers.Dense(1024)(embed)
+                embed = Flatten()(x)
+                embed = Dropout(0.1)(embed)
+                embed = Dense(1024, initializer=initializer)(embed)
             elif cfg.pool == 'gem':
                 embed = GeMPoolingLayer(train_p=True)(x)
             elif cfg.pool == 'concat':
-                embed = tf.keras.layers.concatenate([tf.keras.layers.GlobalAveragePooling2D()(x),
-                                                     tf.keras.layers.GlobalAveragePooling2D()(x)])
+                embed = concatenate([GlobalAveragePooling2D()(x),
+                                                     GlobalAveragePooling2D()(x)])
             elif cfg.pool == 'max':
-                embed = tf.keras.layers.GlobalMaxPooling2D()(x)
+                embed = GlobalMaxPooling2D()(x)
             else:
-                embed = tf.keras.layers.GlobalAveragePooling2D()(x)
+                embed = GlobalAveragePooling2D()(x)
 
         elif efnv2:
             x = pretrained_model(inputs[0])
             if cfg.pool == 'flatten':
-                embed = tf.keras.layers.Flatten()(x)
+                embed = Flatten()(x)
             elif cfg.pool == 'fc':
-                embed = tf.keras.layers.Flatten()(x)
-                embed = tf.keras.layers.Dropout(0.1)(embed)
-                embed = tf.keras.layers.Dense(1024)(embed)
+                embed = Flatten()(x)
+                embed = Dropout(0.1)(embed)
+                embed = Dense(1024, initializer=initializer)(embed)
             elif cfg.pool == 'gem':
                 embed = GeMPoolingLayer(train_p=True)(x)
             elif cfg.pool == 'concat':
-                embed = tf.keras.layers.concatenate([tf.keras.layers.GlobalAveragePooling2D()(x),
-                                                     tf.keras.layers.GlobalAveragePooling2D()(x)])
+                embed = concatenate([GlobalAveragePooling2D()(x),
+                                                     GlobalAveragePooling2D()(x)])
             elif cfg.pool == 'max':
-                embed = tf.keras.layers.GlobalMaxPooling2D()(x)
+                embed = GlobalMaxPooling2D()(x)
             else:
-                embed = tf.keras.layers.GlobalAveragePooling2D()(x)
+                embed = GlobalAveragePooling2D()(x)
 
         elif tfhub:
             # tfhub models cannot be modified => Pooling cannot be changed!
@@ -483,10 +488,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
         else:
             lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
             for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
-                embed = tf.keras.layers.Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
-                embed = tf.keras.layers.Dense(out_channels, activation=cfg.act_head, name=f"FC_{i}")(embed)
+                embed = Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
+                embed = Dense(out_channels, activation=cfg.act_head, 
+                              initializer=initializer, name=f"FC_{i}")(embed)
                 embed = BatchNorm(cfg, bn_type=cfg.bn_head, name=f"BN_{i}")(embed) if cfg.bn_head else embed
-            embed = tf.keras.layers.Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
+            embed = Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
                 embed) if final_dropout else embed
             if cfg.bn_head and not lin_ftrs:
                 embed = BatchNorm(cfg, bn_type=cfg.bn_head, name="BN_final")(embed)  # does this help?
@@ -497,31 +503,31 @@ def get_pretrained_model(cfg, strategy, inference=False):
         elif cfg.arcface:
             margin = get_margin(cfg)
             features = margin([embed, inputs[1]])
-            output = tf.keras.layers.Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
+            output = Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
         elif cfg.classes:
             assert cfg.n_classes, 'set cfg.n_classes in project or config file!'
-            features = tf.keras.layers.Dense(cfg.n_classes, name='classifier')(embed)
-            output = tf.keras.layers.Softmax(dtype='float32')(features)
+            features = Dense(cfg.n_classes, name='classifier', initializer=initializer)(embed)
+            output = Softmax(dtype='float32')(features)
         else:
             assert cfg.channel_size, 'set cfg.channel_size in project or config file!'
             if cfg.curve and (cfg.channel_size == 3):
-                #output = tf.keras.layers.Dense(cfg.channel_size, name='log_gamma')(embed)
-                out_rel = tf.keras.layers.Dense(cfg.channel_size, name='rel_log_gamma')(embed)
-                out_abs = tf.keras.layers.Dense(cfg.channel_size, name='abs_log_gamma')(embed)
+                #output = Dense(cfg.channel_size, name='log_gamma', initializer=initializer)(embed)
+                out_rel = Dense(cfg.channel_size, name='rel_log_gamma', initializer=initializer)(embed)
+                out_abs = Dense(cfg.channel_size, name='abs_log_gamma', initializer=initializer)(embed)
             elif cfg.curve and (cfg.channel_size == 6):
-                out_gamma = tf.keras.layers.Dense(3, name='regressor_gamma')(embed)
-                out_bp = tf.keras.layers.Dense(3, name='regressor_bp')(embed)
+                out_gamma = Dense(3, name='regressor_gamma', initializer=initializer)(embed)
+                out_bp = Dense(3, name='regressor_bp', initializer=initializer)(embed)
             elif cfg.curve and (cfg.channel_size == 9):
-                out_a = tf.keras.layers.Dense(3, name='regressor_a')(embed)
-                out_b = tf.keras.layers.Dense(3, name='regressor_b')(embed)
-                out_bp = tf.keras.layers.Dense(3, name='regressor_bp')(embed)
+                out_a = Dense(3, name='regressor_a', initializer=initializer)(embed)
+                out_b = Dense(3, name='regressor_b', initializer=initializer)(embed)
+                out_bp = Dense(3, name='regressor_bp', initializer=initializer)(embed)
             else:
-                output = tf.keras.layers.Dense(cfg.channel_size, name='regressor')(embed)
+                output = Dense(cfg.channel_size, name='regressor', initializer=initializer)(embed)
 
         if cfg.aux_loss:
             assert cfg.n_aux_classes, 'set cfg.n_aux_classes in project or config file!'
-            aux_features = tf.keras.layers.Dense(cfg.n_aux_classes, name='aux_classifier')(embed)
-            aux_output = tf.keras.layers.Softmax(dtype='float32', name='aux')(aux_features)
+            aux_features = Dense(cfg.n_aux_classes, name='aux_classifier', initializer=initializer)(embed)
+            aux_output = Softmax(dtype='float32', name='aux')(aux_features)
 
         # Outputs
         if cfg.curve and (cfg.channel_size == 3):
