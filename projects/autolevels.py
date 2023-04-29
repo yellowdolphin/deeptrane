@@ -1174,6 +1174,10 @@ def parse_tfrecord(cfg, example):
                 x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
                 x = (x - bp) / (1 - bp)
                 target = tf.clip_by_value(x, 0, 1)
+
+                # randomly swap tfm/target
+                if tf.random.uniform([]) < 0.5:
+                    target, tfm = tfm, target
             else:
                 target = tfm
             #tfm_abs = tf.sqrt(tf.keras.metrics.mean_squared_error(support, target)[0])
