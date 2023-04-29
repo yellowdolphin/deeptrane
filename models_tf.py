@@ -35,8 +35,6 @@ from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax, Ba
                                      GlobalAveragePooling2D, GlobalMaxPooling2D, concatenate)
 import tensorflow_addons as tfa  # for tfa.optimizers, tfa.metrics
 
-initializer = initializers.GlorotUniform(seed=42)  # keras default for Dense layer
-
 # if cfg.arch_name.startswith('efnv1'):
 #     import efficientnet.tfkeras as efn
 #     EFN = {'efnv1b0': efn.EfficientNetB0, 'efnv1b1': efn.EfficientNetB1,
@@ -441,7 +439,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             elif cfg.pool == 'fc':
                 embed = Flatten()(x)
                 embed = Dropout(0.1)(embed)
-                embed = Dense(1024, kernel_initializer=initializer)(embed)
+                embed = Dense(1024)(embed)
             elif cfg.pool == 'gem':
                 embed = GeMPoolingLayer(train_p=True)(x)
             elif cfg.pool == 'concat':
@@ -459,7 +457,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             elif cfg.pool == 'fc':
                 embed = Flatten()(x)
                 embed = Dropout(0.1)(embed)
-                embed = Dense(1024, kernel_initializer=initializer)(embed)
+                embed = Dense(1024)(embed)
             elif cfg.pool == 'gem':
                 embed = GeMPoolingLayer(train_p=True)(x)
             elif cfg.pool == 'concat':
@@ -506,27 +504,27 @@ def get_pretrained_model(cfg, strategy, inference=False):
             output = Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
         elif cfg.classes:
             assert cfg.n_classes, 'set cfg.n_classes in project or config file!'
-            features = Dense(cfg.n_classes, name='classifier', kernel_initializer=initializer)(embed)
+            features = Dense(cfg.n_classes, name='classifier')(embed)
             output = Softmax(dtype='float32')(features)
         else:
             assert cfg.channel_size, 'set cfg.channel_size in project or config file!'
             if cfg.curve and (cfg.channel_size == 3):
-                #output = Dense(cfg.channel_size, name='log_gamma', kernel_initializer=initializer)(embed)
-                out_rel = Dense(cfg.channel_size, name='rel_log_gamma', kernel_initializer=initializer)(embed)
-                out_abs = Dense(cfg.channel_size, name='abs_log_gamma', kernel_initializer=initializer)(embed)
+                #output = Dense(cfg.channel_size, name='log_gamma')(embed)
+                out_rel = Dense(cfg.channel_size, name='rel_log_gamma')(embed)
+                out_abs = Dense(cfg.channel_size, name='abs_log_gamma')(embed)
             elif cfg.curve and (cfg.channel_size == 6):
-                out_gamma = Dense(3, name='regressor_gamma', kernel_initializer=initializer)(embed)
-                out_bp = Dense(3, name='regressor_bp', kernel_initializer=initializer)(embed)
+                out_gamma = Dense(3, name='regressor_gamma')(embed)
+                out_bp = Dense(3, name='regressor_bp')(embed)
             elif cfg.curve and (cfg.channel_size == 9):
-                out_a = Dense(3, name='regressor_a', kernel_initializer=initializer)(embed)
-                out_b = Dense(3, name='regressor_b', kernel_initializer=initializer)(embed)
-                out_bp = Dense(3, name='regressor_bp', kernel_initializer=initializer)(embed)
+                out_a = Dense(3, name='regressor_a')(embed)
+                out_b = Dense(3, name='regressor_b')(embed)
+                out_bp = Dense(3, name='regressor_bp')(embed)
             else:
-                output = Dense(cfg.channel_size, name='regressor', kernel_initializer=initializer)(embed)
+                output = Dense(cfg.channel_size, name='regressor')(embed)
 
         if cfg.aux_loss:
             assert cfg.n_aux_classes, 'set cfg.n_aux_classes in project or config file!'
-            aux_features = Dense(cfg.n_aux_classes, name='aux_classifier', kernel_initializer=initializer)(embed)
+            aux_features = Dense(cfg.n_aux_classes, name='aux_classifier')(embed)
             aux_output = Softmax(dtype='float32', name='aux')(aux_features)
 
         # Outputs
