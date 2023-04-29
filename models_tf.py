@@ -30,7 +30,6 @@ but there are issues:
 import math
 
 import tensorflow as tf
-from tensorflow.keras import initializers
 from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax, BatchNormalization,
                                      GlobalAveragePooling2D, GlobalMaxPooling2D, concatenate)
 import tensorflow_addons as tfa  # for tfa.optimizers, tfa.metrics
@@ -487,8 +486,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
             for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
                 embed = Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
-                embed = Dense(out_channels, activation=cfg.act_head, 
-                              kernel_initializer=initializer, name=f"FC_{i}")(embed)
+                embed = Dense(out_channels, activation=cfg.act_head, name=f"FC_{i}")(embed)
                 embed = BatchNorm(cfg, bn_type=cfg.bn_head, name=f"BN_{i}")(embed) if cfg.bn_head else embed
             embed = Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
                 embed) if final_dropout else embed
