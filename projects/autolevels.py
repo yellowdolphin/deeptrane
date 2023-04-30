@@ -843,10 +843,16 @@ class AugInvCurveDataset2(Dataset):
             a = np.exp(self.dist_curve4_loga(n_channels).astype(np.float32))
             b = self.dist_curve4_b(n_channels).astype(np.float32)
             curve = Curve4(a, b, bp, bp2)
-        tfm = curve(support[None, :])
         #print("Curve_params:", *[p[0].item() for p in curve.params])
-        target = curve.inverse(support[None, :]) if self.predict_inverse else tfm
+        target = curve(support[None, :])
+        tfm = curve.inverse(support[None, :]) if self.predict_inverse else target
+        
+        # random swap tfm <-> target, but only for Curve4
+        if (curve.__class__.__name__ == 'Curve4') and (np.random.random_sample() < 0.5):
+            target, tfm = tfm, target
+
         target = torch.tensor(target)
+        tfm = torch.tensor(tfm)
         assert target.shape == (n_channels, 256), f"wrong target shape: {target.shape}"
         assert target.dtype == torch.float32, f"wrong target dtype: {target.dtype}"
 
@@ -855,7 +861,6 @@ class AugInvCurveDataset2(Dataset):
             assert tfm.max() <= 1, f'tfm too large: {tfm.max()}'
             assert target.max() <= 1, f'tfm too large: {target.max()}'
             if self.predict_inverse:
-                tfm = torch.tensor(tfm)
                 target = torch.cat((target, tfm), dim=1)
 
             # append rnd_factor for noise_level -> (C, 257)
@@ -1100,16 +1105,16 @@ def parse_tfrecord(cfg, example):
             x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
             x = tf.pow(x, gamma)
             x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
+            target = tf.clip_by_value(x, 0, 1)
             if cfg.predict_inverse:
                 x = support[None, :]
                 x = (x - bp2) / (1 - bp2)
                 x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
                 x = tf.pow(x, 1 / gamma)
                 x = (x - bp) / (1 - bp)
-                target = tf.clip_by_value(x, 0, 1)
+                tfm = tf.clip_by_value(x, 0, 1)
             else:
-                target = tfm
+                tfm = target
         # A
         #elif np.random.random_sample() < cfg.p_beta:
         # B
@@ -1130,7 +1135,7 @@ def parse_tfrecord(cfg, example):
             x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
             x /= x[:, -1:]                                      # normalize
             x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
+            target = tf.clip_by_value(x, 0, 1)
             
             if cfg.predict_inverse:
                 # float64 avoids div-by-zero below
@@ -1148,10 +1153,10 @@ def parse_tfrecord(cfg, example):
                 pdfs /= pdfs[:, -1:]                                         # normalize
                 pdfs = pdfs * (1 - bp2) + bp2
                 pdfs = tf.clip_by_value(pdfs, 0, 1)
-                target = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
-                target = tf.cast(tf.clip_by_value(target, 0, 1), tf.float32)
+                tfm = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
+                tfm = tf.cast(tf.clip_by_value(tfm, 0, 1), tf.float32)
             else:
-                target = tfm
+                tfm = target
         else:
             # A
             #a = np.exp(np.random.uniform(*cfg.curve4_loga_range, 3).astype(np.float32))
@@ -1166,20 +1171,20 @@ def parse_tfrecord(cfg, example):
             x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
             x = 1 - tf.cos(π_half * x ** a) ** b
             x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
+            target = tf.clip_by_value(x, 0, 1)
             if cfg.predict_inverse:
                 x = support[None, :]
                 x = (x - bp2) / (1 - bp2)
                 x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
                 x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
                 x = (x - bp) / (1 - bp)
-                target = tf.clip_by_value(x, 0, 1)
+                tfm = tf.clip_by_value(x, 0, 1)
 
                 # randomly swap tfm/target
-                #if tf.random.uniform([]) < 0.5:
-                #    target, tfm = tfm, target
+                if tf.random.uniform([]) < 0.5:
+                    target, tfm = tfm, target
             else:
-                target = tfm
+                tfm = target
             #tfm_abs = tf.sqrt(tf.keras.metrics.mean_squared_error(support, target)[0])
             #tf.print("params:", *[float(p[0]) for p in (bp, bp2, a, b)], "RMSE(tfm):", 255 * tfm_abs)
 
