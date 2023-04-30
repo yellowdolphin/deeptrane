@@ -1115,7 +1115,7 @@ def parse_tfrecord(cfg, example):
                 tfm = tf.clip_by_value(x, 0, 1)
 
                 # randomly swap tfm/target
-                if tf.random.uniform([]) < 0.5:
+                if cfg.mirror_gamma and (tf.random.uniform([]) < 0.5):
                     target, tfm = tfm, target
             else:
                 tfm = target
@@ -1161,7 +1161,7 @@ def parse_tfrecord(cfg, example):
                 tfm = tf.cast(tf.clip_by_value(tfm, 0, 1), tf.float32)
 
                 # randomly swap tfm/target
-                if tf.random.uniform([]) < 0.5:
+                if cfg.mirror_beta and (tf.random.uniform([]) < 0.5):
                     target, tfm = tfm, target
             else:
                 tfm = target
@@ -1190,7 +1190,7 @@ def parse_tfrecord(cfg, example):
                 tfm = tf.clip_by_value(x, 0, 1)
 
                 # randomly swap tfm/target
-                if tf.random.uniform([]) < 0.5:
+                if cfg.mirror_curve4 and (tf.random.uniform([]) < 0.5):
                     target, tfm = tfm, target
             else:
                 tfm = target
