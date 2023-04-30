@@ -1155,8 +1155,13 @@ def parse_tfrecord(cfg, example):
                 pdfs = tf.clip_by_value(pdfs, 0, 1)
                 tfm = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
                 tfm = tf.cast(tf.clip_by_value(tfm, 0, 1), tf.float32)
+
+                # randomly swap tfm/target
+                if tf.random.uniform([]) < 0.5:
+                    target, tfm = tfm, target
             else:
                 tfm = target
+
         else:
             # A
             #a = np.exp(np.random.uniform(*cfg.curve4_loga_range, 3).astype(np.float32))
