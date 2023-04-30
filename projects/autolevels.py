@@ -1113,6 +1113,10 @@ def parse_tfrecord(cfg, example):
                 x = tf.pow(x, 1 / gamma)
                 x = (x - bp) / (1 - bp)
                 tfm = tf.clip_by_value(x, 0, 1)
+
+                # randomly swap tfm/target
+                if tf.random.uniform([]) < 0.5:
+                    target, tfm = tfm, target
             else:
                 tfm = target
         # A
