@@ -18,9 +18,7 @@ from functools import partial
 import numpy as np
 import tensorflow as tf
 #!pip install tensorflow_addons
-import tensorflow_addons as tfa
 import tensorflow_datasets as tfds
-import torch
 from torch.utils.data import DataLoader
 from tf_data import count_data_items
 
@@ -53,11 +51,13 @@ def data_augment(posting_id, image, label_group, cfg):
     image = tf.image.random_saturation(image, 0.70, 1.0)
     image = tf.image.random_contrast(image, 0.80, 1.20)
     image = tf.image.random_brightness(image, 0.10)
-
-    if cfg.rotate and tf.random.uniform([]) < 0.5:
-        phi = (2 * tf.random.uniform([]) - 1) * cfg.rotate * 3.1415 / 180
-        image = tfa.image.rotate(image, angles=phi, interpolation='bilinear',
-                                 fill_mode='constant', fill_value=1.0)
+    if cfg.rotate:
+        rotate = tf.keras.layers.RandomRotation(
+            factor=cfg.rotate * 3.1415 / 180,
+            fill_mode='reflect',
+            #fill_mode='constant', fill_value=1.0,
+            interpolation='bilinear')
+        image = rotate(image) if (tf.random.uniform([]) < 0.5) else image
 
     if cfg.random_crop and (tf.random.uniform([]) < 0.75):
         if tf.random.uniform([]) > 0.5:  # crop either horizontally or vertically
@@ -77,13 +77,9 @@ def data_augment(posting_id, image, label_group, cfg):
     if cfg.random_grayscale and tf.random.uniform([]) < 0.5 * cfg.random_grayscale:
         image = tf.image.adjust_saturation(image, 0)
 
-    if cfg.mean_filter and tf.random.uniform([]) < 0.5 * cfg.mean_filter:
-        image = tfa.image.mean_filter2d(image, filter_shape=5)
-
-    # tfa.image.cutout is currently broken, issue #2384
-    #if cfg.cutout and tf.random.uniform([]) < 0.75:
-    #    area = 2 * int((cfg.size * cfg.cutout) ** 2 / 2)
-    #    image = tfa.image.random_cutout(image, mask_size=area, constant_values=220)
+    # no blur in tf or keras libraries:
+    #if cfg.mean_filter and tf.random.uniform([]) < 0.5 * cfg.mean_filter:
+    #    image = tfa.image.mean_filter2d(image, filter_shape=5)
 
     return posting_id, image, label_group
 

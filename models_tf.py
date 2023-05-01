@@ -32,7 +32,6 @@ import math
 import tensorflow as tf
 from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax, BatchNormalization,
                                      GlobalAveragePooling2D, GlobalMaxPooling2D, concatenate)
-import tensorflow_addons as tfa  # for tfa.optimizers, tfa.metrics
 
 # if cfg.arch_name.startswith('efnv1'):
 #     import efficientnet.tfkeras as efn
@@ -341,9 +340,6 @@ def BatchNorm(cfg, bn_type, name=None):
         return tf.keras.layers.experimental.SyncBatchNormalization(name=name)
     if bn_type == 'layer_norm':
         return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
-    #if bn_type == 'instance_norm':
-    #    import tensorflow_addons as tfa
-    #    return tfa.layers.InstanceNormalization()  # nan loss
     if bn_type == 'instance_norm':
         return BatchNormalization(virtual_batch_size=cfg.bs, name=name)
     if bn_type:
@@ -566,9 +562,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if cfg.use_custom_training_loop: return model
 
         optimizer = (
-            tfa.optimizers.AdamW(weight_decay=cfg.wd, learning_rate=cfg.lr,
-                                 beta_1=cfg.betas[0],
-                                 beta_2=cfg.betas[1]) if cfg.optimizer == 'AdamW' else
+            tf.keras.optimizers.AdamW(learning_rate=cfg.lr, weight_decay=cfg.wd,
+                                      beta_1=cfg.betas[0],
+                                      beta_2=cfg.betas[1]) if cfg.optimizer == 'AdamW' else
             tf.keras.optimizers.Adam(learning_rate=cfg.lr,
                                      beta_1=cfg.betas[0],
                                      beta_2=cfg.betas[1]) if cfg.optimizer == 'Adam' else
@@ -582,11 +578,14 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if 'top5' in cfg.metrics:
             metrics_classes['top5'] = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5')
         if 'f1' in cfg.metrics:
-            metrics_classes['f1'] = tfa.metrics.F1Score(num_classes=cfg.n_classes, average='micro', name='F1')
+            #metrics_classes['f1'] = tfa.metrics.F1Score(num_classes=cfg.n_classes, average='micro', name='F1')
+            metrics_classes['f1'] = tf.keras.metrics.F1Score(average='micro', name='F1')
         if 'f2' in cfg.metrics:
-            metrics_classes['f2'] = tfa.metrics.FBetaScore(num_classes=cfg.n_classes, beta=2.0, average='micro', name='F2')
+            #metrics_classes['f2'] = tfa.metrics.FBetaScore(num_classes=cfg.n_classes, beta=2.0, average='micro', name='F2')
+            metrics_classes['f2'] = tf.keras.metrics.FBetaScore(beta=2, average='micro', name='F2')
         if 'macro_f1' in cfg.metrics:
-            metrics_classes['macro_f1'] = tfa.metrics.F1Score(num_classes=cfg.n_classes, average='macro', name='macro_F1')
+            #metrics_classes['macro_f1'] = tfa.metrics.F1Score(num_classes=cfg.n_classes, average='macro', name='macro_F1')
+            metrics_classes['macro_f1'] = tf.keras.metrics.F1Score(average='macro', name='macro_F1')
         if 'curve_rmse' in cfg.metrics:
             from projects.autolevels import TFCurveRMSE
             metrics_classes['curve_rmse'] = TFCurveRMSE(curve=cfg.curve)

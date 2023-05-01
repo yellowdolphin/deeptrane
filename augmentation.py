@@ -198,12 +198,6 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
 def get_tf_tfms(cfg, mode='train'):
     "Return tfms based on flags from file `cfg.augmentation`."
     import tensorflow as tf
-    from utils.general import quietly_run
-    try:
-        import tensorflow_addons as tfa
-    except ModuleNotFoundError:
-        quietly_run('pip install tensorflow_addons')
-        import tensorflow_addons as tfa
 
     flags = Config(f'configs/{cfg.augmentation}')
     # inputs is dict or tuple. index/keys must accord to data_format!
@@ -220,6 +214,13 @@ def get_tf_tfms(cfg, mode='train'):
             return tf.image.resize(image, size)
 
 
+        rotate = tf.keras.layers.RandomRotation(
+            factor=(flags.rotate or 0) * 3.1415 / 180,
+            fill_mode='reflect',
+            #fill_mode='constant', fill_value=1.0,
+            interpolation='bilinear')
+
+
         def tfms(inputs, targets, sample_weights=None):
             image = inputs[0] if isinstance(inputs, tuple) else inputs['image']
             image = tf.image.resize(image, cfg.size)
@@ -230,12 +231,7 @@ def get_tf_tfms(cfg, mode='train'):
             image = tf.image.random_saturation(image, *flags.saturation) if flags.saturation else image
             image = tf.image.random_contrast(image, *flags.contrast) if flags.contrast else image
             image = tf.image.random_brightness(image, **flags.brightness) if flags.brightness else image
-
-            if flags.rotate and tf.random.uniform([]) < 0.5:
-                phi = (2 * tf.random.uniform([]) - 1) * flags.rotate * 3.1415 / 180
-                image = tfa.image.rotate(image, angles=phi, interpolation='bilinear',
-                                         fill_mode='constant', fill_value=1.0)
-
+            image = rotate(image) if (flags.rotate and tf.random.uniform([]) < 0.5) else image
             if flags.random_crop and (tf.random.uniform([]) < 0.75):
                 image = random_h_or_v_crop(image, cfg.size)
 
@@ -247,13 +243,9 @@ def get_tf_tfms(cfg, mode='train'):
             if flags.random_grayscale and tf.random.uniform([]) < 0.5 * flags.random_grayscale:
                 image = tf.image.adjust_saturation(image, 0)
 
-            if flags.mean_filter and tf.random.uniform([]) < 0.5 * flags.mean_filter:
-                image = tfa.image.mean_filter2d(image, filter_shape=5)
-
-            # tfa.image.cutout is currently broken, issue #2384
-            #if flags.cutout and tf.random.uniform([]) < 0.75:
-            #    area = 2 * int((size * flags.cutout) ** 2 / 2)
-            #    image = tfa.image.random_cutout(image, mask_size=area, constant_values=220)
+            # no blur in tf or keras libraries:
+            #if flags.mean_filter and tf.random.uniform([]) < 0.5 * flags.mean_filter:
+            #    image = tfa.image.mean_filter2d(image, filter_shape=5)
 
             if flags.noise_level:
                 rnd_factor = tf.random.uniform(())
