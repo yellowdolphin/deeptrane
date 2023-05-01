@@ -66,7 +66,6 @@ def init(cfg):
                            'height': 'image/height',
                            'width': 'image/width'}
         cfg.inputs = ['image']
-        cfg.targets = ['target']
 
     cfg.meta_csv = cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt'
 
@@ -810,6 +809,9 @@ class AugInvCurveDataset2(Dataset):
         self.p_beta = cfg.p_beta    # probability for Beta PDF (Curve3) rather than Curve4
         self.noise_level = cfg.noise_level
         self.predict_inverse = cfg.predict_inverse
+        self.mirror_gamma = cfg.mirror_gamma
+        self.mirror_beta = cfg.mirror_beta
+        self.mirror_curve4 = cfg.mirror_curve4
 
     def __len__(self):
         return len(self.df)
@@ -847,8 +849,11 @@ class AugInvCurveDataset2(Dataset):
         target = curve(support[None, :])
         tfm = curve.inverse(support[None, :]) if self.predict_inverse else target
         
-        # random swap tfm <-> target, but only for Curve4
-        if (curve.__class__.__name__ == 'Curve4') and (np.random.random_sample() < 0.5):
+        # random swap tfm <-> target
+        if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
+            (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
+            (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
+            (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
             target, tfm = tfm, target
 
         target = torch.tensor(target)
@@ -956,7 +961,19 @@ def interp1d_tf(x, y, inp):
     return f0 * (1 - alpha) + f1 * alpha
 
 
-def map_index(image, curves, add_uniform_noise=True, height=None, width=None):
+def map_index(image, curves, add_uniform_noise=True, height=None, width=None, channels=3):
+    """Transform `image` by mapping its pixel values via `curves`
+    
+    Parameters:
+        image (tf.Tensor) Input image with uint8 pixel values, shape (H, W, C)
+        curves (tf.Tensor): Transformation curves for each channel of the image
+        add_uniform_noise (bool, optional): Erase uint8 quantization steps with uniform noise,
+        height (int): Height of the input image. Required if add_uniform_noise.
+        width (int): Width of the input image. Required if add_uniform_noise.
+    
+    Returns:
+        tf.Tensor: Output image with mapped pixel values (float32)
+    """
     # OperatorNotAllowedInGraphError: Iterating over a symbolic `tf.Tensor` is not allowed
     #for i, curve in enumerate(curves):
     #    image[:, :, i] = curve[image[:, :, i]]
@@ -964,19 +981,24 @@ def map_index(image, curves, add_uniform_noise=True, height=None, width=None):
     #for i in range(3):
     #    image[:, :, i] = curves[:, i][image[:, :, i]]
     # Use tf.gather_nd instead:
-    image = tf.cast(image, tf.int32)  # tf.gather_nd needs int32
-    if add_uniform_noise: image_plus_one = tf.clip_by_value(image + 1, 0, 255)
     curves = tf.cast(curves, tf.float32)
-    #assert curves.shape[-1] in {1, 3}
+
+    # turn pixel values into int32 indices for gather_nd
+    image = tf.cast(image, tf.int32)
     channel_idx = tf.ones_like(image, dtype=tf.int32) * tf.range(3)[None, None, :]
     indices = tf.stack([image, channel_idx], axis=-1)
-    if add_uniform_noise: indices_plus_one = tf.stack([image_plus_one, channel_idx], axis=-1)
+    if add_uniform_noise:
+        image_plus_one = tf.clip_by_value(image + 1, 0, 255)
+        indices_plus_one = tf.stack([image_plus_one, channel_idx], axis=-1)
+
     image = tf.gather_nd(curves, indices)
-    if add_uniform_noise: 
+
+    if add_uniform_noise:
         image_plus_one = tf.gather_nd(curves, indices_plus_one)
         noise_range = image_plus_one - image
-        noise = tf.random.uniform((height, width, 3)) * noise_range
+        noise = tf.random.uniform((height, width, channels)) * noise_range
         image += noise
+
     return image
 
 
