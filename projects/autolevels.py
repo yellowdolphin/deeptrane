@@ -1022,7 +1022,6 @@ def decode_image(cfg, image_data, target, height, width):
     if cfg.curve == 'beta':
         curves = get_curves(target, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
         image = map_index(image, curves, cfg.add_uniform_noise, height, width)
-        #curves = tf.reshape(curves, (-1,))
 
     elif cfg.curve == 'gamma':
         image = tf.cast(image, tf.float32)
@@ -1037,16 +1036,13 @@ def decode_image(cfg, image_data, target, height, width):
     if cfg.curve != 'free':
         image /= 255.0
 
-    #tf.print("image after tfm:", image.shape, tf.reduce_min(image), tf.reduce_mean(image), tf.reduce_max(image))
-    image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
-
     if cfg.curve == 'gamma':
+        image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
         image = tf.math.pow(image, target[None, None, :])
 
     if cfg.random_blackpoint_shift:
-        bp_shift = cfg.random_blackpoint_shift / 255 * tf.random.normal((3,))
-        image += bp_shift[None, None, :]
-        image /= (1 + bp_shift[None, None, :])
+        shift = cfg.random_blackpoint_shift / 255 * tf.random.normal((3,))
+        image = shift[None, None, :] + (1 - shift[None, None, :]) * image
 
     if cfg.noise_level:
         rnd_factor = tf.random.uniform(())
