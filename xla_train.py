@@ -813,7 +813,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         #xm.master_print('  '.join(epoch_summary_strings))
 
         # Print epoch summary
-        epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
+        epoch_summary_strings = [f'{epoch + 1:>2} / {cfg.epochs:<2}']                     # ep/epochs
         epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
         for key in cfg.metrics:                                                           # metrics
