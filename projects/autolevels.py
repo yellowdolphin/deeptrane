@@ -682,94 +682,6 @@ class AugInvBetaDataset(Dataset):
         return image, labels if self.labeled else image
 
 
-class AugInvCurveDataset(Dataset):
-    """Images are mapped on device using the randomly generated target_curve"""
-
-    def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
-                 return_path_attr=None):
-        """
-        Args:
-            df (pd.DataFrame):                First row must contain the image file paths
-            image_root (string, Path):        Root directory for df.image_path
-            transform (callable, optional):   Optional transform to be applied on the first
-                                              element (image) of a sample.
-            labeled (bool, optional):         if True, return target_curve
-            return_path_attr (str, optional): return Path attribute `return_path_attr`
-
-        """
-        self.df = df.reset_index(drop=True)
-        self.image_root = cfg.image_root
-        self.transform = transform
-        self.tensor_transform = tensor_transform
-        self.albu = transform and transform.__module__.startswith('albumentations')
-        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
-        self.labeled = labeled
-        self.return_path_attr = return_path_attr
-        self.use_batch_tfms = cfg.use_batch_tfms
-        if self.use_batch_tfms:
-            self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
-        #self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
-        self.dist_log_gamma = torch.distributions.uniform.Uniform(*cfg.log_gamma_range) if cfg.log_gamma_range else None
-        self.dist_curve4_loga = torch.distributions.uniform.Uniform(*cfg.curve4_loga_range) if cfg.curve4_loga_range else None
-        self.dist_curve4_b = torch.distributions.uniform.Uniform(*cfg.curve4_b_range) if cfg.curve4_b_range else None
-        self.dist_curve4_bp = torch.distributions.uniform.Uniform(*cfg.curve4_bp_range) if cfg.curve4_bp_range else None
-        self.dist_curve4_bp2 = torch.distributions.uniform.Uniform(*cfg.curve4_bp2_range) if cfg.curve4_bp2_range else None
-        self.dist_a = torch.distributions.normal.Normal(0, cfg.a_sigma or 0.5) if cfg.a_sigma else None
-        self.dist_b = torch.distributions.normal.Normal(cfg.b_mean or 0.4, cfg.b_sigma) if cfg.b_sigma else None
-        self.dist_bp = torch.distributions.normal.Normal(0, cfg.bp_sigma / 255) if cfg.bp_sigma else None
-        self.p_gamma = cfg.p_gamma    # probability to use inverse gamma curve
-        self.p_curve4 = cfg.p_curve4  # probability for Curve4 rather than inverse Beta PDF
-        self.noise_level = cfg.noise_level
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, index):
-
-        fn = os.path.join(self.image_root, self.df.iloc[index, 0])
-        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
-            bytes_data = gcsfs.read(fn)
-            image = PIL.Image.open(io.BytesIO(bytes_data))
-        else:
-            assert os.path.exists(fn), f'{fn} not found'
-            image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
-
-        n_channels = image.shape[2]
-        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
-
-        # Generate curve (C, 256)
-        curve = torch.linspace(0, 1, 256, dtype=torch.float32)
-        if torch.rand(1) < self.p_gamma:
-            log_gamma = self.dist_log_gamma.sample((n_channels,))
-            gamma = torch.exp(log_gamma)
-            curve = torch.pow(curve[None, :], gamma[:, None])
-        elif torch.rand(1) < self.p_curve4:
-            a = torch.exp(self.dist_curve4_loga.sample((n_channels,)))
-            b = self.dist_curve4_b.sample((n_channels,))
-            bp2 = self.dist_curve4_bp2.sample((n_channels,))
-            bp = self.dist_curve4_bp.sample((n_channels,)) - bp2 + 61 * a
-            curve = Curve4(a, b, bp, bp2, inverse=False)(curve[None, :])
-        else:
-            a = self.dist_a.sample((n_channels,))
-            b = self.dist_b.sample((n_channels,))
-            curve = torch.tensor(Curve(a, b).get_inverse_curves())
-        assert curve.shape == (n_channels, 256), f"wrong curve shape: {curve.shape}"
-        assert curve.dtype == torch.float32, f"wrong curve dtype: {curve.dtype}"
-
-        if self.dist_bp:
-            bp_shift = self.dist_bp.sample((n_channels,))
-            curve = torch.clip(curve * (1 - bp_shift[:, None]) + bp_shift[:, None], 0, None)
-
-        assert self.use_batch_tfms, 'AugInvCurveDataset only supports batch_tfms'
-        # append rnd_factor for noise_level -> (C, 257)
-        if self.noise_level:
-            rnd_factor = torch.rand(1).repeat(3)
-            curve = torch.cat((curve, rnd_factor[:, None]), dim=1)
-
-        # resize image to double cfg.size and tensorize for collocation
-        image = torch.tensor(image.transpose(2, 0, 1))  # channel first
-
-
 class AugInvCurveDataset2(Dataset):
     """Images are mapped on device using the randomly generated target_curve"""
 
@@ -846,15 +758,16 @@ class AugInvCurveDataset2(Dataset):
             b = self.dist_curve4_b(n_channels).astype(np.float32)
             curve = Curve4(a, b, bp, bp2)
         #print("Curve_params:", *[p[0].item() for p in curve.params])
-        target = curve(support[None, :])
-        tfm = curve.inverse(support[None, :]) if self.predict_inverse else target
+        tfm = curve.inverse(support[None, :])
+        target = curve(support[None, :]) if self.predict_inverse else tfm
         
-        # random swap tfm <-> target
-        if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
+        # random swap tfm <-> target (channel-wise)
+        if (self.predict_inverse and any([
             (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
             (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
             (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
-            target, tfm = tfm, target
+            mask = np.random.randint(0, 2, (n_channels, 1)).astype(np.float32)
+            target, tfm = mask * target + (1 - mask) * tfm, (1 - mask) * target + mask * tfm
 
         target = torch.tensor(target)
         tfm = torch.tensor(tfm)
@@ -1118,25 +1031,28 @@ def parse_tfrecord(cfg, example):
             # B
             log_gamma = tfd.Uniform(*cfg.log_gamma_range).sample([3])
             gamma = tf.exp(log_gamma)[:, None]
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
-            x = tf.pow(x, gamma)
-            x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
+
             if cfg.predict_inverse:
                 x = support[None, :]
-                x = (x - bp2) / (1 - bp2)
+                x = bp + x * (1 - bp)
                 x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
-                x = tf.pow(x, 1 / gamma)
-                x = (x - bp) / (1 - bp)
+                x = tf.pow(x, gamma)
+                x = x * (1 - bp2) + bp2
                 target = tf.clip_by_value(x, 0, 1)
 
-                # randomly swap tfm/target
-                if cfg.mirror_gamma and (tf.random.uniform([]) < 0.5):
-                    target, tfm = tfm, target
-            else:
+            x = support[None, :]
+            x = (x - bp2) / (1 - bp2)
+            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+            x = tf.pow(x, 1 / gamma)
+            x = (x - bp) / (1 - bp)
+            tfm = tf.clip_by_value(x, 0, 1)
+
+            if not cfg.predict_inverse:
                 target = tfm
+            elif cfg.mirror_gamma and (tf.random.uniform([]) < 0.5):
+                # randomly swap tfm/target
+                target, tfm = tfm, target
+
         # A
         #elif np.random.random_sample() < cfg.p_beta:
         # B
@@ -1150,39 +1066,40 @@ def parse_tfrecord(cfg, example):
             a = tfd.Uniform(*cfg.curve3_a_range).sample([3])
             alpha = tf.exp(a)[:, None]
             beta = tfd.Uniform(*cfg.curve3_beta_range).sample([3])[:, None]
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-            x = x * 0.9                              # reduce slope at whitepoint
-            x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
-            x /= x[:, -1:]                                      # normalize
-            x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
-            
-            if cfg.predict_inverse:
-                # float64 avoids div-by-zero below
-                x = tf.cast(support, tf.float64)
-                y = tf.linspace(1e-6, 1 - 1e-6, 2000)
-                y = tf.cast(y, tf.float64)
-                bp = tf.cast(bp, tf.float64)
-                bp2 = tf.cast(bp2, tf.float64)
-                alpha = tf.cast(alpha, tf.float64)
-                beta = tf.cast(beta, tf.float64)
-                pdfs = bp + y[None, :] * (1 - bp)
-                pdfs = tf.clip_by_value(pdfs, 1e-6, 1 - 1e-6)  # avoid nan
-                pdfs = pdfs * 0.9                              # reduce slope at whitepoint
-                pdfs = tf.pow(pdfs, alpha - 1) * tf.pow(1 - pdfs, beta - 1)  # unnormalized PDF(x)
-                pdfs /= pdfs[:, -1:]                                         # normalize
-                pdfs = pdfs * (1 - bp2) + bp2
-                pdfs = tf.clip_by_value(pdfs, 0, 1)
-                target = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
-                target = tf.cast(tf.clip_by_value(target, 0, 1), tf.float32)
 
-                # randomly swap tfm/target
-                if cfg.mirror_beta and (tf.random.uniform([]) < 0.5):
-                    target, tfm = tfm, target
-            else:
+            if cfg.predict_inverse:
+                x = support[None, :]
+                x = bp + x * (1 - bp)
+                x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+                x = x * 0.9                              # reduce slope at whitepoint
+                x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
+                x /= x[:, -1:]                                      # normalize
+                x = x * (1 - bp2) + bp2
+                target = tf.clip_by_value(x, 0, 1)
+
+            # float64 avoids div-by-zero below
+            x = tf.cast(support, tf.float64)
+            y = tf.linspace(1e-6, 1 - 1e-6, 2000)
+            y = tf.cast(y, tf.float64)
+            bp = tf.cast(bp, tf.float64)
+            bp2 = tf.cast(bp2, tf.float64)
+            alpha = tf.cast(alpha, tf.float64)
+            beta = tf.cast(beta, tf.float64)
+            pdfs = bp + y[None, :] * (1 - bp)
+            pdfs = tf.clip_by_value(pdfs, 1e-6, 1 - 1e-6)  # avoid nan
+            pdfs = pdfs * 0.9                              # reduce slope at whitepoint
+            pdfs = tf.pow(pdfs, alpha - 1) * tf.pow(1 - pdfs, beta - 1)  # unnormalized PDF(x)
+            pdfs /= pdfs[:, -1:]                                         # normalize
+            pdfs = pdfs * (1 - bp2) + bp2
+            pdfs = tf.clip_by_value(pdfs, 0, 1)
+            tfm = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
+            tfm = tf.cast(tf.clip_by_value(tfm, 0, 1), tf.float32)
+
+            if not cfg.predict_inverse:
                 target = tfm
+            elif cfg.mirror_beta and (tf.random.uniform([]) < 0.5):
+                # randomly swap tfm/target                
+                target, tfm = tfm, target
 
         else:
             # A
@@ -1193,25 +1110,29 @@ def parse_tfrecord(cfg, example):
             a = tf.exp(tfd.Uniform(*cfg.curve4_loga_range).sample([3]))[:, None]
             b = tfd.Uniform(*cfg.curve4_b_range).sample([3])[:, None]
             π_half = 0.5 * tf.constant(np.pi)
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-            x = 1 - tf.cos(π_half * x ** a) ** b
-            x = x * (1 - bp2) + bp2
-            tfm = tf.clip_by_value(x, 0, 1)
+
             if cfg.predict_inverse:
                 x = support[None, :]
-                x = (x - bp2) / (1 - bp2)
+                x = bp + x * (1 - bp)
                 x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-                x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
-                x = (x - bp) / (1 - bp)
+                x = 1 - tf.cos(π_half * x ** a) ** b
+                x = x * (1 - bp2) + bp2
                 target = tf.clip_by_value(x, 0, 1)
 
-                # randomly swap tfm/target
-                if cfg.mirror_curve4 and (tf.random.uniform([]) < 0.5):
-                    target, tfm = tfm, target
-            else:
+            x = support[None, :]
+            x = (x - bp2) / (1 - bp2)
+            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+            x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
+            x = (x - bp) / (1 - bp)
+            tfm = tf.clip_by_value(x, 0, 1)
+
+            if not cfg.predict_inverse:
                 target = tfm
+            elif cfg.mirror_curve4:
+                # randomly swap tfm/target channel-wise
+                mask = tf.cast(tf.random.uniform([3, 1], minval=0, maxval=2, dtype=tf.int32), tf.float32)
+                target, tfm = mask * target + (1 - mask) * tfm, (1 - mask) * target + mask * tfm
+
             #tfm_abs = tf.sqrt(tf.keras.metrics.mean_squared_error(support, target)[0])
             #tf.print("params:", *[float(p[0]) for p in (bp, bp2, a, b)], "RMSE(tfm):", 255 * tfm_abs)
 

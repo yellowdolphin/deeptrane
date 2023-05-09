@@ -20,7 +20,7 @@ cfg = dict(
     blackpoint2_range = (-25, 20),  # y-offset
     log_gamma_range = [-1.4, 1.1],
     mirror_gamma = False,
-    curve3_a_range = (0.34, 1.06),
+    curve3_a_range = (0.2, 1.06),
     curve3_beta_range = (0.5, 1),
     mirror_beta = False,
     curve4_loga_range = (-1.6, 0.0),
@@ -42,7 +42,7 @@ cfg = dict(
     one_cycle = True,
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
-    save_best = 'valid_loss',
+    save_best = 'train_loss',
 
 # Model
     arch_name = 'mobilevitv2_100',

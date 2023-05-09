@@ -7,8 +7,8 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = ['gs://kds-528996ffb99fcb4a50af80142fac6464c89573bece5f6addd90a743f', 
-                 'gs://kds-25c2d7fe141470239ebde7c60ce5607a5a5d6807fdc2462773a4d3fb'],
+    gcs_paths = ['gs://kds-fbfdb3fa162ccaf0d885c7ca525b039fd4bbe58ceef0109b71b90e62', 
+                 'gs://kds-1909e026deb2833445a395b249af019ddbb0d968376390714d0d42b2'],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -34,14 +34,14 @@ cfg = dict(
     lr_min = 1e-6,
     save_best = 'loss',
     predict_inverse = True,
-    blackpoint_range = (-30, 20),   # x-offset
-    blackpoint2_range = (-25, 20),  # y-offset
-    log_gamma_range = [-1.4, 1.1],
+    blackpoint_range = (-30, 30),   # x-offset
+    blackpoint2_range = (-30, 30),  # y-offset
+    log_gamma_range = [-1.8, 1.8],
     mirror_gamma = False,
-    curve3_a_range = (0.3, 1.06), #(0.3, 0.693), #(0.34, 1.06),  # log_alpha
+    curve3_a_range = (0.2, 1.06), #(0.2, 1.06)(0.3, 0.693), #(0.34, 1.06),  # log_alpha
     curve3_beta_range = (0.5, 1),
     mirror_beta = False,
-    curve4_loga_range = (-1.6, 0.0),
+    curve4_loga_range = (-1.8, 0.0),
     curve4_b_range = (0.4, 1.2),
     mirror_curve4 = True,
     p_gamma = 0.2,                  # probability for using Gamma curve
