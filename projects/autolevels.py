@@ -1123,20 +1123,20 @@ def parse_tfrecord(cfg, example):
             x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
             x = tf.pow(x, gamma)
             x = x * (1 - bp2) + bp2
-            target = tf.clip_by_value(x, 0, 1)
+            tfm = tf.clip_by_value(x, 0, 1)
             if cfg.predict_inverse:
                 x = support[None, :]
                 x = (x - bp2) / (1 - bp2)
                 x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
                 x = tf.pow(x, 1 / gamma)
                 x = (x - bp) / (1 - bp)
-                tfm = tf.clip_by_value(x, 0, 1)
+                target = tf.clip_by_value(x, 0, 1)
 
                 # randomly swap tfm/target
                 if cfg.mirror_gamma and (tf.random.uniform([]) < 0.5):
                     target, tfm = tfm, target
             else:
-                tfm = target
+                target = tfm
         # A
         #elif np.random.random_sample() < cfg.p_beta:
         # B
@@ -1157,7 +1157,7 @@ def parse_tfrecord(cfg, example):
             x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
             x /= x[:, -1:]                                      # normalize
             x = x * (1 - bp2) + bp2
-            target = tf.clip_by_value(x, 0, 1)
+            tfm = tf.clip_by_value(x, 0, 1)
             
             if cfg.predict_inverse:
                 # float64 avoids div-by-zero below
@@ -1175,14 +1175,14 @@ def parse_tfrecord(cfg, example):
                 pdfs /= pdfs[:, -1:]                                         # normalize
                 pdfs = pdfs * (1 - bp2) + bp2
                 pdfs = tf.clip_by_value(pdfs, 0, 1)
-                tfm = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
-                tfm = tf.cast(tf.clip_by_value(tfm, 0, 1), tf.float32)
+                target = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
+                target = tf.cast(tf.clip_by_value(target, 0, 1), tf.float32)
 
                 # randomly swap tfm/target
                 if cfg.mirror_beta and (tf.random.uniform([]) < 0.5):
                     target, tfm = tfm, target
             else:
-                tfm = target
+                target = tfm
 
         else:
             # A
@@ -1198,20 +1198,20 @@ def parse_tfrecord(cfg, example):
             x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
             x = 1 - tf.cos(π_half * x ** a) ** b
             x = x * (1 - bp2) + bp2
-            target = tf.clip_by_value(x, 0, 1)
+            tfm = tf.clip_by_value(x, 0, 1)
             if cfg.predict_inverse:
                 x = support[None, :]
                 x = (x - bp2) / (1 - bp2)
                 x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
                 x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
                 x = (x - bp) / (1 - bp)
-                tfm = tf.clip_by_value(x, 0, 1)
+                target = tf.clip_by_value(x, 0, 1)
 
                 # randomly swap tfm/target
                 if cfg.mirror_curve4 and (tf.random.uniform([]) < 0.5):
                     target, tfm = tfm, target
             else:
-                tfm = target
+                target = tfm
             #tfm_abs = tf.sqrt(tf.keras.metrics.mean_squared_error(support, target)[0])
             #tf.print("params:", *[float(p[0]) for p in (bp, bp2, a, b)], "RMSE(tfm):", 255 * tfm_abs)
 
