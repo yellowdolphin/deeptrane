@@ -999,36 +999,24 @@ def parse_tfrecord(cfg, example):
         bp = dist_bp.sample([3])
         features['target'] = tf.stack([a, b, bp])
     elif cfg.curve == 'free':
-        # Generate curve (C, 256)
-        # 3 Options: 
-        # (A) use numpy class, convert to tf.tensor
-        #     -> works for debugging but np.random produces identical params for all examples!
-        #     -> TF.random cannot seed numpy because no eager mode inside graph, tensors have no numpy()
-        # (B) inline code with TF Ops here
-        #     -> seems to work, except Curve4: has a leak: both train/valid loss low but eval RMSE is 38
-        # (C) upgrade function get_curves
+        # Cannot use numpy classes:
+        #   - np.random produces identical params for all examples!
+        #   - TF.random cannot seed numpy because no eager mode inside graph, tensors have no numpy()
+        #
+        # ToDo: factor out curve generation
+        #
+        # Issue: curve types not mixed during training, near-linear channels under-represented
+        # Option1: randomly replace Beta/Curve4 by (small) gamma for individual channels
+        # Option2: randomly apply one curve-type per channel
+        # Option3: random linear combination of each curve type
+        # Option4: apply Beta/Curve4 tfm after gamma tfm on 0-3 channels
 
-        # A
-        #support = np.linspace(0.0, 1.0, 256, dtype=np.float32)
-        #bp = np.random.uniform(*cfg.blackpoint_range, 3).astype(np.float32)
-        #bp2 = np.random.uniform(*cfg.blackpoint2_range, 3).astype(np.float32)
-        
-        # B
         support = tf.linspace(0.0, 1.0, 256)
         #bp = tfd.Uniform(*cfg.blackpoint_range).sample([3])  #[:, None] / 255
         bp = tf.random.uniform([3], *cfg.blackpoint_range)[:, None] / 255
         bp2 = tfd.Uniform(*cfg.blackpoint2_range).sample([3])[:, None] / 255
 
-        # A
-        #if np.random.random_sample() < cfg.p_gamma:
-        # B
         if tf.random.uniform([]) < cfg.p_gamma:
-            # A
-            #log_gamma = np.random.uniform(*cfg.log_gamma_range, 3).astype(np.float32)
-            #gamma = np.exp(log_gamma)
-            #curve = Curve0(gamma, bp, bp2)
-            #assert all([p.dtype == np.float32 for p in curve.params]), str([p.dtype == np.float32 for p in curve.params])
-            # B
             log_gamma = tfd.Uniform(*cfg.log_gamma_range).sample([3])
             gamma = tf.exp(log_gamma)[:, None]
 
@@ -1053,16 +1041,7 @@ def parse_tfrecord(cfg, example):
                 # randomly swap tfm/target
                 target, tfm = tfm, target
 
-        # A
-        #elif np.random.random_sample() < cfg.p_beta:
-        # B
         elif tf.random.uniform([]) < cfg.p_beta:
-            # A
-            #a = np.random.uniform(*cfg.curve3_a_range, 3).astype(np.float32)
-            #alpha = np.exp(a)
-            #beta = np.random.uniform(*cfg.curve3_beta_range, 3).astype(np.float32)
-            #curve = Curve3(alpha, beta, bp, bp2)
-            # B
             a = tfd.Uniform(*cfg.curve3_a_range).sample([3])
             alpha = tf.exp(a)[:, None]
             beta = tfd.Uniform(*cfg.curve3_beta_range).sample([3])[:, None]
@@ -1102,11 +1081,6 @@ def parse_tfrecord(cfg, example):
                 target, tfm = tfm, target
 
         else:
-            # A
-            #a = np.exp(np.random.uniform(*cfg.curve4_loga_range, 3).astype(np.float32))
-            #b = np.random.uniform(*cfg.curve4_b_range, 3).astype(np.float32)
-            #curve = Curve4(a, b, bp, bp2)
-            # B
             a = tf.exp(tfd.Uniform(*cfg.curve4_loga_range).sample([3]))[:, None]
             b = tfd.Uniform(*cfg.curve4_b_range).sample([3])[:, None]
             π_half = 0.5 * tf.constant(np.pi)
@@ -1136,16 +1110,6 @@ def parse_tfrecord(cfg, example):
             #tfm_abs = tf.sqrt(tf.keras.metrics.mean_squared_error(support, target)[0])
             #tf.print("params:", *[float(p[0]) for p in (bp, bp2, a, b)], "RMSE(tfm):", 255 * tfm_abs)
 
-        # A
-        #tfm = curve(support[None, :])
-        ##print("support:", support.shape)  # (256,)
-        ##print("curve params:", [p.shape for p in curve.params])  # [(3,), (3,), (3,)]
-        ##print("tfm:", tfm.shape)  # (3, 256)
-        #target = curve.inverse(support[None, :]) if cfg.predict_inverse else tfm
-        #tfm = tf.constant(tfm)
-        ##print("target:", target.shape)  # (3, 256)
-
-        # END of A/B
         target = tf.reshape(target, [cfg.channel_size])
         assert target.shape == (3 * 256,), f"wrong target shape: {target.shape}"
         assert target.dtype == tf.float32, f"wrong target dtype: {target.dtype}"
