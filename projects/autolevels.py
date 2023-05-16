@@ -874,7 +874,8 @@ def interp1d_tf(x, y, inp):
     return f0 * (1 - alpha) + f1 * alpha
 
 
-def map_index(image, curves, add_uniform_noise=True, height=None, width=None, channels=3):
+def map_index(image, curves, add_uniform_noise=False, add_jpeg_artifacts=True,
+              height=None, width=None, channels=3):
     """Transform `image` by mapping its pixel values via `curves`
     
     Parameters:
@@ -894,7 +895,11 @@ def map_index(image, curves, add_uniform_noise=True, height=None, width=None, ch
     #for i in range(3):
     #    image[:, :, i] = curves[:, i][image[:, :, i]]
     # Use tf.gather_nd instead:
-    curves = tf.cast(curves, tf.float32)
+    if add_jpeg_artifacts:
+        # is this faster than uint8 conversion after mapping by tf.image.adjust_jpeg_quality?
+        curves = tf.cast(tf.clip_by_value(curves, 0, 1) * 255, tf.uint8)
+    else:
+        curves = tf.cast(curves, tf.float32)
 
     # turn pixel values into int32 indices for gather_nd
     image = tf.cast(image, tf.int32)
@@ -905,6 +910,10 @@ def map_index(image, curves, add_uniform_noise=True, height=None, width=None, ch
         indices_plus_one = tf.stack([image_plus_one, channel_idx], axis=-1)
 
     image = tf.gather_nd(curves, indices)
+
+    if add_jpeg_artifacts:
+        image = tf.image.adjust_jpeg_quality(image, 75)
+        image = tf.cast(image, tf.float32) / 255
 
     if add_uniform_noise:
         image_plus_one = tf.gather_nd(curves, indices_plus_one)
@@ -944,7 +953,7 @@ def decode_image(cfg, image_data, target, height, width):
 
     elif cfg.curve == 'free':
         curves = tf.transpose(target)  # (256, C)
-        image = map_index(image, curves, cfg.add_uniform_noise, height, width)
+        image = map_index(image, curves, cfg.add_uniform_noise, cfg.add_jpeg_artifacts, height, width)
 
     if cfg.curve != 'free':
         image /= 255.0
