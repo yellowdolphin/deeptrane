@@ -895,11 +895,13 @@ def map_index(image, curves, add_uniform_noise=False, add_jpeg_artifacts=True,
     #for i in range(3):
     #    image[:, :, i] = curves[:, i][image[:, :, i]]
     # Use tf.gather_nd instead:
+
     if add_jpeg_artifacts:
         # is this faster than uint8 conversion after mapping by tf.image.adjust_jpeg_quality?
         curves = tf.cast(tf.clip_by_value(curves, 0, 1) * 255, tf.uint8)
     else:
         curves = tf.cast(curves, tf.float32)
+    #curves = tf.cast(curves, tf.float32)
 
     # turn pixel values into int32 indices for gather_nd
     image = tf.cast(image, tf.int32)
@@ -912,7 +914,9 @@ def map_index(image, curves, add_uniform_noise=False, add_jpeg_artifacts=True,
     image = tf.gather_nd(curves, indices)
 
     if add_jpeg_artifacts:
-        image = tf.image.adjust_jpeg_quality(image, 75)
+        # adjust_jpeg_quality automatically converts image to uint8 and back
+        rnd_quality = tf.cast(50 * (1 + tf.random.uniform([])), tf.int32)
+        image = tf.image.adjust_jpeg_quality(image, rnd_quality)
         image = tf.cast(image, tf.float32) / 255
 
     if add_uniform_noise:
