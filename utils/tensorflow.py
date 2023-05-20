@@ -35,8 +35,11 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
 
     #@tf.function
     def lrfn(iterations):
-        # iterations is tensor with dtype=tf.float32
-        #tf.print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
+        # iterations can be tensor with dtype=tf.float32.
+        # When wrapped in LearningRateScheduler and called from model.fit(callbacks=lr_callback), iterations is
+        # int and offset by cfg.rst_epoch if initial_epoch=cfg.rst_epoch is passed to fit() as well.
+        #print("lrfn called with", float(iterations), f"({iterations.dtype if hasattr(iterations, 'dtype') else type(iterations)})")
+        #print("rst_epoch:", rst_epoch)
         # lrfn will be called at epoch_start.
         # If passed inside LRSchedule to optimizer, it may be called with optimizer.iterations, once per optimizer step.
 
@@ -57,7 +60,8 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
         # => tf2.4.1 does not warn at all and tf2.8.2 retraces any lrfn if decorated with tf.function.
         # Effect on performance is minor if any.
 
-        epoch = iterations / steps_per_epoch + rst_epoch
+        epoch = (iterations / steps_per_epoch if type(iterations) is int else
+                 iterations / steps_per_epoch + rst_epoch)
 
         if epoch < lr_ramp_ep:
             lr = (lr_max - lr_start) / lr_ramp_ep * epoch + lr_start
@@ -81,7 +85,8 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
         plt.plot(epochs.numpy(), learning_rates)
         plt.show()
 
-    lr_callback = tf.keras.callbacks.LearningRateScheduler(lrfn, verbose=False)
+    lr_callback = tf.keras.callbacks.LearningRateScheduler(lrfn, verbose=cfg.DEBUG)
+    # verbose prints lr at epoch start
 
     return lr_callback
 

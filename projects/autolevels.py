@@ -46,8 +46,9 @@ def init(cfg):
 
     if cfg.filetype == 'JPEG':
         cfg.image_root = cfg.competition_path / 'ILSVRC/Data/CLS-LOC/train'
-    else:
+    elif 'imagenet' in cfg.tags:
         # Customize data pipeline (see tf_data for definition and defaults)
+        # To check out features in new tfrec dataset, set "cfg.tfrec_format = {}"
         """Features in first TFRecord file:
         image/class/synset             bytes_list        0.013 kB
         image/encoded                  bytes_list       32.609 kB
@@ -58,13 +59,39 @@ def init(cfg):
         image/height                   int64_list        0.006 kB
         image/channels                 int64_list        0.005 kB
         image/filename                 bytes_list        0.022 kB"""
-        #cfg.tfrec_format = {'encoded': tf.io.FixedLenFeature([], tf.string)}
         cfg.tfrec_format = {'image/encoded': tf.io.FixedLenFeature([], tf.string),
                             'image/height': tf.io.FixedLenFeature([], tf.int64),
                             'image/width': tf.io.FixedLenFeature([], tf.int64)}
         cfg.data_format = {'image': 'image/encoded',
                            'height': 'image/height',
                            'width': 'image/width'}
+        cfg.inputs = ['image']
+
+    elif 'coco2017' in cfg.tags:
+        """Features in first TFRecord file:
+        flickr_url                     bytes_list        0.064 kB
+        coco_url                       bytes_list        0.059 kB
+        id                             int64_list        0.007 kB
+        bboxes                         float_list        0.066 kB
+        width                          int64_list        0.006 kB
+        area                           float_list        0.020 kB
+        objects                        int64_list        0.005 kB
+        category_ids                   int64_list        0.008 kB
+        annotation_ids                 int64_list        0.016 kB
+        date_captured                  bytes_list        0.022 kB
+        segmentation_lengths           int64_list        0.009 kB
+        image                          bytes_list      219.203 kB
+        license                        int64_list        0.005 kB
+        file_name                      bytes_list        0.020 kB
+        height                         int64_list        0.006 kB
+        iscrowd                        int64_list        0.008 kB
+        segmentations                  float_list        1.904 kB"""
+        cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string),
+                            'height': tf.io.FixedLenFeature([], tf.int64),
+                            'width': tf.io.FixedLenFeature([], tf.int64)}
+        cfg.data_format = {'image': 'image',
+                           'height': 'height',
+                           'width': 'width'}
         cfg.inputs = ['image']
 
     cfg.meta_csv = cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt'
@@ -899,6 +926,7 @@ def map_index(image, curves, add_uniform_noise=False, add_jpeg_artifacts=True,
     if add_jpeg_artifacts:
         # is this faster than uint8 conversion after mapping by tf.image.adjust_jpeg_quality?
         curves = tf.cast(tf.clip_by_value(curves, 0, 1) * 255, tf.uint8)
+        assert not add_uniform_noise, 'add_jpeg_artifacts and add_uniform_noise are mutually exclusive!'
     else:
         curves = tf.cast(curves, tf.float32)
     #curves = tf.cast(curves, tf.float32)
@@ -921,7 +949,7 @@ def map_index(image, curves, add_uniform_noise=False, add_jpeg_artifacts=True,
 
     if add_uniform_noise:
         image_plus_one = tf.gather_nd(curves, indices_plus_one)
-        noise_range = image_plus_one - image
+        noise_range = image_plus_one - image  ## uint - float
         noise = tf.random.uniform((height, width, channels)) * noise_range
         image += noise
 
@@ -1192,10 +1220,28 @@ def parse_tfrecord(cfg, example):
 
     return inputs, targets
 
+def count_examples_in_tfrec(fn):
+    count = 0
+    for _ in tf.data.TFRecordDataset(fn):
+        count += 1
+    return count
 
 def count_data_items(filenames, tfrec_filename_pattern=None):
-    "Got number of items from idx files"
-    return np.sum([391 if 'validation' in fn else 1252 for fn in filenames])
+    if '-of-' in filenames[0]:
+        # Imagenet: Got number of items from idx files
+        return np.sum([391 if 'validation' in fn else 1252 for fn in filenames])
+    if 'coco' in filenames[0]:
+        return np.sum([159 if 'train/coco184' in fn else 499 if 'val/coco7' in fn else 
+                       642 if '/train/' in fn else 643 
+                       for fn in filenames])
+        #print(f'{len(filenames)} urls:')
+        #total_count = 0
+        #for fn in filenames:
+        #    n = count_examples_in_tfrec(fn)
+        #    print("   ", Path(fn).parent, n)
+        #    total_count += n
+        #return total_count
+    raise NotImplementedError(f'autolevels.count_data_items: filename not recognized: {filenames[0]}')
 
 
 class TFCurveRMSE(tf.keras.metrics.MeanSquaredError):
