@@ -195,6 +195,54 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
     return TF.Compose(tfms)
 
 
+def blurred_degenerate_image_tf(img: tf.Tensor) -> tf.Tensor:
+    import tensorflow as tf
+
+    max_value = 255.0 if (img.dtype == tf.uint8) else 1.0
+    dtype = tf.float32 if (img.dtype == tf.uint8) else img.dtype
+
+    kernel = (tf.constant([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=dtype, shape=[3, 3, 1, 1]))
+    kernel = kernel / tf.reduce_sum(kernel)
+    kernel = tf.tile(kernel, [1, 1, 3, 1])
+
+    strides = [1, 1, 1, 1]
+
+    img = tf.expand_dims(img, 0)
+
+    img = tf.nn.depthwise_conv2d(img, kernel, strides, padding='SAME', dilations=[1, 1])
+    img = tf.clip_by_value(img, 0.0, max_value)
+    img = tf.squeeze(img, [0])
+
+    return img
+
+
+def blend_tf(img1: tf.Tensor, img2: tf.Tensor, ratio: float) -> tf.Tensor:
+    "Interpolate (ratio 0...1) or extrapolate (ratio > 1) between img1 and img2"
+    import tensorflow as tf
+    ratio = float(ratio)
+    assert img1.dtype == img2.dtype, f'dtype mismatch: {img1.dtype} (img1), {img2.dtype} (img2)'
+
+    if img1.dtype == tf.uint8:
+        img1 = ratio * tf.cast(img1, tf.float32) + (1.0 - ratio) * tf.cast(img2, tf.float32)
+        return tf.cast(tf.clip_by_value(img1, 0.0, 255.0), tf.uint8)
+    else:
+        return tf.clip_by_value(ratio * img1 + (1.0 - ratio) * img2, 0.0, 1.0)
+
+
+def adjust_sharpness_tf(img: tf.Tensor, sharpness_factor: float) -> tf.Tensor:
+    """Implements the torchvision function with TF Ops
+    Args:
+        img (tf.Tensor): Image to be adjusted.
+        sharpness_factor (float):  How much to adjust the sharpness. Can be
+            any non negative number. 0 gives a blurred image, 1 gives the
+            original image while 2 increases the sharpness by a factor of 2.
+
+    Returns:
+        tf.Tensor: Sharpness adjusted image.
+    """
+    return blend_tf(img, blurred_degenerate_image_tf(img), sharpness_factor)
+
+
 def get_tf_tfms(cfg, mode='train'):
     "Return tfms based on flags from file `cfg.augmentation`."
     import tensorflow as tf

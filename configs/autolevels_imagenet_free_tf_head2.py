@@ -48,6 +48,7 @@ cfg = dict(
     p_beta = 0.25,                  # probability for using Beta PDF rather than Curve4
     add_uniform_noise = 0.75,       # add uniform noise to mask uint8 discretization [bool|float]
     add_jpeg_artifacts = True,
+    sharpness_augment = True,
     noise_level = 0.03,             # random normal noise (augmentation)
     augmentation = 'autolevels_aug_tf',
 

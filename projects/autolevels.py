@@ -34,6 +34,7 @@ print("[ √ ] albumentations:", alb.__version__)
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
+from augmentation import adjust_sharpness_tf
 
 gcs_paths = {
     'imagenet-object-localization-challenge': 'gs://kds-ea17055740cb6a131247a93dc6ea8c461c783584c675b3a2391fbddb',
@@ -901,8 +902,8 @@ def interp1d_tf(x, y, inp):
     return f0 * (1 - alpha) + f1 * alpha
 
 
-def map_index(image, curves, add_uniform_noise=False, add_jpeg_artifacts=True,
-              height=None, width=None, channels=3):
+def map_index(image, curves, height=None, width=None, channels=3, 
+              add_uniform_noise=False, add_jpeg_artifacts=True, sharpness_augment=True):
     """Transform `image` by mapping its pixel values via `curves`
     
     Parameters:
@@ -940,6 +941,11 @@ def map_index(image, curves, add_uniform_noise=False, add_jpeg_artifacts=True,
         indices_plus_one = tf.stack([image_plus_one, channel_idx], axis=-1)
 
     image = tf.gather_nd(curves, indices)
+
+    if sharpness_augment:
+        # randomly soften/sharpen the image
+        rnd_sharpness = tf.exp(-2.3 + 4.6 * tf.random.uniform([]))
+        image = adjust_sharpness_tf(image, rnd_sharpness)
 
     if add_jpeg_artifacts:
         # adjust_jpeg_quality automatically converts image to uint8 and back
@@ -985,7 +991,8 @@ def decode_image(cfg, image_data, target, height, width):
 
     elif cfg.curve == 'free':
         curves = tf.transpose(target)  # (256, C)
-        image = map_index(image, curves, cfg.add_uniform_noise, cfg.add_jpeg_artifacts, height, width)
+        image = map_index(image, curves, height, width, 3,
+                          cfg.add_uniform_noise, cfg.add_jpeg_artifacts, cfg.sharpness_augment)
 
     if cfg.curve != 'free':
         image /= 255.0
@@ -1173,7 +1180,7 @@ def parse_tfrecord(cfg, example):
         p_beta = (1 - cfg.p_gamma) * cfg.p_beta
         p_curve4 = (1 - p_gamma - p_beta)
         #mask = get_mask_uniform([p_gamma, p_beta, p_curve4])
-        mask = get_mask_categorical([p_gamma, p_beta, p_curve4])
+        mask = get_mask_categorical([p_gamma, p_beta, p_curve4])  # faster on cpu
         tfms = tf.stack([tfm0, tfm1, tfm2], axis=-1)
         targets = tf.stack([target0, target1, target2], axis=-1)
         target = tf.einsum('ijk,ki->ij', targets, mask)
