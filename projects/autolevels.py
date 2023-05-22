@@ -944,7 +944,8 @@ def map_index(image, curves, height=None, width=None, channels=3,
 
     if sharpness_augment:
         # randomly soften/sharpen the image
-        rnd_sharpness = tf.exp(-2.3 + 4.6 * tf.random.uniform([]))
+        #rnd_sharpness = tf.exp(-2.3 + 4.6 * tf.random.uniform([]))
+        rnd_sharpness = 2.0 * tf.random.uniform([])
         image = adjust_sharpness_tf(image, rnd_sharpness)
 
     if add_jpeg_artifacts:
