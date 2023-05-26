@@ -945,14 +945,12 @@ def map_index(image, curves, height=None, width=None, channels=3,
     if sharpness_augment:
         # randomly soften/sharpen the image
         #rnd_sharpness = tf.exp(-2.3 + 4.6 * tf.random.uniform([]))
-        rnd_sharpness = 2.0 * tf.random.uniform([])
-        #tf.print("sharpness:", rnd_sharpness)
+        rnd_sharpness = 2.0 * tf.random.uniform([])  # rng checked
         image = adjust_sharpness_tf(image, rnd_sharpness)
 
     if add_jpeg_artifacts:
         # adjust_jpeg_quality automatically converts image to uint8 and back
         rnd_quality = tf.cast(50 * (1 + tf.random.uniform([])), tf.int32)
-        #tf.print("                                          jpeg-q:", rnd_quality)
         image = tf.image.adjust_jpeg_quality(image, rnd_quality)
         image = tf.cast(image, tf.float32) / 255
 
