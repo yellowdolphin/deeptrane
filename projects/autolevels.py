@@ -36,9 +36,6 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 from augmentation import adjust_sharpness_tf
 
-gcs_paths = {
-    'imagenet-object-localization-challenge': 'gs://kds-ea17055740cb6a131247a93dc6ea8c461c783584c675b3a2391fbddb',
-    }
 
 def init(cfg):
     cfg.competition_path = Path('/kaggle/input/imagenet-object-localization-challenge')

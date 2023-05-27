@@ -48,8 +48,7 @@ def get_gcs_paths(cfg):
         from kaggle_datasets import KaggleDatasets
         from kaggle_web_client import BackendError
 
-        if cfg.datasets:
-            cfg.datasets = [Path(ds).name for ds in cfg.datasets]
+        cfg.datasets = [Path(ds).name for ds in cfg.datasets]
 
         if cfg.dataset_is_private:
             # Enable GCS for private datasets
@@ -70,9 +69,12 @@ def get_gcs_paths(cfg):
             assert cfg.gcs_paths, 'No gcs_paths defined in config'
             gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
         except BackendError:
-            print(f"datasets {cfg.datasets} not in /kaggle/input, using cfg.gcs_paths")
-            assert cfg.gcs_paths, 'No gcs_paths defined in config'
-            gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
+            print(f"BackendError: checking dataset paths...")
+            for ds in cfg.dataset:
+                pth = f'/kaggle/input/{ds}'
+                assert os.path.exists(pth), f'{pth} does not exist'
+            print("trying again...")
+            gcs_paths = [KaggleDatasets().get_gcs_path(ds) for ds in cfg.datasets]
 
         print("GCS paths:", gcs_paths)
         return gcs_paths
