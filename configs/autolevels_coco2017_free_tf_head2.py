@@ -49,6 +49,7 @@ cfg = dict(
     sharpness_augment = True,
     noise_level = 0.03,             # random normal noise (augmentation)
     augmentation = 'autolevels_aug_tf',
+    presize = 2.6,
 
 # Model
     arch_name = 'efnv2s',

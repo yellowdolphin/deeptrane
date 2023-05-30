@@ -550,7 +550,7 @@ class AugInvGammaDataset(Dataset):
         self.return_path_attr = return_path_attr
         self.use_batch_tfms = cfg.use_batch_tfms
         if self.use_batch_tfms:
-            self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
+            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], interpolation=InterpolationMode.NEAREST)
         #self.dist_log_gamma = torch.distributions.normal.Normal(0, 0.4)
         self.dist_log_gamma = torch.distributions.uniform.Uniform(-1.6, 1.0)
         self.noise_level = cfg.noise_level
@@ -650,7 +650,7 @@ class AugInvBetaDataset(Dataset):
         self.beta_decay = cfg.beta_decay or 10
         self.use_batch_tfms = cfg.use_batch_tfms
         if self.use_batch_tfms:
-            self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
+            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], interpolation=InterpolationMode.NEAREST)
         self.noise_level = cfg.noise_level
         self.curve_tfm_on_device = cfg.curve_tfm_on_device
 
@@ -732,7 +732,7 @@ class AugInvCurveDataset2(Dataset):
         self.return_path_attr = return_path_attr
         self.use_batch_tfms = cfg.use_batch_tfms
         if self.use_batch_tfms:
-            self.presize = TT.Resize([s * 2 for s in cfg.size], interpolation=InterpolationMode.NEAREST)
+            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], interpolation=InterpolationMode.NEAREST)
         else:
             self.resize = TT.Resize(cfg.size, interpolation=InterpolationMode.BILINEAR)
         self.dist_log_gamma = partial(np.random.uniform, *cfg.log_gamma_range)
