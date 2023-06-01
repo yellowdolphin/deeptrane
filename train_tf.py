@@ -159,7 +159,13 @@ for use_fold in cfg.use_folds:
     model.summary(line_length=120)
 
     if cfg.rst_path and cfg.rst_name:
-        model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
+        try:
+            model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
+        except ValueError:
+            print(f"{rst_name} mismatches model with body: {model.layers[1].name}")
+            print("Trying to load matching layers only...")
+            model.load_weights(Path(cfg.rst_path) / cfg.rst_name, 
+                               by_name=True, skip_mismatch=True)
         print(f"Weights loaded from {cfg.rst_name}")
 
     t0 = perf_counter()
