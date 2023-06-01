@@ -354,6 +354,16 @@ def freeze_bn(model):
             assert layer.trainable is False, f'could not freeze {layer.name}'
 
 
+def freeze_head(model):
+    for layer in model.layers[2:]:
+        layer.trainable = False
+
+
+def unfreeze_head(model):
+    for layer in model.layers[2:]:
+        layer.trainable = True
+
+
 def check_model_inputs(cfg, model):
     for inp in model.inputs:
         assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
@@ -556,6 +566,12 @@ def get_pretrained_model(cfg, strategy, inference=False):
             print("freezing layer", model.layers[1].name)
             freeze_bn(model.layers[1])  # freeze only backbone BN
             #model.layers[1].layers[2].trainable = True  # unfreeze stem BN
+
+        if cfg.freeze_head:
+            print("freezing head layers")
+            freeze_head(model)
+        else:
+            unfreeze_head(model)
 
         # The following can probably be moved out of the strategy.scope...
 

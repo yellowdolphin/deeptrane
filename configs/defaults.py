@@ -59,6 +59,7 @@ cfg = dict(
     bn_eps = 1e-5,
     bn_momentum = 0.1,
     wd = 0.05,                  # default 1e-2
+    freeze_head = False,
 
     rst_path = '.',
     rst_name = None,

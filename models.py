@@ -692,6 +692,17 @@ def get_pretrained_timm(cfg):
     if n_bn_layers:
         print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
 
+    # either freeze or unfreeze head layers
+    head = list(model.children())[-1]
+    if cfg.freeze_head:
+        print("Freezing head layers:")
+        print(head)
+        for p in head.parameters():
+            p.requires_grad = False
+    else:
+        for p in head.parameters():
+            p.requires_grad = True
+
     # EfficientNet-V2 body has SiLU, BN (everywhere), but no Dropout.
     # Fused-MBConv (stages 1-3) and SE + 3x3-group_conv (group_size=1, stages 4-7).
     #print("FC stats:")
