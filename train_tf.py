@@ -162,7 +162,7 @@ for use_fold in cfg.use_folds:
         try:
             model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
         except ValueError:
-            print(f"{rst_name} mismatches model with body: {model.layers[1].name}")
+            print(f"{cfg.rst_name} mismatches model with body: {model.layers[1].name}")
             print("Trying to load matching layers only...")
             model.load_weights(Path(cfg.rst_path) / cfg.rst_name, 
                                by_name=True, skip_mismatch=True)
