@@ -1047,9 +1047,9 @@ def parse_tfrecord(cfg, example):
     example = tf.io.parse_single_example(example, cfg.tfrec_format)
     features = {}
 
+    # tf.random.uniform is 8x faster than tfd.Uniform.sample
     if cfg.curve == 'gamma':
-        #features['target'] = tf.math.exp(tfd.Normal(0.0, 0.6).sample([3]))
-        features['target'] = tf.math.exp(tfd.Uniform(low=-1.6, high=1.0).sample([3]))
+        features['target'] = tf.random.uniform([3], -1.6, 1.0)
     elif cfg.curve == 'beta' and cfg.channel_size == 2:
         # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
         gamma = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
@@ -1078,12 +1078,11 @@ def parse_tfrecord(cfg, example):
         # Option4: apply Beta/Curve4 tfm after gamma tfm on 0-3 channels
 
         support = tf.linspace(0.0, 1.0, 256)
-        #bp = tfd.Uniform(*cfg.blackpoint_range).sample([3])  #[:, None] / 255
         bp = tf.random.uniform([3], *cfg.blackpoint_range)[:, None] / 255
-        bp2 = tfd.Uniform(*cfg.blackpoint2_range).sample([3])[:, None] / 255
+        bp2 = tf.random.uniform([3], *cfg.blackpoint2_range)[:, None] / 255
 
         #if tf.random.uniform([]) < cfg.p_gamma:
-        log_gamma = tfd.Uniform(*cfg.log_gamma_range).sample([3])
+        log_gamma = tf.random.uniform([3], *cfg.log_gamma_range)
         gamma = tf.exp(log_gamma)[:, None]
 
         if cfg.predict_inverse:
@@ -1108,9 +1107,9 @@ def parse_tfrecord(cfg, example):
             target0, tfm0 = tfm0, target0
 
         #elif tf.random.uniform([]) < cfg.p_beta:
-        a = tfd.Uniform(*cfg.curve3_a_range).sample([3])
+        a = tf.random.uniform([3], *cfg.curve3_a_range)
         alpha = tf.exp(a)[:, None]
-        beta = tfd.Uniform(*cfg.curve3_beta_range).sample([3])[:, None]
+        beta = tf.random.uniform([3], *cfg.curve3_beta_range)[:, None]
 
         if cfg.predict_inverse:
             x = support[None, :]
@@ -1147,8 +1146,8 @@ def parse_tfrecord(cfg, example):
             target1, tfm1 = tfm1, target1
 
         #else:
-        a = tf.exp(tfd.Uniform(*cfg.curve4_loga_range).sample([3]))[:, None]
-        b = tfd.Uniform(*cfg.curve4_b_range).sample([3])[:, None]
+        a = tf.exp(tf.random.uniform([3], *cfg.curve4_loga_range))[:, None]
+        b = tf.random.uniform([3], *cfg.curve4_b_range)[:, None]
         π_half = 0.5 * tf.constant(np.pi)
 
         if cfg.predict_inverse:
