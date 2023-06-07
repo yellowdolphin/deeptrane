@@ -106,7 +106,8 @@ def init(cfg):
     if cfg.curve == 'gamma':
         cfg.dataset_class = AugInvGammaDataset
         cfg.channel_size = 3
-        cfg.targets = ['target_rel', 'target_abs']
+        cfg.targets = (['target_curve', 'target_bp', 'target_bp2', 'target_log_gamma'] if cfg.output_curve_params else
+                       ['target_curve'])
     elif cfg.curve == 'beta':
         cfg.dataset_class = AugInvBetaDataset
         assert cfg.channel_size, "Set channel_size in config file!"
@@ -960,8 +961,8 @@ def map_index(image, curves, height=None, width=None, channels=3,
     return image
 
 
-def decode_image(cfg, image_data, target, height, width):
-    "Decode image and apply inverse curve transform according to target"
+def decode_image(cfg, image_data, tfm, height, width):
+    "Decode image and apply curve transform tfm"
     # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
     # => read height, width features from tfrec.
     
@@ -977,37 +978,23 @@ def decode_image(cfg, image_data, target, height, width):
     if cfg.curve is None:
         return tf.cast(image, tf.float32) / 255.0
 
-    if cfg.curve == 'beta':
-        curves = get_curves(target, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
+    elif cfg.curve == 'beta':
+        curves = get_curves(tfm, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
         image = map_index(image, curves, cfg.add_uniform_noise, height, width)
 
-    elif cfg.curve == 'gamma':
-        image = tf.cast(image, tf.float32)
-        if cfg.add_uniform_noise:
-            if (cfg.add_uniform_noise is True) or (tf.random.uniform([]) < cfg.add_uniform_noise):
-                image += tf.random.uniform((height, width, 3))
-
-    elif cfg.curve == 'free':
-        curves = tf.transpose(target)  # (256, C)
+    elif cfg.curve in ['gamma', 'free']:
+        curves = tf.transpose(tfm)  # (256, C)
         image = map_index(image, curves, height, width, 3,
                           cfg.add_uniform_noise, cfg.add_jpeg_artifacts, cfg.sharpness_augment)
 
-    if cfg.curve != 'free':
+    if cfg.curve not in ['gamma', 'free']:
         image /= 255.0
-
-    if cfg.curve == 'gamma':
-        image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
-        image = tf.math.pow(image, target[None, None, :])
-
-    if cfg.random_blackpoint_shift:
-        shift = cfg.random_blackpoint_shift / 255 * tf.random.normal((3,))
-        image = shift[None, None, :] + (1 - shift[None, None, :]) * image
 
     if cfg.noise_level:
         rnd_factor = tf.random.uniform(())
         image += cfg.noise_level * rnd_factor * tf.random.normal((height, width, 3))
     
-    image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)  # does it matter?
+    image = tf.clip_by_value(image, 0, 1)  # does it matter?
 
     return image
 
@@ -1049,12 +1036,37 @@ def parse_tfrecord(cfg, example):
 
     # tf.random.uniform is 8x faster than tfd.Uniform.sample
     if cfg.curve == 'gamma':
-        features['target'] = tf.random.uniform([3], -1.6, 1.0)
+        target_bp = tf.random.uniform([3], *cfg.blackpoint_range) / 255
+        target_bp2 = tf.random.uniform([3], *cfg.blackpoint2_range) / 255
+        target_log_gamma = tf.random.uniform([3], *cfg.log_gamma_range)
+
+        # calculate target_curve, tfm
+        support = tf.linspace(0.0, 1.0, 256)
+        bp = target_bp[:, None]
+        bp2 = target_bp2[:, None]
+        log_gamma = target_log_gamma[:, None]
+        gamma = tf.exp(log_gamma)
+        x = support[None, :]
+        x = (x - bp2) / (1 - bp2)
+        x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+        x = tf.pow(x, 1 / gamma)
+        x = (x - bp) / (1 - bp)
+        tfm = tf.clip_by_value(x, 0, 1)
+        if cfg.predict_inverse:
+            x = support[None, :]
+            x = bp + x * (1 - bp)
+            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+            x = tf.pow(x, gamma)
+            x = x * (1 - bp2) + bp2
+            target_curve = tf.clip_by_value(x, 0, 1)
+        else:
+            target_curve = tfm
+
     elif cfg.curve == 'beta' and cfg.channel_size == 2:
         # target: (2, C) for gamma + bp, (3, C) for a, b, bp (beta-curve)
         gamma = tf.math.exp(tfd.Normal(0.0, 0.4).sample([3]))
         bp = tfd.HalfNormal(scale=40.).sample([3])
-        features['target'] = tf.stack([gamma, bp])
+        target = tf.stack([gamma, bp])
     elif cfg.curve == 'beta':
         # do not instantiate tfd classes globally: TF allocates half of GPU!
         dist_a = tfd.Normal(0.0, scale=cfg.a_sigma or 0.5)
@@ -1063,7 +1075,7 @@ def parse_tfrecord(cfg, example):
         a = dist_a.sample([3])
         b = dist_b.sample([3])
         bp = dist_bp.sample([3])
-        features['target'] = tf.stack([a, b, bp])
+        target = tf.stack([a, b, bp])
     elif cfg.curve == 'free':
         # Cannot use numpy classes:
         #   - np.random produces identical params for all examples!
@@ -1187,33 +1199,31 @@ def parse_tfrecord(cfg, example):
         assert target.shape == (3 * 256,), f"wrong target shape: {target.shape}"
         assert target.dtype == tf.float32, f"wrong target dtype: {target.dtype}"
 
-        features['target'] = tfm
         #tf.print("tfm:", tfm.shape, tf.reduce_min(tfm), tf.reduce_mean(tfm), tf.reduce_max(tfm))  # tfm: TensorShape([3, 256]) 0 0.598787069 1
 
     features['height'] = example[cfg.data_format['height']]
     features['width'] = example[cfg.data_format['width']]
-    features['image'] = decode_image(cfg, example[cfg.data_format['image']], features['target'],
+    features['image'] = decode_image(cfg, example[cfg.data_format['image']], tfm,
                                      features['height'], features['width'])
-
-    if cfg.curve == 'gamma':
-        # predict relative log_gamma and absolute log_gamma
-        log_gamma = tf.math.log(features['target'])
-        relative_log_gamma = log_gamma - tf.math.reduce_mean(log_gamma, keepdims=True)
-        features['target_rel'] = relative_log_gamma
-        features['target_abs'] = log_gamma
 
     if cfg.curve == 'beta':
         # split target into 2 (3) components for weighted loss
         if cfg.channel_size == 6:
-            features['target_gamma'] = features['target'][0, :]
-            features['target_bp'] = features['target'][1, :]
+            features['target_gamma'] = target[0, :]
+            features['target_bp'] = target[1, :]
         else:
-            features['target_a'] = features['target'][0, :]
-            features['target_b'] = features['target'][1, :]
-            features['target_bp'] = features['target'][2, :]
+            features['target_a'] = target[0, :]
+            features['target_b'] = target[1, :]
+            features['target_bp'] = target[2, :]
 
-    if cfg.curve == 'free':
+    elif cfg.curve == 'free':
         features['target'] = target
+
+    elif cfg.curve == 'gamma':
+        features['target_curve'] = target_curve
+        features['target_bp'] = target_bp
+        features['target_bp2'] = target_bp2
+        features['target_log_gamma'] = target_log_gamma
 
     # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict
@@ -1250,13 +1260,14 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
 
 class TFCurveRMSE(tf.keras.metrics.MeanSquaredError):
     def __init__(self, name='curve_rmse', curve='gamma', **kwargs):
+        if curve == 'gamma': name = 'rmse'
         super().__init__(name=name, **kwargs)
         self.curve = curve
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        support = tf.cast(tf.linspace(0, 1, 256), dtype=self._dtype)
-        if self.curve == 'gamma':
+        if False and (self.curve == 'gamma'):
             # (256,) ** (N, 3) -> (N, 3, 256)
+            support = tf.cast(tf.linspace(0, 1, 256), dtype=self._dtype)
             y_true = tf.pow(support[None, None, :], tf.exp(y_true)[:, :, None])
             y_pred = tf.pow(support[None, None, :], tf.exp(y_pred)[:, :, None])
 

@@ -7,7 +7,8 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = [],
+    gcs_paths = ['gs://kds-609be602df2963fd742f6bfa22ec806cbe88b2e17678279bb98cb1ba', 
+                 'gs://kds-a6bd9395756a7e163447dcada2b871ef8e5364ab16939b7a6b0e0ae9'],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -31,11 +32,16 @@ cfg = dict(
     div_factor = 5,                            # default: 25, from Chest14: 1
     pct_start = 0.25,                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
     lr_min = 1e-6,
-    loss_weights = [0.6, 0.4],
     save_best = 'loss',
-    add_uniform_noise = 0.75,  # add uniform noise to mask uint8 discretization [bool|float]
-    noise_level = 0.03,        # random normal noise (augmentation)
-    random_blackpoint_shift = 20,
+    predict_inverse = True,
+    output_curve_params = False,
+    blackpoint_range = (-30, 30),   # x-offset
+    blackpoint2_range = (-30, 30),  # y-offset
+    log_gamma_range = [-1.8, 1.8],
+    add_uniform_noise = True,  # add uniform noise to mask uint8 discretization [bool|float]
+    add_jpeg_artifacts = False,
+    sharpness_augment = False,
+    noise_level = 0.01,        # random normal noise (augmentation)
     augmentation = 'autolevels_aug_tf',
 
 # Model

@@ -316,6 +316,31 @@ class AddMarginProductSubCenter(tf.keras.layers.Layer):
         return output
 
 
+class GammaCurve(tf.keras.layers.Layer):
+    def __init__(self, predict_inverse=True, **kwargs):
+        super().__init__(**kwargs)
+        self.predict_inverse = predict_inverse
+
+    def call(self, bp, bp2, log_gamma):
+        support = tf.linspace(0.0, 1.0, 256)
+        x = support[None, None, :]
+        bp = bp[:, :, None]
+        bp2 = bp2[:, :, None]
+        gamma = tf.exp(log_gamma)[:, :, None]
+        if self.predict_inverse:
+            x = bp + x * (1 - bp)
+            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+            x = tf.pow(x, gamma)
+            x = x * (1 - bp2) + bp2
+            return tf.clip_by_value(x, 0, 1)
+        else:
+            x = (x - bp2) / (1 - bp2)
+            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+            x = tf.pow(x, 1 / gamma)
+            x = (x - bp) / (1 - bp)
+            return tf.clip_by_value(x, 0, 1)
+
+
 def get_margin(cfg):
     # Adaptive margins for each target class (range: cfg.margin_min ... cfg.margin_max)
     # should be defined in project.
@@ -512,10 +537,33 @@ def get_pretrained_model(cfg, strategy, inference=False):
             output = Softmax(dtype='float32')(features)
         else:
             assert cfg.channel_size, 'set cfg.channel_size in project or config file!'
-            if cfg.curve and (cfg.channel_size == 3):
-                #output = Dense(cfg.channel_size, name='log_gamma')(embed)
-                out_rel = Dense(cfg.channel_size, name='rel_log_gamma')(embed)
-                out_abs = Dense(cfg.channel_size, name='abs_log_gamma')(embed)
+            if cfg.curve and (cfg.curve == 'gamma'):
+                out_bp = Dense(cfg.channel_size, name='bp')(embed)
+                out_bp2 = Dense(cfg.channel_size, name='bp2')(embed)
+                out_log_gamma = Dense(cfg.channel_size, name='log_gamma')(embed)
+
+                # calculate out_cuve(out_bp, out_bp2, out_log_gamma) -> 0...1 [B, 3, 255]
+                if False:
+                    support = tf.linspace(0.0, 1.0, 256)
+                    x = support[None, None, :]
+                    bp = out_bp[:, :, None]
+                    bp2 = out_bp2[:, :, None]
+                    gamma = tf.exp(out_log_gamma)[:, :, None]
+                    if cfg.predict_inverse:
+                        x = bp + x * (1 - bp)
+                        x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+                        x = tf.pow(x, gamma)
+                        x = x * (1 - bp2) + bp2
+                        out_curve = tf.clip_by_value(x, 0, 1, name='curve')
+                    else:
+                        x = (x - bp2) / (1 - bp2)
+                        x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+                        x = tf.pow(x, 1 / gamma)
+                        x = (x - bp) / (1 - bp)
+                        out_curve = tf.clip_by_value(x, 0, 1, name='curve')
+                else:
+                    out_curve = GammaCurve(predict_inverse=cfg.predict_inverse,
+                                           name='curve')(out_bp, out_bp2, out_log_gamma)
             elif cfg.curve and (cfg.channel_size == 6):
                 out_gamma = Dense(3, name='regressor_gamma')(embed)
                 out_bp = Dense(3, name='regressor_bp')(embed)
@@ -532,13 +580,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
             aux_output = Softmax(dtype='float32', name='aux')(aux_features)
 
         # Outputs
-        if cfg.curve and (cfg.channel_size == 3):
-            # predict relative log_gamma, absolute log_gamma
-            #log_gamma = output
-            #relative_log_gamma = tf.subtract(log_gamma, tf.math.reduce_mean(log_gamma, axis=1, keepdims=True),
-            #                                 name='rel_log_gamma')
-            #outputs = [relative_log_gamma, log_gamma]
-            outputs = [out_rel, out_abs]
+        if cfg.curve and (cfg.curve == 'gamma'):
+            outputs = ([out_curve, out_bp, out_bp2, out_log_gamma] if cfg.output_curve_params else
+                       [out_curve])
         elif cfg.curve and (cfg.channel_size == 6):
             # slicing does not work, output shapes are still [?, 6]
             #outputs = [output[:3], output[3:]]  # gamma, bp
@@ -610,6 +654,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         if cfg.aux_loss:
             loss_weights=(1 - cfg.aux_loss, cfg.aux_loss)
+        elif cfg.curve and (cfg.curve == 'gamma'):
+            loss_weights = (1, 0, 0, 0) if cfg.output_curve_params else None  # curve, bp, bp2, log_gamma
         elif cfg.curve and (cfg.channel_size == 6):
             # gamma, bp
             loss_weights = cfg.loss_weights or (1, 0.01 ** 2)  # error goal: 0.01, 1
@@ -618,8 +664,6 @@ def get_pretrained_model(cfg, strategy, inference=False):
             # a, b, bp
             loss_weights = cfg.loss_weights or (1, 1, 1)
             assert len(loss_weights) == len(outputs)
-        elif cfg.curve and (cfg.channel_size == 3):
-            loss_weights = cfg.loss_weights or (0.7, 0.3)  # relative log_gamma, absolute log_gamma
         else:
             loss_weights = None
         if loss_weights:

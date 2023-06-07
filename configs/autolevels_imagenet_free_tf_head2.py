@@ -7,8 +7,8 @@ cfg = dict(
     project = 'autolevels',
     datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
                 'imagenet-1k-tfrecords-ilsvrc2012-part-1'],
-    gcs_paths = ['gs://kds-609be602df2963fd742f6bfa22ec806cbe88b2e17678279bb98cb1ba', 
-                 'gs://kds-a6bd9395756a7e163447dcada2b871ef8e5364ab16939b7a6b0e0ae9'],
+    gcs_paths = ['gs://kds-427f890caad365e12bf0dd8711053e1866927a0ecc5e9dad92c683e5', 
+                 'gs://kds-667913c26db265c8bf8f854d15cf726d94bb8992aec4a1eb8e48f5df'],
     gcs_filters = ['*/*-of-*', '*-of-*'],
     tfrec_filename_pattern = r"-of-([0-9]*)$",
     out_dir = '/kaggle/working',
@@ -51,7 +51,6 @@ cfg = dict(
     sharpness_augment = True,
     noise_level = 0.03,             # random normal noise (augmentation)
     augmentation = 'autolevels_aug_tf',
-    presize = 2.6,
 
 # Model
     arch_name = 'efnv2s',
