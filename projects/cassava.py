@@ -1,8 +1,5 @@
 from pathlib import Path
 
-gcs_paths = {
-    'cassava-leaf-disease-classification': 'gs://kds-2f1ef51620b1d194f7b5370df991a8cf346870f5e8d86f95e5b81ba3',
-    }
 
 def init(cfg):
     cfg.competition_path = Path('/kaggle/input/cassava-leaf-disease-classification')
@@ -24,7 +21,9 @@ def init(cfg):
     cfg.gcs_filter = 'train_tfrecords/*.tfrec'
     if 'tf' in cfg.tags:
         cfg.n_classes = 5  # pytorch: set by metadata
-    cfg.gcs_paths = gcs_paths
+    #cfg.gcs_paths = {
+    #    'cassava-leaf-disease-classification': 'gs://kds-2f1ef51620b1d194f7b5370df991a8cf346870f5e8d86f95e5b81ba3',
+    #    }  # set in config
 
     # Customize data pipeline (see tf_data for definition and defaults)
     #cfg.tfrec_format = {

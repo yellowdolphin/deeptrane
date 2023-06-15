@@ -93,7 +93,7 @@ Note that host machines on kaggle and colab are not suitable to feed eight TPU c
 
 ### Tensorflow training
 
-The Tensorflow training script `train_tf.py` extracts inputs and labels from tensorflow record (tfrec) files. Instead of a filetype, the config must specify either GCS path(s) as `cfg.gcs_paths` or a kaggle dataset (subdir of `/kaggle/inputs`) as `cfg.dataset`, whose GCS path is detected automatically. 
+The Tensorflow training script `train_tf.py` extracts inputs and labels from tensorflow record (tfrec) files. Instead of a filetype, the config must specify either GCS path(s) in `cfg.gcs_paths` or kaggle datasets (subdirs of `/kaggle/inputs`) in `cfg.datasets`, the current GCS paths are then requested automatically from kaggle.
 
 The features to be used from the tfrec files can be specified and mapped to their `tf.io` types in `cfg.tfrec_format`. Their keys will be mapped by `cfg.data_format` to default field names recognized by the encoders and the keras model (`cfg.inputs`, `cfg.targets`). These config variables should be set in the project's `init()` function. They will be ignored by `train.py`.
 

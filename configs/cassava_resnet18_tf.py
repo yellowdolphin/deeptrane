@@ -5,7 +5,7 @@ cfg = dict(
 
 # Setup
     project = 'cassava',
-    dataset = 'cassava-leaf-disease-classification',
+    datasets = ['cassava-leaf-disease-classification'],
     out_dir = '/kaggle/working',
     use_custom_training_loop = False,
 

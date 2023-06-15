@@ -263,7 +263,9 @@ def get_tf_tfms(cfg, mode='train'):
             factor=(flags.rotate or 0) * 3.1415 / 180,
             fill_mode='reflect',
             #fill_mode='constant', fill_value=1.0,
-            interpolation='bilinear')
+            interpolation='bilinear'
+            ) if hasattr(tf.keras.layers, 'RandomRotation') else tf.keras.layers.Lambda(lambda x: x)
+            # tf.keras 2.4 has neither RandomRotation nor Identity
 
 
         def tfms(inputs, targets, sample_weights=None):

@@ -12,7 +12,8 @@ cfg = dict(
     use_folds = [0],
 
 # Image params
-    gcs_paths = {},
+    datasets = [],
+    gcs_paths = [],
     image_root = 'data/images',
     size = (64, 64),
 
