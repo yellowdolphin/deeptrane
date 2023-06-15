@@ -531,7 +531,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             margin = get_margin(cfg)
             features = margin([embed, inputs[1]])
             output = Softmax(dtype='float32', name='arc' if cfg.aux_loss else None)(features)
-        elif cfg.classes:
+        elif cfg.classes or cfg.n_classes:
             assert cfg.n_classes, 'set cfg.n_classes in project or config file!'
             features = Dense(cfg.n_classes, name='classifier')(embed)
             output = Softmax(dtype='float32')(features)
