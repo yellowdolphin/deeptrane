@@ -41,10 +41,10 @@ def install_model_libs(cfg):
                 #print("client healthy")
                 quietly_run(f'pip install tensorflow-gcs-config=={tf_version}')
                 print("Updated TF, TPU client, and GCS config to version", tf_version)
-                quietly_run('pip install tfimm timm')
+                quietly_run('pip install tfimm timm huggingface_hub')
                 print("installed tfimm")
             else:
-                quietly_run('pip install --no-deps tfimm timm')
+                quietly_run('pip install --no-deps tfimm timm huggingface_hub')
             assert os.environ.get('NV_CUDNN_VERSION') != '8.0.5.39', 'cuDNN broken: use image2021-02-23 for tfimm GPU training!'
         else:
-            quietly_run('pip install -q tfimm timm')
+            quietly_run('pip install -q tfimm timm huggingface_hub')
