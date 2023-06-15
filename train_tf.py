@@ -8,6 +8,7 @@ from multiprocessing import cpu_count
 from config import Config, parser
 from utils.general import quietly_run, sizify, listify, autotype, get_drive_out_dir
 from utils.tf_setup import install_model_libs
+from utils.tensorflow import CSVLogger
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -142,7 +143,8 @@ for use_fold in cfg.use_folds:
     print("validation_steps:", cfg.validation_steps)
 
     # Training callbacks
-    csv_logger = tf.keras.callbacks.CSVLogger(f'{cfg.out_dir}/metrics_fold{use_fold}.csv')
+    logfile = f'{cfg.out_dir}/metrics_fold{use_fold}.csv'
+    csv_logger = CSVLogger(logfile)
     save_best = tf.keras.callbacks.ModelCheckpoint(
         f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
         monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 

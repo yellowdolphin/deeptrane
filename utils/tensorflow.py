@@ -13,6 +13,7 @@ log the lr (bad). Could not confirm correct lr on TPUs.
 """
 
 import math
+from time import sleep
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
@@ -99,3 +100,29 @@ class LRSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
     def __call__(self, step):
         return self.lrfn(step)
+
+
+class CSVLogger(tf.keras.callbacks.CSVLogger):
+    """
+    Closes self.csv_file after each epoch.
+    Otherwise, on google drive, csv_file is not created when training is interrupted.
+    """
+    def on_epoch_end(self, epoch, logs=None):
+        super().on_epoch_end(epoch, logs=logs)
+        #self.csv_file.close()
+        self.on_train_end(logs=logs)
+        self.append = True
+
+        # wait till file is created before calling on_train_begin
+        seconds_waited, timeout = 0, 60
+        while not tf.io.gfile.exists(self.filename):
+            tf.print(f"waiting for {self.filename}")
+            seconds_waited += 5
+            sleep(5)
+            if seconds_waited > timeout:
+                new_filename = self.filename.split('_ep')[0].replace('.csv', '') + f'_ep{epoch + 1}.csv'
+                tf.print(f"CSVLogger timeout: {self.filename} not created, changing to {new_filename}")
+                self.filename = new_filename
+                self.append = False
+                break
+        self.on_train_begin(logs=logs)
