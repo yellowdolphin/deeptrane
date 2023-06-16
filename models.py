@@ -693,7 +693,7 @@ def get_pretrained_timm(cfg):
         print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
 
     # either freeze or unfreeze head layers
-    head = list(model.children())[-1]
+    head = list(pretrained_model.children())[-1]
     if cfg.freeze_head:
         print("Freezing head layers:")
         print(head)
