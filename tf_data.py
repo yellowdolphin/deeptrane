@@ -50,9 +50,10 @@ def get_gcs_paths(cfg):
 
         cfg.datasets = [Path(ds).name for ds in cfg.datasets]
 
-        if cfg.dataset_is_private:
+        if cfg.private_datasets and any([ds in cfg.private_datasets for ds in cfg.datasets]):
             # Enable GCS for private datasets
-            assert os.path.exists(f'/kaggle/input/{cfg.dataset}'), f'Add {cfg.dataset} first!'
+            for ds in cfg.private_datasets:
+                assert os.path.exists(f'/kaggle/input/{ds}'), f'Add {ds} to your notebook!'
             from kaggle_secrets import UserSecretsClient
             user_secrets = UserSecretsClient()
             user_credential = user_secrets.get_gcloud_credential()
@@ -67,10 +68,11 @@ def get_gcs_paths(cfg):
         except ConnectionError:
             print("ConnectionError, using cfg.gcs_paths")
             assert cfg.gcs_paths, 'No gcs_paths defined in config'
-            gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
+            assert len(cfg.gcs_paths) == len(cfg.datasets), f"cfg.gcs_paths mismatch cfg.datasets"
+            gcs_paths = cfg.gcs_paths
         except BackendError:
             print(f"BackendError: checking dataset paths...")
-            for ds in cfg.dataset:
+            for ds in cfg.datasets:
                 pth = f'/kaggle/input/{ds}'
                 assert os.path.exists(pth), f'{pth} does not exist'
             print("trying again...")
@@ -79,7 +81,7 @@ def get_gcs_paths(cfg):
         print("GCS paths:", gcs_paths)
         return gcs_paths
 
-    if cfg.dataset_is_private:
+    if cfg.private_datasets and any([ds in cfg.private_datasets for ds in cfg.datasets]):
         from google.colab import auth
         auth.authenticate_user()
 

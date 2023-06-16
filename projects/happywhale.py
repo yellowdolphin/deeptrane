@@ -68,13 +68,13 @@ def init(cfg):
         cfg.gcs_paths = gcs_paths
 
 
-    if cfg.dataset or cfg.filetype in ['wds', 'tfds']:
-        cfg.splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-unsubmerged') else 
-            '/kaggle/input/lextoumbourou' if (cfg.cloud == 'kaggle') and (cfg.dataset == 'happywhale-tfrecords-private2') else
-            f'/kaggle/input/happy-whale-and-dolphin/lextoumbourou' if (cfg.dataset == 'happywhale-tfrecords-private2') else
+    if cfg.datasets or cfg.filetype in ['wds', 'tfds']:
+        cfg.splits_path = ('/BackendErrorkaggle/input/happywhale-tfrecords-unsubmerged' if (cfg.cloud == 'kaggle') and ('happywhale-tfrecords-unsubmerged' in cfg.datasets) else 
+            '/kaggle/input/lextoumbourou' if (cfg.cloud == 'kaggle') and ('happywhale-tfrecords-private2' in cfg.datasets) else
+            f'/kaggle/input/happy-whale-and-dolphin/lextoumbourou' if ('happywhale-tfrecords-private2' in cfg.datasets) else
             '/kaggle/input/happy-whale-and-dolphin')
 
-    if cfg.dataset:
+    if cfg.datasets:
         # TFRecords dataset for TF training
         import tensorflow as tf
         cfg.n_classes = 15587
@@ -84,12 +84,12 @@ def init(cfg):
         # Customize data pipeline (see tf_data for definition and defaults)
         cfg.tfrec_format = {
             'image': tf.io.FixedLenFeature([], tf.string),
-            crop_methods[cfg.dataset]: tf.io.FixedLenFeature([4], tf.int64),
+            crop_methods[cfg.datasets[0]]: tf.io.FixedLenFeature([4], tf.int64),
             'target': tf.io.FixedLenFeature([], tf.int64),
             }
         cfg.data_format = {
             'image': 'image',
-            'bbox': crop_methods[cfg.dataset],
+            'bbox': crop_methods[cfg.datasets[0]],
             'target': 'target',
             }
         cfg.inputs = ['image', 'target'] if cfg.arcface else ['image']
@@ -100,32 +100,36 @@ def init(cfg):
             cfg.targets.append('aux_target')
 
     if cfg.filetype in ['wds', 'tfds']:
-        # TFRecords dataset for pytorch training (additional settings)
-        from tf_data import get_gcs_path, count_data_items
+        # Experimental: TFRecords dataset for pytorch training (additional settings)
+        from tf_data import get_gcs_paths, count_data_items
 
-        cfg.gcs_path = get_gcs_path(cfg)
-        assert cfg.dataset, f'need cfg.dataset for filetype {cfg.filetype}'
-        cfg.dataset_is_private = cfg.dataset in private_datasets
-        assert cfg.dataset in crop_methods, f'{cfg.dataset} not in {list(crop_methods.keys())}'
-        cfg.crop_method = crop_methods[cfg.dataset]
+        assert len(cfg.datasets) == 1, "multiple wds/tfds datasets not implemented"
+
+        cfg.gcs_paths = get_gcs_paths(cfg)
+        gcs_path = cfg.gcs_paths[0]
+        assert cfg.datasets, f'need cfg.datasets for filetype {cfg.filetype}'
+
+        cfg.private_datasets = cfg.private_datasets or private_datasets
+        assert cfg.datasets[0] in crop_methods, f'{cfg.datasets[0]} not in {list(crop_methods.keys())}'
+        cfg.crop_method = crop_methods[cfg.datasets[0]]
         cfg.BGR = False
 
-        if cfg.dataset_is_private and cfg.cloud == 'kaggle':
-            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/train*.tfrec')).tolist()
-            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/test*.tfrec')).tolist()
+        if (cfg.datasets[0] in cfg.private_datasets) and cfg.cloud == 'kaggle':
+            cfg.train_files = np.sort(tf.io.gfile.glob(gcs_path + '/train*.tfrec')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(gcs_path + '/test*.tfrec')).tolist()
             cfg.crop_method = None  # cannot have private dataset with 62 GB uncropped images
         elif cfg.filetype == 'tfds':
-            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*train*.tfrec')).tolist()
-            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + '/*test*.tfrec')).tolist()
+            cfg.train_files = np.sort(tf.io.gfile.glob(gcs_path + '/*train*.tfrec')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(gcs_path + '/*test*.tfrec')).tolist()
         elif cfg.filetype == 'wds':
-            cfg.train_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-[tv][ra][al]*.tarball')).tolist()
-            cfg.test_files = np.sort(tf.io.gfile.glob(cfg.gcs_path + f'/{cfg.dataset}-test-.tarball')).tolist()
-        if cfg.dataset == 'whale-tfrecords-512': cfg.crop_method = None
-        if cfg.dataset == 'happywhale-tfrecords-backfin': cfg.BGR = True
+            cfg.train_files = np.sort(tf.io.gfile.glob(gcs_path + f'/{cfg.datasets[0]}-[tv][ra][al]*.tarball')).tolist()
+            cfg.test_files = np.sort(tf.io.gfile.glob(gcs_path + f'/{cfg.datasets[0]}-test-.tarball')).tolist()
+        if 'whale-tfrecords-512' in cfg.datasets: cfg.crop_method = None
+        if 'happywhale-tfrecords-backfin' in cfg.datasets: cfg.BGR = True
         print(f'{len(cfg.train_files)} train shards, {len(cfg.test_files)} test shards')
         print(f'{count_data_items(cfg.train_files)} train images, {count_data_items(cfg.test_files)} test images')
         print(f'Using individual_id and species encoding from {cfg.splits_path}')
-        assert len(cfg.train_files) > 0, f'no tfrec files found, check GCS_DS_PATH: {cfg.gcs_path}'
+        assert len(cfg.train_files) > 0, f'no tfrec files found, check GCS_DS_PATH: {gcs_path}'
 
 
 def add_image_id(df, cfg):

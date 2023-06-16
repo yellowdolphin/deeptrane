@@ -9,8 +9,8 @@ cfg = dict(
     image_root = '/kaggle/input/happywhale-cropped-dataset-yolov5-ds/train_images/train_images',
     filetype = 'jpg',
     #filetype = 'wds',  # tfds or wds
-    #dataset = 'happywhale-tfrecords-unsubmerged',  # tfds
-    #dataset = 'happywhale-wds-unsubmerged',  # wds
+    #datasets = ['happywhale-tfrecords-unsubmerged'],  # tfds
+    #datasets = ['happywhale-wds-unsubmerged'],  # wds
 
 # Training
 #    species = ['dusky_dolphin', 'blue_whale', 'melon_headed_whale', 'southern_right_whale'],
