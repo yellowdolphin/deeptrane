@@ -6,6 +6,7 @@ import math
 from typing import List
 import numpy as np
 import torchmetrics as tm
+print("[ √ ] torchmetrics:", tm.__version__)
 from torchmetrics.utilities.checks import _input_format_classification
 from torchmetrics.utilities.enums import DataType
 import torch
@@ -13,7 +14,7 @@ from torch import Tensor
 import torch.nn as nn
 
 
-def get_tm_dist_args(xm):
+def get_dist_args(xm):
     "Return torchmetrics kwargs to enable xla syncronization"
     if xm.xrt_world_size() <= 1:
         return {}
@@ -35,6 +36,98 @@ def get_tm_dist_args(xm):
         return True
 
     return dict(dist_sync_fn=dist_sync_fn, distributed_available_fn=distributed_available_fn)
+
+
+def get_tm_metrics(cfg, xm):
+    version = int(tm.__version__.split('.')[0])
+    sub_version = int(tm.__version__.split('.')[1])
+    dist_args = get_dist_args(xm)
+    metrics = {}
+
+    # legacy API
+    if (version == 0) and (sub_version < 11):
+        if 'acc' in cfg.metrics:
+            metrics['acc'] = tm.Accuracy(**dist_args)
+        if 'macro_acc' in cfg.metrics:
+            metrics['macro_acc'] = tm.Accuracy(average='macro', num_classes=cfg.n_classes, **dist_args)
+        if 'top5' in cfg.metrics:
+            metrics['top5'] = tm.Accuracy(top_k=5, **dist_args)
+        if 'top3' in cfg.metrics:
+            metrics['top3'] = tm.Accuracy(top_k=3, **dist_args)
+        if 'F1' in cfg.metrics:
+            metrics['F1'] = tm.F1Score(num_classes=cfg.n_classes, average='micro', **dist_args)
+        if 'macro_F1' in cfg.metrics:
+            metrics['macro_F1'] = tm.F1Score(num_classes=cfg.n_classes, average='macro', **dist_args)
+        if 'class_F1' in cfg.metrics:
+            metrics['class_F1'] = tm.F1Score(num_classes=cfg.n_classes, average=None, **dist_args)
+        if 'F2' in cfg.metrics:
+            metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, **dist_args)
+        if 'pct_N' in cfg.metrics:
+            negative_class = (
+                0 if cfg.negative_class is None else
+                cfg.negative_class if isinstance(cfg.negative_class, int) else
+                cfg.vocab.transform([cfg.negative_class])[0])
+            metrics['pct_N'] = NegativeRate(num_classes=cfg.n_classes, negative_class=negative_class, 
+                                            threshold=cfg.negative_thres or 0.5)
+        if 'mAP' in cfg.metrics:
+            metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, **dist_args)
+        if 'eAP5' in cfg.metrics:
+            metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
+        if 'curve_rmse' in cfg.metrics:
+            from projects.autolevels import CurveRMSE
+            metrics['curve_rmse'] = CurveRMSE(curve=cfg.curve)
+
+        # metric_compute_groups: don't use if metrics use modifying kwargs like 'num_classes', 'threshold', 'top_k'
+        # Issue: If different metrics yield same values, set compute_groups=False!
+        # MetricCollection.__setitem__ is broken (only first update works?)
+        return tm.MetricCollection(metrics, compute_groups=cfg.metric_compute_groups)
+    
+    # new v0.11.0 API
+    task = (
+        'binary' if (cfg.n_classes < 3) and not cfg.multilabel else
+        'multiclass' if not cfg.multilabel else
+        'multilabel') if cfg.classes else 'regression'
+
+    if 'acc' in cfg.metrics:
+        metrics['acc'] = tm.Accuracy(task, average='micro', num_classes=cfg.n_classes, **dist_args)
+    if 'macro_acc' in cfg.metrics:
+        assert cfg.n_classes and cfg.n_classes > 1, f'macro_acc not defined for n_classes={cfg.n_classes}'
+        metrics['macro_acc'] = tm.Accuracy(task, average='macro', num_classes=cfg.n_classes, **dist_args)
+    if 'top5' in cfg.metrics:
+        assert task == 'multiclass', f'top5 not defined for {task} task'
+        metrics['top5'] = tm.Accuracy(task, top_k=5, **dist_args)
+    if 'top3' in cfg.metrics:
+        assert task == 'multiclass', f'top3 not defined for {task} task'
+        metrics['top3'] = tm.Accuracy(task, top_k=3, **dist_args)
+    if 'F1' in cfg.metrics:
+        metrics['F1'] = tm.F1Score(num_classes=cfg.n_classes, average='micro', **dist_args)
+    if 'macro_F1' in cfg.metrics:
+        metrics['macro_F1'] = tm.F1Score(num_classes=cfg.n_classes, average='macro', **dist_args)
+    if 'class_F1' in cfg.metrics:
+        metrics['class_F1'] = tm.F1Score(num_classes=cfg.n_classes, average=None, **dist_args)
+    if 'F2' in cfg.metrics:
+        metrics['F2'] = tm.FBetaScore(num_classes=cfg.n_classes, average='micro', beta=2.0, **dist_args)
+    if 'pct_N' in cfg.metrics:
+        negative_class = (
+            0 if cfg.negative_class is None else
+            cfg.negative_class if isinstance(cfg.negative_class, int) else
+            cfg.vocab.transform([cfg.negative_class])[0])
+        metrics['pct_N'] = NegativeRate(num_classes=cfg.n_classes, negative_class=negative_class, 
+                                        threshold=cfg.negative_thres or 0.5)
+    if 'mAP' in cfg.metrics:
+        metrics['mAP'] = tm.AveragePrecision(average='macro', num_classes=cfg.n_classes, **dist_args)
+    if 'eAP5' in cfg.metrics:
+        metrics['eAP5'] = EmbeddingAveragePrecision(xm, k=5)  # happywhale
+    if 'curve_rmse' in cfg.metrics:
+        from projects.autolevels import CurveRMSE
+        metrics['curve_rmse'] = CurveRMSE(curve=cfg.curve)
+
+    # metric_compute_groups: don't use if metrics use modifying kwargs like 'num_classes', 'threshold', 'top_k'
+    # Issue: If different metrics yield same values, set compute_groups=False!
+    # MetricCollection.__setitem__ is broken (only first update works?)
+    return tm.MetricCollection(metrics, compute_groups=cfg.metric_compute_groups)
+
+    
 
 
 def is_listmetric(metric):
