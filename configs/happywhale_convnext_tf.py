@@ -36,7 +36,7 @@ cfg = dict(
     use_batch_tfms = False,
 
 # Model
-    arch_name = 'convnext_base.fb_in22k_ft_in1k_384',
+    arch_name = 'convnext_base_384_in22ft1k',
     pool = 'avg',
     dropout_ps = [0.25],
     arcface = 'ArcMarginProduct',

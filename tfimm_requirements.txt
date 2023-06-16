@@ -1,0 +1,10 @@
+# With timm version 0.9, architecture names have changed.
+# Current tfimm 0.2.14 has not been adopted.
+# Until tfimm is compatible with the new names, require timm<0.9
+tfimm <= 0.2.14
+timm <= 0.6.13
+
+# Transition to timm 0.9
+#tfimm >= 0.2.15
+#timm >= 0.9.0
+#huggingface_hub
