@@ -65,7 +65,7 @@ def init(cfg):
         cfg.meta_csv = cfg.competition_path / 'train.csv'
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
         if cfg.adaptive_margin: cfg.adaptive_margin = get_adaptive_margin(cfg)
-        cfg.gcs_paths = gcs_paths
+        #cfg.gcs_paths = [gcs_paths[ds] for ds in cfg.datasets]  # specify in cfg file
 
 
     if cfg.datasets or cfg.filetype in ['wds', 'tfds']:
