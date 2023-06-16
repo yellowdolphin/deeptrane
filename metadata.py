@@ -102,8 +102,8 @@ def get_metadata(cfg, project):
     assert df.columns[0] == 'image_path'  
     if cfg.classes:
         assert df.columns[1] == 'category_id'
-        cfg.class_column = metadata.columns[1]
-        xm.master_print(f"Using class labels from column {cfg.class_column}")
+        cfg.class_column = df.columns[1]
+        print(f"Using class labels from column {cfg.class_column}")
 
 
     return df
