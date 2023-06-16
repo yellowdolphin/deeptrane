@@ -172,9 +172,9 @@ def maybe_encode_labels(df, cfg):
                      and not any((max_label + 1 > cfg.n_classes, min_label < 0)):
         return df, cfg.n_classes, list(range(cfg.n_classes))
 
-    cfg.n_classes = cfg.n_classes or max_label
+    n_classes = cfg.n_classes or max_label
 
-    if df.category_id.dtype == 'O' or any((max_label + 1 > cfg.n_classes, min_label < 0)):
+    if df.category_id.dtype == 'O' or any((max_label + 1 > n_classes, min_label < 0)):
         #                           ^-- prevents TypeError
         import sklearn
         print("[ √ ] sklearn:", sklearn.__version__)
@@ -187,12 +187,12 @@ def maybe_encode_labels(df, cfg):
         print(f"[ √ ] Label encoder saved to '{cfg.out_dir}/vocab.pkl'")
         cfg.vocab = vocab
         # backtrafo: vocab.inverse_transform(x) or vocab.classes_[x]
-        classes = vocab.classes_
+        classes = list(vocab.classes_)
     else:
         print("[ √ ] No label encoding required.")
         classes = df.category_id.unique().tolist()
 
-    cfg.classes = list(classes)
+    #cfg.classes = list(classes)
     
     return df, len(classes), classes
 
