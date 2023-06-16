@@ -3,7 +3,6 @@ from utils.general import quietly_run
 
 
 def install_model_libs(cfg):
-    quietly_run('pip install tensorflow-addons')
     if cfg.arch_name.startswith('efnv1'):
         quietly_run('pip install efficientnet', debug=False)
     elif cfg.arch_name.startswith('efnv2'):
@@ -41,10 +40,10 @@ def install_model_libs(cfg):
                 #print("client healthy")
                 quietly_run(f'pip install tensorflow-gcs-config=={tf_version}')
                 print("Updated TF, TPU client, and GCS config to version", tf_version)
-                quietly_run('pip install tfimm_requirements.txt')
+                quietly_run('pip install -r tfimm_requirements.txt')
                 print("installed tfimm")
             else:
-                quietly_run('pip install --no-deps tfimm timm huggingface_hub')
+                quietly_run('pip install --no-deps -r tfimm_requirements.txt')
             assert os.environ.get('NV_CUDNN_VERSION') != '8.0.5.39', 'cuDNN broken: use image2021-02-23 for tfimm GPU training!'
         else:
-            quietly_run('pip install -q tfimm_requirements.txt')
+            quietly_run('pip install -q -r tfimm_requirements.txt')

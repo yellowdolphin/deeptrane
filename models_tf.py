@@ -427,6 +427,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
     else:
         import tfimm
         print("tfimm:", tfimm.__version__)
+        import timm
+        print("timm:", timm.__version__)
         if cfg.list_models:
             print(tfimm.list_models(pretrained="timm"))
 

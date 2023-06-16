@@ -17,7 +17,7 @@ from functools import partial
 
 import numpy as np
 import tensorflow as tf
-#!pip install tensorflow_addons
+#!pip install tensorflow-addons
 import tensorflow_datasets as tfds
 from torch.utils.data import DataLoader
 from tf_data import count_data_items
