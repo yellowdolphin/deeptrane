@@ -43,6 +43,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     if cfg.use_batch_tfms:
         #import torchvision.transforms as TT
         import torchvision.transforms.functional as TF
+        from torchvision.io import encode_jpeg, decode_jpeg
         # antialias is currently stalling xla compiling and False by default, but
         # will default to True in v0.17
         cfg.antialias = cfg.antialias or False
@@ -170,7 +171,13 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 if cfg.loss_weights is None:
                     labels = gamma
             elif (cfg.curve == 'free'):
-                # unpack labels
+                # unpack labels in reverse order
+                if cfg.sharpness_augment:
+                    # use same sharpness on all channels
+                    labels, rnd_sharpness = labels[:, :, :-1], labels[:, 0, -1]
+                if cfg.add_jpeg_artifacts:
+                    # use same jpeg_quality on all channels
+                    labels, jpeg_quality = labels[:, :, :-1], labels[:, 0, -1]
                 if cfg.noise_level:
                     # use same noise_level on all channels
                     labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
@@ -235,8 +242,28 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, gamma[:, :, None, None])  # channel first
 
-            if cfg.random_blackpoint_shift:
-                inputs = (inputs + bp_shift[:, :, None, None]) / (1 + bp_shift[:, :, None, None])
+            if cfg.sharpness_augment:
+                # as augmentation, sharpen should happen before adding JPEG noise
+                #rnd_test = 2.0 * torch.rand(1)  # OK on single core
+                inputs = TF.adjust_sharpness(inputs, rnd_sharpness[0])  # batch-wise sharpness
+                #xm.master_print("rnd_sharpness, rnd_test:", rnd_sharpness[0], rnd_test)
+
+            if cfg.add_jpeg_artifacts:
+                inputs = (inputs.clamp(0, 1) * 255).to(torch.uint8)
+                B, C, H, W = inputs.shape
+
+                # albumentation: HWC-numpy array
+                #inputs = inputs.permute(0, 2, 3, 1).reshape(B * H, W, C)
+                #inputs = torch.tensor(ImageCompression(50, 100, p=1)(image=inputs.numpy())['image'])
+                #inputs = inputs.reshape(B, H, W, C).permute(0, 3, 1, 2)
+
+                # torchvision: CHW tensor
+                inputs = inputs.transpose(0, 1).reshape(C, B * H, W)
+                #xm.master_print("jpeg_quality:", jpeg_quality[0])
+                jpeg = encode_jpeg(inputs.cpu(), jpeg_quality[0])  # batch-wise quality
+                inputs = decode_jpeg(jpeg).to(device)  # jpeg tensor must be on CPU!
+                inputs = inputs.reshape(C, B, H, W).transpose(1, 0)
+                inputs = inputs.float() / 255
 
             # Random Noise
             if cfg.noise_level:

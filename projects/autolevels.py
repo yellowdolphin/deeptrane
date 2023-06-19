@@ -114,7 +114,7 @@ def init(cfg):
         cfg.targets = (['target_gamma', 'target_bp'] if cfg.channel_size == 6 else
                        ['target_a', 'target_b', 'target_bp'])
     else:
-        cfg.dataset_class = AugInvCurveDataset2
+        cfg.dataset_class = AugInvCurveDataset3
         cfg.channel_size = 256 * 3
         cfg.targets = ['target']
 
@@ -708,8 +708,8 @@ class AugInvBetaDataset(Dataset):
         return image, labels if self.labeled else image
 
 
-class AugInvCurveDataset2(Dataset):
-    """Images are mapped on device using the randomly generated target_curve"""
+class AugInvCurveDataset3(Dataset):
+    """Images are mapped on device using the channelwise-randomly generated target_curve"""
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
                  return_path_attr=None):
@@ -736,20 +736,24 @@ class AugInvCurveDataset2(Dataset):
             self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], interpolation=InterpolationMode.NEAREST)
         else:
             self.resize = TT.Resize(cfg.size, interpolation=InterpolationMode.BILINEAR)
-        self.dist_log_gamma = partial(np.random.uniform, *cfg.log_gamma_range)
-        self.dist_curve3_a = partial(np.random.uniform, *cfg.curve3_a_range)
-        self.dist_curve3_beta = partial(np.random.uniform, *cfg.curve3_beta_range)
-        self.dist_curve4_loga = partial(np.random.uniform, *cfg.curve4_loga_range)
-        self.dist_curve4_b = partial(np.random.uniform, *cfg.curve4_b_range)
-        self.dist_bp = partial(np.random.uniform, *cfg.blackpoint_range)
-        self.dist_bp2 = partial(np.random.uniform, *cfg.blackpoint2_range)
+        self.rng = np.random.default_rng()
+        self.dist_log_gamma = partial(self.rng.uniform, *cfg.log_gamma_range)
+        self.dist_curve3_a = partial(self.rng.uniform, *cfg.curve3_a_range)
+        self.dist_curve3_beta = partial(self.rng.uniform, *cfg.curve3_beta_range)
+        self.dist_curve4_loga = partial(self.rng.uniform, *cfg.curve4_loga_range)
+        self.dist_curve4_b = partial(self.rng.uniform, *cfg.curve4_b_range)
+        self.dist_bp = partial(self.rng.uniform, *cfg.blackpoint_range)
+        self.dist_bp2 = partial(self.rng.uniform, *cfg.blackpoint2_range)
         self.p_gamma = cfg.p_gamma  # probability to use gamma (Curve0)
         self.p_beta = cfg.p_beta    # probability for Beta PDF (Curve3) rather than Curve4
         self.noise_level = cfg.noise_level
+        self.add_jpeg_artifacts = cfg.add_jpeg_artifacts
+        self.sharpness_augment = cfg.sharpness_augment
         self.predict_inverse = cfg.predict_inverse
         self.mirror_gamma = cfg.mirror_gamma
         self.mirror_beta = cfg.mirror_beta
         self.mirror_curve4 = cfg.mirror_curve4
+        self.curve_selection = cfg.curve_selection or 'channel-wise'  # 'channel-wise' or 'image-wise'
 
     def __len__(self):
         return len(self.df)
@@ -771,30 +775,58 @@ class AugInvCurveDataset2(Dataset):
         support = np.linspace(0, 1, 256, dtype=np.float32)
         bp = self.dist_bp(n_channels).astype(np.float32)
         bp2 = self.dist_bp2(n_channels).astype(np.float32)
-        if np.random.random_sample() < self.p_gamma:
-            log_gamma = self.dist_log_gamma(n_channels).astype(np.float32)
-            gamma = np.exp(log_gamma)
-            curve = Curve0(gamma, bp, bp2)
-        elif np.random.random_sample() < self.p_beta:
-            alpha = np.exp(self.dist_curve3_a(n_channels).astype(np.float32))
-            beta = self.dist_curve3_beta(n_channels).astype(np.float32)
-            curve = Curve3(alpha, beta, bp, bp2)
-        else:
-            a = np.exp(self.dist_curve4_loga(n_channels).astype(np.float32))
-            b = self.dist_curve4_b(n_channels).astype(np.float32)
-            curve = Curve4(a, b, bp, bp2)
-        #print("Curve_params:", *[p[0].item() for p in curve.params])
-        tfm = curve.inverse(support[None, :])
-        target = curve(support[None, :]) if self.predict_inverse else tfm
+        curves = []
         
-        # random swap tfm <-> target (channel-wise)
-        if (self.predict_inverse and any([
-            (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
-            (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
-            (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
-            mask = np.random.randint(0, 2, (n_channels, 1)).astype(np.float32)
-            target, tfm = mask * target + (1 - mask) * tfm, (1 - mask) * target + mask * tfm
+        # gamma
+        log_gamma = self.dist_log_gamma(n_channels).astype(np.float32)
+        gamma = np.exp(log_gamma)
+        curves.append(Curve0(gamma, bp, bp2))
 
+        # beta
+        alpha = np.exp(self.dist_curve3_a(n_channels).astype(np.float32))
+        beta = self.dist_curve3_beta(n_channels).astype(np.float32)
+        curves.append(Curve3(alpha, beta, bp, bp2))
+
+        # curve4
+        a = np.exp(self.dist_curve4_loga(n_channels).astype(np.float32))
+        b = self.dist_curve4_b(n_channels).astype(np.float32)
+        curves.append(Curve4(a, b, bp, bp2))
+
+        if self.curve_selection == 'channel-wise':
+            targets, tfms = [], []
+            for channel in range(n_channels):
+                curve = curves[np.random.randint(0, 3)]
+                tfm = curve.inverse(support[None, :])[channel]
+                target = curve(support[None, :])[channel] if self.predict_inverse else tfm
+
+                # random swap tfm <-> target
+                if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
+                (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
+                (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
+                (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
+                    tfm, target = target, tfm
+
+                targets.append(target)
+                tfms.append(tfm)
+
+            target = np.stack(targets)
+            tfm = np.stack(tfms)
+            del targets, tfms
+
+        else:
+            # image-wise curve selection
+            curve = curves[np.random.randint(0, 3)]
+            tfm = curve.inverse(support[None, :])
+            target = curve(support[None, :]) if self.predict_inverse else tfm
+
+            # random swap tfm <-> target
+            if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
+                (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
+                (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
+                (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
+                mask = np.random.randint(0, 2, (n_channels, 1)).astype(np.float32)
+                target, tfm = mask * target + (1 - mask) * tfm, (1 - mask) * target + mask * tfm
+        
         target = torch.tensor(target)
         tfm = torch.tensor(tfm)
         assert target.shape == (n_channels, 256), f"wrong target shape: {target.shape}"
@@ -802,8 +834,6 @@ class AugInvCurveDataset2(Dataset):
 
         if self.use_batch_tfms:
             # return both curves as "target"
-            assert tfm.max() <= 1, f'tfm too large: {tfm.max()}'
-            assert target.max() <= 1, f'tfm too large: {target.max()}'
             if self.predict_inverse:
                 target = torch.cat((target, tfm), dim=1)
 
@@ -811,6 +841,16 @@ class AugInvCurveDataset2(Dataset):
             if self.noise_level:
                 rnd_factor = torch.rand(1).repeat(3)
                 target = torch.cat((target, rnd_factor[:, None]), dim=1)
+            
+            # append rnd JPEG quality -> (C, 258)
+            if self.add_jpeg_artifacts:
+                jpeg_quality = torch.randint(50, 100, (1,)).repeat(3).float()
+                target = torch.cat((target, jpeg_quality[:, None]), dim=1)
+
+            # append rnd sharpness -> (C, 259)
+            if self.sharpness_augment:
+                rnd_sharpness = 2 * torch.rand((1,)).repeat(3)
+                target = torch.cat((target, rnd_sharpness[:, None]), dim=1)
 
             # resize image to double cfg.size and tensorize for collocation
             image = torch.tensor(image.transpose(2, 0, 1))  # channel first
