@@ -576,7 +576,10 @@ def get_pretrained_timm(cfg):
         for p, out_features in zip(dropout_ps, lin_ftrs):
             if p > 0: bottleneck.append(nn.Dropout(p=p))
             bottleneck.append(nn.Linear(n_features, out_features))
-            if cfg.act_head: bottleneck.append(cfg.act_head())
+            if cfg.act_head:
+                if isinstance(cfg.act_head, str):
+                    cfg.act_head = getattr(nn, cfg.act_head)
+                bottleneck.append(cfg.act_head())
             n_features = out_features
             if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(n_features))
         if final_dropout:

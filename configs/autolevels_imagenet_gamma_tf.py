@@ -51,8 +51,6 @@ dropout_ps = []
 
 from pathlib import Path
 
-print("local public types:", set(type(v) for k, v in locals().items() if not k.startswith('_')))
-print("type(Path):", type(Path))
 _accepted_types = (int, float, str, bool, tuple, list)
 cfg = {k: v for k, v in globals().items() if not k.startswith('_') and isinstance(v, _accepted_types)}
 
