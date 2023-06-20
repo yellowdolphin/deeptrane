@@ -11,6 +11,7 @@ import torchvision
 print("[ √ ] torchvision:", torchvision.__version__)
 import torchvision.transforms as TT
 from torchvision.transforms.functional import InterpolationMode
+from torchvision.io import encode_jpeg, decode_jpeg
 from scipy.interpolate import interp1d
 
 try:
@@ -30,6 +31,10 @@ except ModuleNotFoundError:
     quietly_run('pip install albumentations')
     import albumentations as alb
 print("[ √ ] albumentations:", alb.__version__)
+from albumentations.augmentations import blur
+from albumentations.augmentations.transforms import ImageCompression
+from albumentations.augmentations.geometric.resize import LongestMaxSize
+
 
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -125,6 +130,36 @@ def read_csv(cfg):
     return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
 
 
+def adjust_sharpness_alb(img, sharpness):
+    """Equivalent to torchvision.transforms.functional.adjust_sharpness
+    
+    kernel differs from torchvision: sharpness=1.7 corresponds to torchvision sharpness=2.0
+    """
+    img = img.astype(np.float32) * sharpness + blur(img, ksize=3).astype(np.float32) * (1 - sharpness)
+    return img.clip(0, 255).astype(np.uint8)
+
+
+def adjust_jpeg_quality_alb(img, quality):
+    return ImageCompression(quality_lower=quality, quality_upper=quality, 
+                            always_apply=True)(image=img)['image']
+
+
+def adjust_jpeg_quality_tvf(img, quality):
+    jpeg = encode_jpeg(torch.tensor(img).transpose(0, 2), quality)
+    return decode_jpeg(jpeg).transpose(2, 0).numpy()
+
+
+def map_index_torch(image, tfm, add_uniform_noise=False):
+    # map image (H, W, C) to tfm (C, 256) using torch.gather (faster than numpy fancy indexing)
+    # tfm must be expanded to have same shape as image (except dim=1)
+    expanded_curves = torch.tensor(tfm.T)[None, :, :].expand(image.shape[0], -1, -1)
+    if not add_uniform_noise:
+        return torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))
+    
+    # add uniform noise to mask uint8 quantization (slow)
+    image_plus_one = torch.gather(expanded_curves, dim=1, index=(torch.LongTensor(image) + 1).clamp(max=255))    
+    image = torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))
+    return image + torch.rand_like(image) * (image_plus_one - image)
 
 
 class Curve0():
@@ -733,9 +768,11 @@ class AugInvCurveDataset3(Dataset):
         self.return_path_attr = return_path_attr
         self.use_batch_tfms = cfg.use_batch_tfms
         if self.use_batch_tfms:
-            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], interpolation=InterpolationMode.NEAREST)
+            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], 
+                                     interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
         else:
-            self.resize = TT.Resize(cfg.size, interpolation=InterpolationMode.BILINEAR)
+            self.resize = TT.Resize(cfg.size, 
+                                    interpolation=InterpolationMode.BILINEAR, antialias=cfg.antialias)
         self.rng = np.random.default_rng()
         self.dist_log_gamma = partial(self.rng.uniform, *cfg.log_gamma_range)
         self.dist_curve3_a = partial(self.rng.uniform, *cfg.curve3_a_range)
@@ -747,6 +784,7 @@ class AugInvCurveDataset3(Dataset):
         self.p_gamma = cfg.p_gamma  # probability to use gamma (Curve0)
         self.p_beta = cfg.p_beta    # probability for Beta PDF (Curve3) rather than Curve4
         self.noise_level = cfg.noise_level
+        self.add_uniform_noise = cfg.add_uniform_noise
         self.add_jpeg_artifacts = cfg.add_jpeg_artifacts
         self.sharpness_augment = cfg.sharpness_augment
         self.predict_inverse = cfg.predict_inverse
@@ -828,11 +866,12 @@ class AugInvCurveDataset3(Dataset):
                 target, tfm = mask * target + (1 - mask) * tfm, (1 - mask) * target + mask * tfm
         
         target = torch.tensor(target)
-        tfm = torch.tensor(tfm)
         assert target.shape == (n_channels, 256), f"wrong target shape: {target.shape}"
         assert target.dtype == torch.float32, f"wrong target dtype: {target.dtype}"
 
         if self.use_batch_tfms:
+            tfm = torch.tensor(tfm)
+
             # return both curves as "target"
             if self.predict_inverse:
                 target = torch.cat((target, tfm), dim=1)
@@ -858,17 +897,30 @@ class AugInvCurveDataset3(Dataset):
 
             return image, target
 
-        # map each channel using fancy indexing
-        assert image.dtype == np.uint8
-        transformed = np.empty(image.shape, dtype=tfm.dtype)
-        #for c in range(n_channels):
-        #    transformed[:, :, c] = tfm[c, image[:, :, c]]
-        for c, t in enumerate(tfm):
-            transformed[:, :, c] = t[image[:, :, c]]
-            
-        transformed = self.resize(torch.tensor(transformed.transpose(2, 0, 1)))
+        image = map_index_torch(image, tfm, self.add_uniform_noise)
+        image = (image.numpy().clip(0, 1) * 255).astype(np.uint8)
 
-        return transformed, target
+        if self.sharpness_augment:
+            # randomly soften/sharpen the image
+            rnd_sharpness = 1.8 * np.random.rand() + 0.1
+            image = adjust_sharpness_alb(image, rnd_sharpness)
+
+        if self.add_jpeg_artifacts:
+            # adjust_jpeg_quality automatically converts image to uint8 and back
+            rnd_quality = int(50 * (1 + np.random.rand()))
+            image = adjust_jpeg_quality_tvf(image, rnd_quality)
+
+        image = image.astype(np.float32) / 255
+
+        if self.noise_level:
+            noise = self.noise_level * np.random.rand() * self.rng.standard_normal(size=image.shape, dtype=image.dtype)
+            image = (image + noise).clip(0, 1)
+            
+        image = torch.tensor(image).permute(2, 0, 1)
+
+        image = self.resize(image)
+
+        return image, target
 
 
 # TF data pipeline --------------------------------------------------------
