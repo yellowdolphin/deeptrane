@@ -193,7 +193,7 @@ cfg.gpu = not cfg.xla and torch.cuda.is_available()
 if cfg.xla:
     print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
 elif cfg.gpu:
-    print(f"[ √ ] Using GPU")
+    print(f"[ √ ] Using {torch.cuda.device_count()} GPUs")
 else:
     #cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
     print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
@@ -272,7 +272,11 @@ for use_fold in cfg.use_folds:
 
     # Or train on CPU/GPU if no xla
     else:
-        pretrained_model = pretrained_model
+        if cfg.gpu and cfg.use_dp and (torch.cuda.device_count() > 1):
+            model_requires_labels = pretrained_model.requires_labels  # stripped by wrapper
+            pretrained_model = torch.nn.DataParallel(pretrained_model)
+            pretrained_model.requires_labels = model_requires_labels
+
         _mp_fn(None, cfg, metadata, pretrained_model, None, xm, use_fold)
         del pretrained_model
         gc.collect()

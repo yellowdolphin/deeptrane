@@ -327,7 +327,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     train_loader = DataLoader(ds_train,
                               batch_size  = cfg.bs,
                               sampler     = train_sampler,
-                              num_workers = 1 if cfg.n_replicas > 1 else cpu_count(),
+                              num_workers = 1 if cfg.n_replicas > 1 else 4 * cpu_count(),
                               pin_memory  = True if cfg.gpu else False,
                               drop_last   = True,
                               shuffle     = False if train_sampler else True)
@@ -335,7 +335,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     valid_loader = DataLoader(ds_valid,
                               batch_size  = cfg.bs,
                               sampler     = valid_sampler,
-                              num_workers = 1 if cfg.n_replicas > 1 else cpu_count(),
+                              num_workers = 1 if cfg.n_replicas > 1 else 4 * cpu_count(),
                               pin_memory  = True if cfg.gpu else False)
 
     if cfg.xla and (cfg.deviceloader == 'mp'):
