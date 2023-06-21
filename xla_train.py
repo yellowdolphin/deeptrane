@@ -15,6 +15,7 @@ from utils.schedulers import get_one_cycle_scheduler, maybe_step
 from utils.general import listify
 from models import is_bn
 from torch import FloatTensor, LongTensor
+from torchvision.io import encode_jpeg, decode_jpeg
 
 # old_metrics
 #from sklearn.metrics import f1_score, accuracy_score, average_precision_score
@@ -43,7 +44,6 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     if cfg.use_batch_tfms:
         #import torchvision.transforms as TT
         import torchvision.transforms.functional as TF
-        from torchvision.io import encode_jpeg, decode_jpeg
         # antialias is currently stalling xla compiling and False by default, but
         # will default to True in v0.17
         cfg.antialias = cfg.antialias or False
@@ -178,10 +178,10 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 if cfg.add_jpeg_artifacts:
                     # use same jpeg_quality on all channels
                     labels, jpeg_quality = labels[:, :, :-1], labels[:, 0, -1]
-                if cfg.noise_level:
-                    # use same noise_level on all channels
-                    labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
-                if cfg.predict_inverse:
+                if cfg.predict_inverse and cfg.noise_level:
+                    # split labels into (labels+rnd_noise, tfms)
+                    labels, tfms = labels[:, :, :257], labels[:, :, 257:]
+                elif cfg.predict_inverse:
                     # split labels into (target, tfms)
                     labels, tfms = labels[:, :, :256], labels[:, :, 256:]
                 else:
@@ -228,7 +228,6 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                     noise_range = inputs_plus_one - inputs
                     noise = torch.rand_like(inputs) * noise_range
                     inputs += noise
-                labels = labels.reshape(labels.shape[0], -1)
 
             else:
                 inputs = inputs.float()
@@ -248,7 +247,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 inputs = TF.adjust_sharpness(inputs, rnd_sharpness[0])  # batch-wise sharpness
                 #xm.master_print("rnd_sharpness, rnd_test:", rnd_sharpness[0], rnd_test)
 
-            if cfg.add_jpeg_artifacts:
+            if cfg.add_jpeg_artifacts:  # slow!
                 inputs = (inputs.clamp(0, 1) * 255).to(torch.uint8)
                 B, C, H, W = inputs.shape
 
@@ -264,11 +263,6 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 inputs = decode_jpeg(jpeg).to(device)  # jpeg tensor must be on CPU!
                 inputs = inputs.reshape(C, B, H, W).transpose(1, 0)
                 inputs = inputs.float() / 255
-
-            # Random Noise
-            if cfg.noise_level:
-                inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
-                inputs = inputs.clamp(0.0, 1.0)
 
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
@@ -306,7 +300,15 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             #    inputs = TF.pad(inputs, padding, padding_mode='reflect')
             #    inputs = TF.rotate(inputs, angle, resample=0)
             #    inputs = TF.crop(inputs, top, left, height, width)
-        elif cfg.curve == 'free':
+
+        # Random Noise
+        if cfg.noise_level:
+            # unpack labels, use same noise_level on all channels
+            labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
+            inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
+            inputs = inputs.clamp(0.0, 1.0)
+
+        if cfg.curve and (cfg.curve == 'free'):
             labels = labels.reshape(labels.shape[0], -1)
 
         # forward and backward pass
@@ -441,11 +443,17 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
                     if cfg.random_blackpoint_shift: bp_shift = rnd_vars[:, -3:]
                 gamma, abs_log_gamma, rel_log_gamma = labels[:, :3], labels[:, 3:6], labels[:, 6:]
             elif (cfg.curve == 'free'):
-                # unpack labels
-                if cfg.noise_level:
-                    # use same noise_level on all channels
-                    labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
-                if cfg.predict_inverse:
+                # unpack labels in reverse order
+                if cfg.sharpness_augment:
+                    # use same sharpness on all channels
+                    labels, rnd_sharpness = labels[:, :, :-1], labels[:, 0, -1]
+                if cfg.add_jpeg_artifacts:
+                    # use same jpeg_quality on all channels
+                    labels, jpeg_quality = labels[:, :, :-1], labels[:, 0, -1]
+                if cfg.predict_inverse and cfg.noise_level:
+                    # split labels into (labels+rnd_noise, tfms)
+                    labels, tfms = labels[:, :, :257], labels[:, :, 257:]
+                elif cfg.predict_inverse:
                     # split labels into (target, tfms)
                     labels, tfms = labels[:, :, :256], labels[:, :, 256:]
                 else:
@@ -471,7 +479,6 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
                     noise_range = inputs_plus_one - inputs
                     noise = torch.rand_like(inputs) * noise_range
                     inputs += noise
-                labels = labels.reshape(labels.shape[0], -1)
             else:
                 inputs = inputs.float()
 
@@ -481,14 +488,39 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
             if cfg.curve == 'gamma':
                 inputs = torch.pow(inputs, gamma[:, :, None, None])  # channel first
 
-            # Random Noise
-            if cfg.noise_level:
-                inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
-                inputs = inputs.clamp(0.0, 1.0)
-                
+            if cfg.sharpness_augment:
+                # as augmentation, sharpen should happen before adding JPEG noise
+                #rnd_test = 2.0 * torch.rand(1)  # OK on single core
+                inputs = TF.adjust_sharpness(inputs, rnd_sharpness[0])  # batch-wise sharpness
+                #xm.master_print("rnd_sharpness, rnd_test:", rnd_sharpness[0], rnd_test)
+
+            if cfg.add_jpeg_artifacts:  # slow!
+                inputs = (inputs.clamp(0, 1) * 255).to(torch.uint8)
+                B, C, H, W = inputs.shape
+
+                # albumentation: HWC-numpy array
+                #inputs = inputs.permute(0, 2, 3, 1).reshape(B * H, W, C)
+                #inputs = torch.tensor(ImageCompression(50, 100, p=1)(image=inputs.numpy())['image'])
+                #inputs = inputs.reshape(B, H, W, C).permute(0, 3, 1, 2)
+
+                # torchvision: CHW tensor
+                inputs = inputs.transpose(0, 1).reshape(C, B * H, W)
+                #xm.master_print("jpeg_quality:", jpeg_quality[0])
+                jpeg = encode_jpeg(inputs.cpu(), jpeg_quality[0])  # batch-wise quality
+                inputs = decode_jpeg(jpeg).to(device)  # jpeg tensor must be on CPU!
+                inputs = inputs.reshape(C, B, H, W).transpose(1, 0)
+                inputs = inputs.float() / 255
+
             inputs = TF.resize(inputs, cfg.size, antialias=cfg.antialias)
 
-        elif cfg.curve == "free":
+        # Random Noise
+        if cfg.noise_level:
+            # unpack labels, use same noise_level on all channels
+            labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
+            inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
+            inputs = inputs.clamp(0.0, 1.0)
+
+        if cfg.curve and (cfg.curve == 'free'):
             labels = labels.reshape(labels.shape[0], -1)
 
         # forward

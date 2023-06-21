@@ -9,6 +9,7 @@ use_folds = [0]
 train_on_all = False
 size = (384, 384)
 presize = 2
+antialias = False
 predict_inverse = True
 blackpoint_range = (-30, 30)   # x-offset
 blackpoint2_range = (-30, 30)  # y-offset

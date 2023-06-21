@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 import torchvision
 print("[ √ ] torchvision:", torchvision.__version__)
 import torchvision.transforms as TT
-from torchvision.transforms.functional import InterpolationMode
+from torchvision.transforms.functional import InterpolationMode, resize
 from torchvision.io import encode_jpeg, decode_jpeg
 from scipy.interpolate import interp1d
 
@@ -145,8 +145,10 @@ def adjust_jpeg_quality_alb(img, quality):
 
 
 def adjust_jpeg_quality_tvf(img, quality):
-    jpeg = encode_jpeg(torch.tensor(img).transpose(0, 2), quality)
-    return decode_jpeg(jpeg).transpose(2, 0).numpy()
+    "Returns HWC numpy image or (return_jpeg=True) CHW tensor"
+    img = torch.tensor(img).permute(2, 0, 1)
+    jpeg = encode_jpeg(img, quality)
+    return decode_jpeg(jpeg).permute(1, 2, 0).numpy()
 
 
 def map_index_torch(image, tfm, add_uniform_noise=False):
@@ -771,8 +773,10 @@ class AugInvCurveDataset3(Dataset):
             self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], 
                                      interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
         else:
+            #self.resize = TT.Resize(cfg.size, 
+            #                        interpolation=InterpolationMode.BILINEAR, antialias=cfg.antialias)
             self.resize = TT.Resize(cfg.size, 
-                                    interpolation=InterpolationMode.BILINEAR, antialias=cfg.antialias)
+                                    interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
         self.rng = np.random.default_rng()
         self.dist_log_gamma = partial(self.rng.uniform, *cfg.log_gamma_range)
         self.dist_curve3_a = partial(self.rng.uniform, *cfg.curve3_a_range)
@@ -872,15 +876,14 @@ class AugInvCurveDataset3(Dataset):
         if self.use_batch_tfms:
             tfm = torch.tensor(tfm)
 
-            # return both curves as "target"
-            if self.predict_inverse:
+            # return both target and tfm curves as "target"
+            if self.predict_inverse and self.noise_level:
+                # append rnd_factor for noise_level to target, independent of use_batch_tfms
+                rnd_factor = torch.rand(1).repeat(3)
+                target = torch.cat((target, rnd_factor[:, None], tfm), dim=1)
+            elif self.predict_inverse:
                 target = torch.cat((target, tfm), dim=1)
 
-            # append rnd_factor for noise_level -> (C, 257)
-            if self.noise_level:
-                rnd_factor = torch.rand(1).repeat(3)
-                target = torch.cat((target, rnd_factor[:, None]), dim=1)
-            
             # append rnd JPEG quality -> (C, 258)
             if self.add_jpeg_artifacts:
                 jpeg_quality = torch.randint(50, 100, (1,)).repeat(3).float()
@@ -912,9 +915,10 @@ class AugInvCurveDataset3(Dataset):
 
         image = image.astype(np.float32) / 255
 
+        # append rnd_factor for noise_level to target -> (C, 257)
         if self.noise_level:
-            noise = self.noise_level * np.random.rand() * self.rng.standard_normal(size=image.shape, dtype=image.dtype)
-            image = (image + noise).clip(0, 1)
+            rnd_factor = torch.rand(1).repeat(3)
+            target = torch.cat((target, rnd_factor[:, None]), dim=1)
             
         image = torch.tensor(image).permute(2, 0, 1)
 
