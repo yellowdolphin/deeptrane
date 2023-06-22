@@ -344,10 +344,12 @@ def get_pretrained_model(cfg):
         bottleneck = cfg.get_bottleneck(cfg, n_features)
     else:
         lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
+        act_head = getattr(nn, cfg.act_head) if isinstance(cfg.act_head, str) else cfg.act_head
         bottleneck = []
         for p, out_features in zip(dropout_ps, lin_ftrs):
             if p > 0: bottleneck.append(nn.Dropout(p=p))
             bottleneck.append(nn.Linear(n_features, out_features))
+            if act_head: bottleneck.append(act_head())
             n_features = out_features
             if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(n_features))
         if final_dropout:
@@ -450,7 +452,7 @@ def get_pretrained_model(cfg):
     #print("bias:  ",
     #      pretrained_model.state_dict()['head.3.bias'].mean(),
     #      pretrained_model.state_dict()['head.3.bias'].std())
-    print(pretrained_model)
+    #print(pretrained_model)
     return pretrained_model
 
 
@@ -572,14 +574,12 @@ def get_pretrained_timm(cfg):
         bottleneck = cfg.get_bottleneck(cfg, n_features)
     else:
         lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
+        act_head = getattr(nn, cfg.act_head) if isinstance(cfg.act_head, str) else cfg.act_head
         bottleneck = []
         for p, out_features in zip(dropout_ps, lin_ftrs):
             if p > 0: bottleneck.append(nn.Dropout(p=p))
             bottleneck.append(nn.Linear(n_features, out_features))
-            if cfg.act_head:
-                if isinstance(cfg.act_head, str):
-                    cfg.act_head = getattr(nn, cfg.act_head)
-                bottleneck.append(cfg.act_head())
+            if act_head: bottleneck.append(act_head())
             n_features = out_features
             if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(n_features))
         if final_dropout:

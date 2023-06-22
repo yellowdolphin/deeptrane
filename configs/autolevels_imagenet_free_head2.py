@@ -31,6 +31,7 @@ augmentation = 'tfms_004'      # ignored if use_batch_tfms
 use_batch_tfms = True
 n_replicas = 8
 use_dp = False                 # does not work on T4 GPUs with torch 2.0 and transformers
+use_ddp = True
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
 bs = 32

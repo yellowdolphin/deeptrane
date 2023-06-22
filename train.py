@@ -160,6 +160,46 @@ if cfg.xla:
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.xla_multiprocessing as xmp
     import torch_xla.debug.metrics as met
+
+elif cfg.use_ddp:
+    from torch.distributed import ReduceOp
+
+    class xm(object):
+        "Pseudo class to overload torch_xla.core.xla_model"
+        get_ordinal = torch.distributed.get_rank  # in range(world_size)
+        xrt_world_size = torch.distributed.get_world_size
+
+        @classmethod
+        def master_print(cls, *args, **kwargs):
+            if cls.get_ordinal() == 0: print(*args, **kwargs)
+
+        @classmethod
+        def xla_device(cls):
+            local_rank = int(os.environ["LOCAL_RANK"])
+            global_rank = cls.get_ordinal()
+            assert local_rank == global_rank % torch.cuda.device_count()
+            return local_rank  # f"cuda:{local_rank}"
+
+        @staticmethod
+        def save(*args, **kwargs):
+            if torch.distributed.get_rank() == 0:
+                torch.save(*args, **kwargs)
+
+        @staticmethod
+        def optimizer_step(optimizer, barrier=False):
+            optimizer.step()
+
+        @classmethod
+        def mesh_reduce(cls, tag, data, reduce_fn):
+            "Returns reduced data to process 0 (data to all others)"
+            #print(f"mesh_reduce called with tag={tag}, data={data}, reduce_fn={reduce_fn}")
+            op = getattr(ReduceOp, reduce_fn.__name__.upper())
+            device = cls.get_ordinal()
+            dtype = torch.float32 if isinstance(data, float) else torch.int64
+            data = torch.tensor(data, dtype=dtype, device=device)
+            torch.distributed.reduce(data, dst=0, op=op)
+            return data  # only rank 0 gets the reduced result
+
 else:
     class xm(object):
         "Pseudo class to overload torch_xla.core.xla_model"
@@ -188,13 +228,23 @@ else:
             return reduce_fn([data])
 
 print(f"[ √ ] {cpu_count()} CPUs")
-cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size() if cfg.xla else 1
+
+# Determine GPU usage
 cfg.gpu = not cfg.xla and torch.cuda.is_available()
+if not (cfg.gpu and torch.cuda.device_count() > 1):
+    cfg.use_dp = cfg.use_ddp = False
+if cfg.use_ddp:
+    cfg.use_dp = False  # ddp overrides dp
+
+# Report accelerators
 if cfg.xla:
+    cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size()
     print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
 elif cfg.gpu:
-    print(f"[ √ ] Using {torch.cuda.device_count()} GPUs")
+    cfg.n_replicas = torch.cuda.device_count() if (cfg.use_dp or cfg.use_ddp) else 1
+    print(f"[ √ ] Using {cfg.n_replicas} GPUs", "(DP)" if cfg.use_dp else "(DDP)" if cfg.use_ddp else "")
 else:
+    cfg.n_replicas = 1
     #cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
     print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
 
@@ -235,9 +285,10 @@ for use_fold in cfg.use_folds:
     if cfg.use_aux_loss:
         pretrained_model = get_smp_model(cfg)
     else:
-        #pretrained_model = get_pretrained_model(cfg)
-        pretrained_model = get_pretrained_timm(cfg)
+        pretrained_model = get_pretrained_model(cfg)
+        #pretrained_model = get_pretrained_timm(cfg)
     pretrained_model.requires_labels = getattr(pretrained_model, 'requires_labels', False)
+    #print(pretrained_model)
     if hasattr(pretrained_model, 'head'):
         print(pretrained_model.head)
     if hasattr(pretrained_model, 'model') and hasattr(pretrained_model.model, 'head'):
@@ -250,6 +301,7 @@ for use_fold in cfg.use_folds:
     if False and not fn.exists():
         print(f"Saving initial model as {fn}")
         torch.save(pretrained_model.state_dict(), fn)
+
 
     # Start distributed training on TPU cores
     if cfg.xla:
@@ -270,9 +322,22 @@ for use_fold in cfg.use_folds:
             xm.master_print(report)
 
 
-    # Or train on CPU/GPU if no xla
+    # Start distributed training on GPUs
+    elif False and cfg.use_ddp:  # does not work, use torchscript instead!
+        import torch.multiprocessing as mp
+
+        serial_executor = 'TODO'
+
+        print(f"mp.spawn {_mp_fn} on {cfg.n_replicas} GPUs with xm={xm}")
+        mp.spawn(_mp_fn,
+            args=(cfg, metadata, pretrained_model, serial_executor, xm, use_fold),
+            nprocs=cfg.n_replicas,
+            join=True)
+
+
+    # Train on CPU/GPU if no xla
     else:
-        if cfg.gpu and cfg.use_dp and (torch.cuda.device_count() > 1):
+        if cfg.use_dp:
             model_requires_labels = pretrained_model.requires_labels  # stripped by wrapper
             pretrained_model = torch.nn.DataParallel(pretrained_model)
             pretrained_model.requires_labels = model_requires_labels

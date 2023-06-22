@@ -135,12 +135,6 @@ def is_listmetric(metric):
     return getattr(metric, 'average', '') is None
 
 
-def reduce(values):
-    if isinstance(values, Tensor):
-        return torch.mean(values)
-    return sum(values) / len(values)
-
-
 class AverageMeter(object):
     '''Computes and stores the average and current value'''
 
@@ -165,10 +159,16 @@ class AverageMeter(object):
         reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
         return reduced_sum / (reduced_count + eps)
 
+    @staticmethod
+    def avg(values):
+        if isinstance(values, Tensor):
+            return torch.mean(values)
+        return sum(values) / len(values)
+
     @property
     def current(self):
         # current value, averaged over devices (and minibatch)
-        return self.xm.mesh_reduce('meter_val', self.val, reduce)
+        return self.xm.mesh_reduce('meter_val', self.val, self.avg)
 
 
 def log_average_miss_rate(prec, rec, num_images):
