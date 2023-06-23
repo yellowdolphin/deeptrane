@@ -60,6 +60,8 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
         best_ep_metrics = pd.concat([best_ep_metrics, best_ep_metrics.mean().to_frame('mean').T])
         display(best_ep_metrics)
 
+    if torch_metrics_files: return
+
     # Tensorflow metrics
     for csv in tf_metrics_files:
         df = pd.read_csv(csv, index_col='epoch')
@@ -68,6 +70,9 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
         losses = [c for c in df.columns if 'loss' in c]
         # CSVLogger does not write columns in order of metrics (maybe inverse order?)
         metrics = [c for c in df.columns[::-1] if c.startswith('val_') and c not in losses]
+        if not metrics:
+            # this is actually a pytorch metrics csv file
+            metrics = [c for c in df.columns if c not in ['lr', 'Wall'] + losses]
 
         best_metric = metrics[-1]
         df[losses].plot()

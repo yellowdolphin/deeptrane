@@ -598,6 +598,9 @@ def get_valid_labels(cfg, metadata):
 def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     "Distributed training loop master function"
 
+    if cfg.xla:
+        xm.master_print("In _mp_fn, world_size:", xm.xrt_world_size())
+
     # DDP init
     if cfg.use_ddp:
         from torch.nn.parallel import DistributedDataParallel as DDP
