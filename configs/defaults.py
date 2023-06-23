@@ -20,7 +20,7 @@ cfg = dict(
 # Dataloader
     multilabel = False,
     augmentation = 'tfms_004',
-    n_replicas = None,
+    n_replicas = 1,
     bs = 8,
     steps_per_execution = 1,  # TF only, increase for performance (check callbacks, training behavior)
     epochs = 1,

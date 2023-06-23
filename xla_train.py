@@ -3,9 +3,8 @@ from future import removesuffix
 import time
 import math
 
-import pandas as pd
 import numpy as np
-from metrics import get_tm_metrics, is_listmetric, NegativeRate, AverageMeter, EmbeddingAveragePrecision
+from metrics import get_tm_metrics, is_listmetric, AverageMeter
 from torch_data import get_dataloaders, get_fakedata_loaders
 import torch
 from torch import nn
@@ -16,14 +15,6 @@ from utils.general import listify
 from models import is_bn
 from torch import FloatTensor, LongTensor
 from torchvision.io import encode_jpeg, decode_jpeg
-
-# old_metrics
-#from sklearn.metrics import f1_score, accuracy_score, average_precision_score
-#try:
-#    from sklearn.metrics import top_k_accuracy_score  # requires sklearn 0.24.2 or higher (kaggle: 0.23.2)
-#except ImportError:
-#    pass
-#from sklearn.metrics import label_ranking_average_precision_score
 
 
 torch.set_default_tensor_type('torch.FloatTensor')
@@ -604,7 +595,7 @@ def get_valid_labels(cfg, metadata):
     return metadata.loc[is_valid | is_shared, class_column].values
 
 
-def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
+def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     "Distributed training loop master function"
 
     # DDP init
@@ -661,8 +652,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     else:
         cfg.loss_weights = None
 
-    #old_metrics = [] # OK: [pct_N, eap5, acc, macro_acc, top3, f1, macro_f1]
-
     # cfg.metrics and metrics need to have identical keys: replace aliases in cfg.metrics
     aliases = {
         'micro_acc': 'acc',
@@ -682,7 +671,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     # torchmetrics
     metrics = get_tm_metrics(cfg, xm)
 
-    #xm.master_print('Metrics:', *[m.__name__ for m in old_metrics])
     xm.master_print('Metrics:', metrics)
 
     # Don't Scale LRs (optimal lrs don't scale linearly with step size)
@@ -737,10 +725,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
         scheduler = None
     if scheduler:
         xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
-        #_lrs = [p["lr"] / cfg.n_replicas for p in optimizer.param_groups]
         _lrs = [p["lr"] for p in optimizer.param_groups]
         xm.master_print(f"""Initial lrs: {', '.join(f'{lr:7.2e}' for lr in _lrs)}""")
-        #_lrs = [lr / cfg.n_replicas for lr in listify(max_lrs)]
         _lrs = [lr for lr in listify(max_lrs)]
         xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in _lrs)}")
         if hasattr(scheduler, 'step'):
@@ -766,7 +752,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
     metrics_dicts = []
     best_model_score = -np.inf
     epoch_summary_header = ''.join([
-        #'epoch   ', ' train_loss ', ' valid_loss ', ' '.join([f'{m.__name__:^8}' for m in metrics]),
         'epoch   ', ' train_loss ', ' valid_loss ',
         ' '.join([f'{key:^8}' for key in cfg.metrics if not is_listmetric(metrics[key])]),
         '   lr    ', 'min_train  min_total'])
@@ -821,30 +806,19 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             else:
                 dataloader = valid_loader
 
-            #valid_loss, old_valid_metrics, valid_metrics = valid_fn(model, cfg, xm,
             valid_loss, valid_metrics = valid_fn(model, cfg, xm,
                                                  dataloader  = dataloader,
                                                  criterion   = criterion,
                                                  device      = device,
-                                                 #old_metrics = old_metrics,
                                                  metrics     = metrics)
 
-        #old_metrics_dict = {'train_loss': train_loss, 'valid_loss': valid_loss}
-        metrics_dict = {'train_loss': train_loss.item(), 'valid_loss': valid_loss.item()}
-        #old_metrics_dict.update({m.__name__: val for m, val in zip(old_metrics, old_valid_metrics)})
+        metrics_dict = {'epoch': epoch + 1,
+                        'train_loss': train_loss, 
+                        'valid_loss': valid_loss}
         metrics_dict.update(valid_metrics)
         last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else current_lr
         avg_lr = 0.5 * (current_lr + last_lr)
         metrics_dict['lr'] = avg_lr
-
-        # Old epoch summary
-        #epoch_summary_strings = [f'{epoch + 1:>2} / {rst_epoch + cfg.epochs:<2}']         # ep/epochs
-        #epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
-        #epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
-        #for val in old_valid_metrics:                                                     # metrics
-        #    if isinstance(val, list): xm.master_print(val)
-        #    epoch_summary_strings.append(f'{val:7.5f}')
-        #xm.master_print('  '.join(epoch_summary_strings))
 
         # Print epoch summary
         epoch_summary_strings = [f'{epoch + 1:>2} / {cfg.epochs:<2}']                     # ep/epochs
@@ -893,11 +867,13 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
                     k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
                     f'{fn}.sched')
 
-        # Save losses, metrics
+        # Save metrics in pth and csv file (rank 0 only)
         metrics_dict['Wall'] = (time.perf_counter() - epoch_start) / 60
-        metrics_dict['epoch'] = epoch + 1
 
-        # Saving metrics csv file (rank 0 only)
+        metrics_dicts.append(metrics_dict)
+        xm.save({k: [d[k] for d in metrics_dicts] for k in metrics_dicts[0]}, 
+                Path(cfg.out_dir) / f'metrics_fold{use_fold}.pth')
+
         if (cfg.n_replicas == 1) or (xm.get_ordinal() == 0):
             csv_file = Path(cfg.out_dir) / f'metrics_fold{use_fold}.csv'
             if csv_file.exists():
@@ -911,19 +887,5 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, serial_executor, xm, use_fold):
             with open(csv_file, 'a') as fp:
                 fp.write(line_str + '\n')
 
-        metrics_dicts.append(metrics_dict)
-        metrics_dict = {k: [d[k] for d in metrics_dicts] for k in metrics_dicts[0]}
-        xm.save(metrics_dict, Path(cfg.out_dir) / f'metrics_fold{use_fold}.pth')
-
-    if cfg.xla and (cfg.n_replicas > 1):
-        serial_executor.run(lambda: save_metrics(metrics_dicts, use_fold, cfg.out_dir))
-    elif cfg.use_ddp:
+    if cfg.use_ddp:
         torch.distributed.destroy_process_group()
-    else:
-        save_metrics(metrics_dicts, use_fold, cfg.out_dir)
-
-
-def save_metrics(metrics_dicts, fold, out_dir):
-    df = pd.DataFrame(metrics_dicts)
-    df.set_index('epoch', inplace=True)
-    df.to_json(Path(out_dir) / f'metrics_fold{fold}.json')

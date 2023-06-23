@@ -157,18 +157,24 @@ class AverageMeter(object):
         eps = 1e-14
         reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
         reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
-        return reduced_sum / (reduced_count + eps)
+        average = reduced_sum / (reduced_count + eps)
+        if isinstance(average, torch.Tensor):
+            self.xm.master_print("Warning: got scalar Tensor from xm.mesh_reduce")
+            average = average.item()
+        return average
 
     @staticmethod
     def avg(values):
-        if isinstance(values, Tensor):
-            return torch.mean(values)
         return sum(values) / len(values)
 
     @property
     def current(self):
         # current value, averaged over devices (and minibatch)
-        return self.xm.mesh_reduce('meter_val', self.val, self.avg)
+        current = self.xm.mesh_reduce('meter_val', self.val, self.avg)
+        if isinstance(current, torch.Tensor):
+            self.xm.master_print("Warning: got scalar Tensor from xm.mesh_reduce")
+            current = current.item()
+        return current
 
 
 def log_average_miss_rate(prec, rec, num_images):

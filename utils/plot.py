@@ -3,6 +3,7 @@ from glob import glob
 from itertools import chain
 import matplotlib.pyplot as plt
 import pandas as pd
+import torch
 from IPython.core.display import display
 
 
@@ -12,21 +13,29 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
     If no `metrics_files` are passed, search for files starting with `prefix`."""
 
     best_ep_metrics = []
-    metrics_files = sorted(glob(f'{prefix}*.json'))
-    tf_metrics_files = sorted(glob(f'{prefix}*.csv'))
+    if metrics_files:
+        torch_metrics_files = sorted(fn for fn in metrics_files if fn.lower().endswith('.pth'))
+        tf_metrics_files = sorted(fn for fn in metrics_files if fn.lower().endswith('.csv'))
+    else:
+        torch_metrics_files = sorted(glob(f'{prefix}*.pth'))
+        tf_metrics_files = sorted(glob(f'{prefix}*.csv'))
 
     # PyTorch metrics
-    for fn in metrics_files:
+    for fn in torch_metrics_files:
         print(f"Metrics from {fn}")
-        df = pd.read_json(fn)
+        metrics_dict = torch.load(fn)
+        df = pd.DataFrame(metrics_dict).set_index('epoch')
         display(df)
 
         title = '_'.join(Path(fn).stem.split('_')[1:])
-        losses = df.iloc[:, :2]
+        loss_cols = ['train_loss', 'valid_loss']
+        losses = df.loc[:, loss_cols]
         obj_cols = [c for c in df.columns if df[c].dtype == 'O']
-        metrics = df.iloc[:, 2:].drop(columns=['lr', 'Wall'] + obj_cols, errors='ignore')
+        assert not obj_cols, f'dtype "O": {obj_cols}'
+        #metrics = df.iloc[:, 2:].drop(columns=['lr', 'Wall'] + obj_cols, errors='ignore')
+        metrics = df.drop(columns=['lr', 'Wall'] + loss_cols)
         losses_metrics = pd.concat([losses, metrics])
-        best_metric = df.iloc[:, -3]
+        best_metric = losses_metrics.iloc[:, -1]  # assume last metric is most important
         lr = df.loc[:, ['lr' if 'lr' in df else 'lr_head']]
         best_ep = best_metric.index[best_metric.argmax()]
 
@@ -44,7 +53,7 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
         print('\t'.join(values))
         best_ep_metrics.append(df.loc[[best_ep]])
 
-    if len(metrics_files) > 1:
+    if len(torch_metrics_files) > 1:
         best_ep_metrics = pd.concat(best_ep_metrics)
         best_ep_metrics.index.name = f'best_{best_metric.name}_ep'
         best_ep_metrics.reset_index(inplace=True)

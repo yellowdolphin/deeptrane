@@ -156,6 +156,20 @@ if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
 if cfg.filetype == 'wds':
     quietly_run('pip install webdataset', debug=cfg.DEBUG)
 
+
+print(f"[ √ ] {cpu_count()} CPUs")
+
+# Determine GPU usage
+cfg.gpu = not cfg.xla and torch.cuda.is_available()
+if not (cfg.gpu and torch.cuda.device_count() > 1):
+    cfg.use_dp = cfg.use_ddp = False
+else:
+    # For now, ddp jobs must be run with torchrun, which sets 'RANK'
+    cfg.use_ddp = int(os.environ.get('RANK', -1)) != -1
+if cfg.use_ddp:
+    cfg.use_dp = False  # ddp overrides dp
+
+# Get distributed namespace for detected accelerator: "xm"
 if cfg.xla:
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.xla_multiprocessing as xmp
@@ -226,15 +240,6 @@ else:
         @staticmethod
         def mesh_reduce(tag, data, reduce_fn):
             return reduce_fn([data])
-
-print(f"[ √ ] {cpu_count()} CPUs")
-
-# Determine GPU usage
-cfg.gpu = not cfg.xla and torch.cuda.is_available()
-if not (cfg.gpu and torch.cuda.device_count() > 1):
-    cfg.use_dp = cfg.use_ddp = False
-if cfg.use_ddp:
-    cfg.use_dp = False  # ddp overrides dp
 
 # Report accelerators
 if cfg.xla:
@@ -309,10 +314,10 @@ for use_fold in cfg.use_folds:
 
         # MpModelWrapper wraps a model to minimize host memory usage (fork only)
         pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
-        serial_executor = xmp.MpSerialExecutor()
 
+        print("xmp.spawn (fork)")
         xmp.spawn(_mp_fn, nprocs=cfg.n_replicas, start_method='fork',
-                  args=(cfg, metadata, pretrained_model, serial_executor, xm, use_fold))
+                  args=(cfg, metadata, pretrained_model, xm, use_fold))
 
         if cfg.xla_metrics:
             xm.master_print()
@@ -326,11 +331,9 @@ for use_fold in cfg.use_folds:
     elif False and cfg.use_ddp:  # does not work, use torchscript instead!
         import torch.multiprocessing as mp
 
-        serial_executor = 'TODO'
-
         print(f"mp.spawn {_mp_fn} on {cfg.n_replicas} GPUs with xm={xm}")
         mp.spawn(_mp_fn,
-            args=(cfg, metadata, pretrained_model, serial_executor, xm, use_fold),
+            args=(cfg, metadata, pretrained_model, xm, use_fold),
             nprocs=cfg.n_replicas,
             join=True)
 
@@ -342,7 +345,7 @@ for use_fold in cfg.use_folds:
             pretrained_model = torch.nn.DataParallel(pretrained_model)
             pretrained_model.requires_labels = model_requires_labels
 
-        _mp_fn(None, cfg, metadata, pretrained_model, None, xm, use_fold)
+        _mp_fn(None, cfg, metadata, pretrained_model, xm, use_fold)
         del pretrained_model
         gc.collect()
         torch.cuda.empty_cache()
