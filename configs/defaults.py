@@ -20,6 +20,7 @@ cfg = dict(
 # Dataloader
     multilabel = False,
     augmentation = 'tfms_004',
+    use_dp = False,  # use DP (deprecated, better use DDP via torchrun train.py)
     n_replicas = 1,
     bs = 8,
     steps_per_execution = 1,  # TF only, increase for performance (check callbacks, training behavior)
