@@ -307,7 +307,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
             rank         = xm.get_ordinal(),
             shuffle      = False) if (cfg.n_replicas > 1) else train_sampler
 
-    elif cfg.n_replicas > 1:
+    elif (cfg.xla or cfg.use_ddp) and (cfg.n_replicas > 1):
         train_sampler = DistributedSampler(
             ds_train,
             num_replicas = cfg.n_replicas,

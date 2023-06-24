@@ -75,6 +75,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     n_iter = len(dataloader)
     iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
     #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
+    print(f"rank {xm.get_ordinal()} begin_train")
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -612,8 +613,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     # Wrap DDP model
     if cfg.use_ddp:
         model_requires_labels = wrapped_model.requires_labels
-        wrapped_model = DDP(wrapped_model.to(device), device_ids=[device], 
-                            find_unused_parameters=False)
+        wrapped_model = DDP(wrapped_model.to(device), device_ids=[device])
         wrapped_model.requires_labels = model_requires_labels
 
     # XLA deviceloader
@@ -640,7 +640,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     #xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
 
     # Send model to device
-    model = wrapped_model if cfg.use_ddp else wrapped_model.to(device)
+    model = wrapped_model.to(device)
 
     # Criterion (default reduction: 'mean'), Metrics
     criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()

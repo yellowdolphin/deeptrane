@@ -180,8 +180,18 @@ elif cfg.use_ddp:
 
     class xm(object):
         "Pseudo class to overload torch_xla.core.xla_model"
-        get_ordinal = torch.distributed.get_rank  # in range(world_size)
-        xrt_world_size = torch.distributed.get_world_size
+        RANK = int(os.environ['LOCAL_RANK'])
+        WORLD_SIZE = int(os.environ['WORLD_SIZE'])
+
+        @classmethod
+        def get_ordinal(cls):
+            "faster than torch.distributed.get_rank()"
+            return cls.RANK
+
+        @classmethod
+        def xrt_world_size(cls):
+            "faster than torch.distributed.get_world_size()"
+            return cls.WORLD_SIZE
 
         @classmethod
         def master_print(cls, *args, **kwargs):
@@ -189,10 +199,11 @@ elif cfg.use_ddp:
 
         @classmethod
         def xla_device(cls):
-            local_rank = int(os.environ["LOCAL_RANK"])
-            global_rank = cls.get_ordinal()
-            assert local_rank == global_rank % torch.cuda.device_count()
-            return local_rank  # f"cuda:{local_rank}"
+            #local_rank = int(os.environ["LOCAL_RANK"])
+            #global_rank = cls.get_ordinal()
+            #assert local_rank == global_rank % torch.cuda.device_count()
+            #return local_rank  # f"cuda:{local_rank}"
+            return cls.RANK
 
         @staticmethod
         def save(*args, **kwargs):
@@ -261,6 +272,7 @@ if cfg.xla:
 elif cfg.gpu:
     cfg.n_replicas = torch.cuda.device_count() if (cfg.use_dp or cfg.use_ddp) else 1
     print(f"[ √ ] Using {cfg.n_replicas} GPUs", "(DP)" if cfg.use_dp else "(DDP)" if cfg.use_ddp else "")
+    if cfg.use_dp: cfg.n_replicas = 1  # pretend single-GPU job for DP (model wrapper takes care of everything)
 else:
     cfg.n_replicas = 1
     #cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
