@@ -237,6 +237,10 @@ else:
         @staticmethod
         def xrt_world_size():
             return 1
+        
+        @staticmethod
+        def get_ordinal():
+            return 0
 
         @staticmethod
         def save(*args, **kwargs):

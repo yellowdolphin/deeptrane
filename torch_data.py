@@ -277,7 +277,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
         xm.master_print(ds_valid.transform)
 
     # Create samplers for distributed shuffling or class-balancing
-    if cfg.xla or cfg.use_ddp:
+    if cfg.xla or cfg.use_ddp or cfg.use_dp:
         from catalyst.data import DistributedSamplerWrapper
         from torch.utils.data.distributed import DistributedSampler
 
@@ -362,7 +362,7 @@ def get_test_loader(cfg, metadata, xm, return_path_attr=None):
         xm.master_print(ds_test.transform)
 
     # Create samplers for distributed shuffling or class-balancing
-    if cfg.xla or cfg.use_ddp:
+    if cfg.xla or cfg.use_ddp or cfg.use_dp:
         from torch.utils.data.distributed import DistributedSampler
 
     test_sampler = DistributedSampler(ds_test,
