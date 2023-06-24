@@ -207,6 +207,15 @@ elif cfg.use_ddp:
         def mesh_reduce(cls, tag, data, reduce_fn):
             "Returns reduced data to process 0 (data to all others)"
             #print(f"mesh_reduce called with tag={tag}, data={data}, reduce_fn={reduce_fn}")
+            if reduce_fn.__name__.upper() == 'LIST':
+                if isinstance(data, torch.Tensor):
+                    data_list = [torch.zeros_like(data) for _ in range(cls.xrt_world_size())]
+                    torch.distributed.gather(data, data_list if cls.get_ordinal() == 0 else None, dst=0)
+                    return data_list
+                else:
+                    data_list = [0 for _ in range(cls.xrt_world_size)]
+                    torch.distributed.gather_object(data, data_list if cls.get_ordinal() == 0 else None, dst=0)
+                    return data_list
             op = getattr(ReduceOp, reduce_fn.__name__.upper())
             device = cls.get_ordinal()
             dtype = torch.float32 if isinstance(data, float) else torch.int64
