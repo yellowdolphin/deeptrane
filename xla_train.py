@@ -75,7 +75,6 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     n_iter = len(dataloader)
     iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
     #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
-    print(f"rank {xm.get_ordinal()} begin_train")
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -636,6 +635,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     else:
         train_loader, valid_loader = get_dataloaders(cfg, use_fold, metadata, xm)
 
+    if hasattr(train_loader, 'sampler'):
+        xm.master_print("Dataloader sampler:", train_loader.sampler.__class__.__name__)
+    if hasattr(train_loader, 'num_workers'):
+        xm.master_print("num_workers:", train_loader.num_workers)
     #batch = next(iter(valid_loader))  # OK
     #xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
 
