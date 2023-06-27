@@ -1,8 +1,11 @@
 import albumentations as alb
 from albumentations.pytorch import ToTensorV2 as ToTensor
 
+size = dict(height=384, width=384)  # will be updated by cfg.size
+
 cfg = dict(
     train_tfms = alb.Compose([
+        alb.RandomResizedCrop(**size, scale=[0.8, 1], ratio=(0.75, 1.333), interpolation=1),
         alb.Transpose(p=0.5),
         alb.HorizontalFlip(p=0.5),
         alb.VerticalFlip(p=0.5),
@@ -24,6 +27,7 @@ cfg = dict(
         ToTensor(),
     ]),
     test_tfms = alb.Compose([
+        alb.Resize(**size, interpolation=1),
         ToTensor(),
     ]),
 )

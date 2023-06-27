@@ -277,12 +277,16 @@ def skip_head(m):
 
 
 def compare_state_dicts(a, b, check_shapes=False):
+    """a, b may be state_dicts or just their keys.
+    
+    `check_shapes` requires state_dicts."""
     missing_in_a = [k for k in b if k not in a]
     missing_in_b = [k for k in a if k not in b]
     for k in missing_in_a:
         print(f"{' ':40}{k:40}")
     for k in missing_in_b:
         print(f"{k:40}{' ':40}")
+
     if check_shapes:
         for k in set(a.keys()).intersection(set(b.keys())):
             if a[k].shape != b[k].shape:
@@ -399,29 +403,14 @@ def get_pretrained_model(cfg):
         if DEBUG: print("keys of loaded state_dict:", keys[:2], '...', keys[-2:])
         if keys[0].startswith('0.') and keys[-1].startswith('1.'):
             # Fastai model: rename body keys, skip head if head != 'head'
-            head = 'skip_head'
+            head = 'ignore_me'
             print(f"Fastai model, renaming keys in state_dict: '0'/'1' -> 'body'/'{head}'")
             for k in keys:
                 k_new = 'body' + k[1:] if k[0] == '0' else head
                 state_dict[k_new] = state_dict.pop(k)
-        if keys[0].startswith('model') and list(pretrained_model.state_dict().keys())[0].startswith('body'):
-            # Chest14-pretrained model from siimnihpretrained
-            for key in keys:
-                if key.startswith('model.'):
-                    new_key = key.replace('model.', 'body.')
-                    state_dict[new_key] = state_dict.pop(key)
-                elif cfg.use_gem and key == 'pooling.p':
-                    state_dict['head.0.p'] = state_dict.pop(key)
-                    print(f'Pretrained weights: found pooling.p = {state_dict["head.0.p"].item()}')
-                else:
-                    print(f'Pretrained weights: skipping {key}')
-                    _ = state_dict.pop(key)
-            keys = list(state_dict.keys())
-        if 'pretrained' in str(cfg.rst_path):
-            for k in keys:
-                if k.startswith('head') and (k.endswith('weight') or k.endswith('bias')):
-                    v = state_dict.pop(k)
-                    print(f'Pretrained weights: skipping {k} {list(v.size())}')
+        if cfg.modify_state_dict:
+            # compatibility can be extended by assigning a translation function in the project module
+            state_dict = cfg.modify_state_dict(state_dict, pretrained_model.state_dict())
         try:
             incomp = pretrained_model.load_state_dict(state_dict, strict=False)
         except RuntimeError:
@@ -651,29 +640,14 @@ def get_pretrained_timm(cfg):
         if DEBUG: print("keys of loaded state_dict:", keys[:2], '...', keys[-2:])
         if keys[0].startswith('0.') and keys[-1].startswith('1.'):
             # Fastai model: rename body keys, skip head if head != 'head'
-            head = 'skip_head'
+            head = 'ignore_me'
             print(f"Fastai model, renaming keys in state_dict: '0'/'1' -> 'body'/'{head}'")
             for k in keys:
                 k_new = 'body' + k[1:] if k[0] == '0' else head
                 state_dict[k_new] = state_dict.pop(k)
-        if keys[0].startswith('model') and list(pretrained_model.state_dict().keys())[0].startswith('body'):
-            # Chest14-pretrained model from siimnihpretrained
-            for key in keys:
-                if key.startswith('model.'):
-                    new_key = key.replace('model.', 'body.')
-                    state_dict[new_key] = state_dict.pop(key)
-                elif cfg.use_gem and key == 'pooling.p':
-                    state_dict['head.0.p'] = state_dict.pop(key)
-                    print(f'Pretrained weights: found pooling.p = {state_dict["head.0.p"].item()}')
-                else:
-                    print(f'Pretrained weights: skipping {key}')
-                    _ = state_dict.pop(key)
-            keys = list(state_dict.keys())
-        if 'pretrained' in str(cfg.rst_path):
-            for k in keys:
-                if k.startswith('head') and (k.endswith('weight') or k.endswith('bias')):
-                    v = state_dict.pop(k)
-                    print(f'Pretrained weights: skipping {k} {list(v.size())}')
+        if cfg.modify_state_dict:
+            # compatibility can be extended by assigning a translation function in the project module
+            state_dict = cfg.modify_state_dict(state_dict, pretrained_model.state_dict())
         try:
             incomp = pretrained_model.load_state_dict(state_dict, strict=False)
         except RuntimeError:
@@ -753,37 +727,24 @@ def get_pretrained_timm2(cfg):
 
     Custom bottleneck factory can be assigned to cfg.get_bottleneck.
     """
-    # AdaptiveMaxPool2d does not work with xla, use pmp = concat_pool = False
     pretrained = (cfg.rst_name is None) and 'defaults' not in cfg.tags
     n_features = cfg.n_features or 1  # last n features to pool and concat from body
-    body = timm.create_model(cfg.arch_name, pretrained=pretrained, features_only=True,
-                             out_indices=list(range(-n_features, 0)))
-    in_features = sum(body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1))
-
-    # Special head components, TODO: move to projects!
-    if 'happywhale' in cfg.tags and cfg.deotte:
-        # Happywhale model used in my final TF notebooks
-        cfg.pool = 'avg'
-        def get_bottleneck(cfg, in_features):
-            return nn.BatchNorm1d(in_features)
-        cfg.get_bottleneck = get_bottleneck
-        cfg.channel_size = in_features
-    elif 'happywhale' in cfg.tags and cfg.feature_size:
-        # Model used by pudae (Humpback-whale-identification) with FC instead of AvgPool
-        # cfg.feature_size (final_layer output H*W) depends non-trivially on
-        # cfg.size and cfg.arch_name and can be provided at configure/runtime
-        def get_pooling(cfg, in_features):
-            return nn.Sequential(
-                PoolCat('flatten'),
-                nn.BatchNorm1d(in_features * cfg.feature_size),
-                nn.Dropout1d(p=cfg.dropout_ps[0]),
-            )
-        cfg.get_pooling = get_pooling
+    try:
+        body = timm.create_model(cfg.arch_name, pretrained=pretrained, features_only=True,
+                                out_indices=list(range(-n_features, 0)))
+        add_head = True
+        in_features = sum(body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1))
+    except (RuntimeError, AttributeError):
+        print(f"Warning: {cfg.arch_name} does not support the features_only kwarg.")
+        print("    Only the classifier will be adapted.")
+        assert not cfg.lin_ftrs, f"cfg.lin_ftrs not supported by {cfg.arch_name}"
+        add_head = False
+        in_features = None
 
     # Pooling
     if cfg.get_pooling is not None:
         pooling_layer = cfg.get_pooling(cfg, in_features)
-    else:
+    elif add_head:
         if cfg.pool is None:
             # try to get pooling from original model head
             pool_layers = [k for k, v in timm.create_model(cfg.arch_name).named_modules() if 'pool' in k]
@@ -791,12 +752,12 @@ def get_pretrained_timm2(cfg):
                 cfg.pool = pool_layers[-1]
         pooling_layer = PoolCat(cfg.pool)
     if cfg.feature_size: in_features *= cfg.feature_size  # unpooled H * W
-    print(f"features after pooling: {in_features}")
+    if in_features: print(f"features after pooling: {in_features}")
 
     # Bottleneck(s)
     if cfg.get_bottleneck is not None:
         bottleneck = cfg.get_bottleneck(cfg, in_features)
-    else:
+    elif add_head:
         lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
         act_head = getattr(nn, cfg.act_head) if isinstance(cfg.act_head, str) else cfg.act_head
         bottleneck = []
@@ -808,23 +769,24 @@ def get_pretrained_timm2(cfg):
             if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(in_features))
         if final_dropout:
             bottleneck.append(nn.Dropout(p=final_dropout))
-    print(f"features after bottleneck: {in_features}")
-
-    # Outputs
-    output_layer = nn.Linear(in_features, cfg.channel_size or cfg.n_classes, bias=True)
+    if in_features: print(f"features after bottleneck: {in_features}")
 
     # Compose Head
-    head = nn.Sequential(
-        pooling_layer,
-        torch.nn.Flatten(),
-        *bottleneck,
-        output_layer)
+    if add_head:
+        output_layer = nn.Linear(in_features, cfg.channel_size or cfg.n_classes, bias=True)
+        head = nn.Sequential(
+            pooling_layer,
+            torch.nn.Flatten(),
+            *bottleneck,
+            output_layer)
 
     # Compose Model
-    pretrained_model = torch.nn.Sequential(OrderedDict([('body', body), ('head', head)]))
+    pretrained_model = (
+        nn.Sequential(OrderedDict([('body', body), ('head', head)])) if add_head else
+        timm.create_model(cfg.arch_name, pretrained, num_classes=cfg.channel_size or cfg.n_classes))
 
     # Scaled initialization of output layer
-    if cfg.scale_output_layer is not None:
+    if add_head and (cfg.scale_output_layer != 1):
         output_layer = pretrained_model.head[-1]
         with torch.no_grad():
             fan_in = output_layer.weight.size(1)
@@ -836,12 +798,14 @@ def get_pretrained_timm2(cfg):
             print("output layer weight gain:", gain_w)
             print("output layer bias gain:  ", gain_b)
 
+    # Extra model wrappers
     if cfg.arcface:
         pretrained_model = ArcNet(cfg, pretrained_model)
         if DEBUG:
             keys = list(pretrained_model.state_dict().keys())
             print("keys of ArcNet.state_dict:", keys[:2], '...', keys[-2:])
 
+    # Restart training
     if cfg.rst_name:
         # Dont ever use xser: stores each tensor in a separate file!
         rst_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.pth'
@@ -850,29 +814,14 @@ def get_pretrained_timm2(cfg):
         if DEBUG: print("keys of loaded state_dict:", keys[:2], '...', keys[-2:])
         if keys[0].startswith('0.') and keys[-1].startswith('1.'):
             # Fastai model: rename body keys, skip head if head != 'head'
-            head = 'skip_head'
+            head = 'ignore_me'
             print(f"Fastai model, renaming keys in state_dict: '0'/'1' -> 'body'/'{head}'")
             for k in keys:
                 k_new = 'body' + k[1:] if k[0] == '0' else head
                 state_dict[k_new] = state_dict.pop(k)
-        if keys[0].startswith('model') and list(pretrained_model.state_dict().keys())[0].startswith('body'):
-            # Chest14-pretrained model from siimnihpretrained
-            for key in keys:
-                if key.startswith('model.'):
-                    new_key = key.replace('model.', 'body.')
-                    state_dict[new_key] = state_dict.pop(key)
-                elif cfg.use_gem and key == 'pooling.p':
-                    state_dict['head.0.p'] = state_dict.pop(key)
-                    print(f'Pretrained weights: found pooling.p = {state_dict["head.0.p"].item()}')
-                else:
-                    print(f'Pretrained weights: skipping {key}')
-                    _ = state_dict.pop(key)
-            keys = list(state_dict.keys())
-        if 'pretrained' in str(cfg.rst_path):
-            for k in keys:
-                if k.startswith('head') and (k.endswith('weight') or k.endswith('bias')):
-                    v = state_dict.pop(k)
-                    print(f'Pretrained weights: skipping {k} {list(v.size())}')
+        if cfg.modify_state_dict:
+            # compatibility can be extended by defining this function in the project module
+            state_dict = cfg.modify_state_dict(state_dict, pretrained_model.state_dict())
         try:
             incomp = pretrained_model.load_state_dict(state_dict, strict=False)
         except RuntimeError:
@@ -886,7 +835,7 @@ def get_pretrained_timm2(cfg):
 
     # Change BN running average parameters
     n_bn_layers = 0
-    for n, m in pretrained_model.named_modules():
+    for m in pretrained_model.modules():
         if isinstance(m, torch.nn.BatchNorm2d) or isinstance(m, torch.nn.BatchNorm1d):
             n_bn_layers += 1
             m.eps = cfg.bn_eps
@@ -895,7 +844,7 @@ def get_pretrained_timm2(cfg):
         print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
 
     # Either freeze or unfreeze head layers
-    head = pretrained_model.head
+    head = pretrained_model.head if hasattr(pretrained_model, 'head') else pretrained_model.get_classifier()
     if cfg.freeze_head:
         print("Freezing head layers:")
         print(head)
@@ -957,7 +906,7 @@ def get_smp_model(cfg):
         print(f"{cfg.rst_name} keys:", keys[0])
         if keys[0].startswith('0.') and keys[-1].startswith('1.'):
             # Fastai model: rename body keys, skip head if head != 'head'
-            head = 'skip_head'
+            head = 'ignore_me'
             print(f"Fastai model, renaming keys in state_dict: '0'/'1' -> 'encoder.model'/'{head}'")
             for k in keys:
                 k_new = 'encoder.model' + k[1:] if k[0] == '0' else head

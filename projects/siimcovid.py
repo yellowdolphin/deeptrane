@@ -3,6 +3,7 @@
 # import/instanciation: in setup_yolov5 or train after Config.
 # pro class: "missing" attr could be avoided by inheriting from a template class.
 from pathlib import Path
+from functools import partial
 
 import pandas as pd
 
@@ -30,6 +31,7 @@ def init(cfg):
         cfg.dims_csv = cfg.image_root.parent / 'meta.csv'
         cfg.dims_height = 'dim0'
         cfg.dims_width = 'dim1'
+        cfg.modify_state_dict = partial(modify_state_dict, cfg)
 
 
 def extra_columns(cfg):
@@ -179,3 +181,27 @@ def add_chest14_labels(df, cfg):
         df['category_id'] = labels
         df = df[singlelabel]
     return df
+
+
+def modify_state_dict(cfg, state_dict, model_state_dict):
+    keys = list(state_dict.keys())
+
+    # Adapt Chest14-pretrained model from siimnihpretrained
+    if keys[0].startswith('model') and list(model_state_dict.keys())[0].startswith('body'):
+        for key in keys:
+            if key.startswith('model.'):
+                new_key = key.replace('model.', 'body.')
+                state_dict[new_key] = state_dict.pop(key)
+            elif cfg.use_gem and key == 'pooling.p':
+                state_dict['head.0.p'] = state_dict.pop(key)
+                print(f'Pretrained weights: found pooling.p = {state_dict["head.0.p"].item()}')
+            else:
+                print(f'Pretrained weights: skipping {key}')
+                _ = state_dict.pop(key)
+        keys = list(state_dict.keys())
+
+        if 'pretrained' in str(cfg.rst_path):
+            for k in keys:
+                if k.startswith('head') and (k.endswith('weight') or k.endswith('bias')):
+                    v = state_dict.pop(k)
+                    print(f'Pretrained weights: skipping {k} {list(v.size())}')

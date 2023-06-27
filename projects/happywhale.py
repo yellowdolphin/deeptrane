@@ -131,6 +131,17 @@ def init(cfg):
         print(f'Using individual_id and species encoding from {cfg.splits_path}')
         assert len(cfg.train_files) > 0, f'no tfrec files found, check GCS_DS_PATH: {gcs_path}'
 
+    if cfg.deotte:
+        # Happywhale model used in my final TF notebooks
+        cfg.pool = 'avg'
+        cfg.get_bottleneck = get_bottleneck
+
+    elif cfg.feature_size:
+        # Model used by pudae (Humpback-whale-identification) with FC instead of AvgPool
+        # cfg.feature_size (final_layer output H*W) depends non-trivially on
+        # cfg.size and cfg.arch_name and can be provided at configure/runtime
+        cfg.get_pooling = get_pooling
+
 
 def add_image_id(df, cfg):
     df['image_id'] = df.image.str.split('.').str[0]
@@ -383,3 +394,19 @@ def get_adaptive_margin(cfg):
     adaptive_margin = adaptive_margin.loc[individual_ids].values.astype(np.float32)
 
     return adaptive_margin
+
+
+def get_bottleneck(cfg, in_features):
+    assert cfg.deotte, 'get_bottleneck only valid if cfg.deotte'
+    cfg.channel_size = in_features
+    return nn.BatchNorm1d(in_features)
+
+
+def get_pooling(cfg, in_features):
+    assert cfg.feature_size, 'get_pooling requires cfg.feature_size'
+    from models import PoolCat
+
+    return nn.Sequential(
+        PoolCat('flatten'),
+        nn.BatchNorm1d(in_features * cfg.feature_size),
+        nn.Dropout1d(p=cfg.dropout_ps[0]))

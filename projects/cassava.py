@@ -8,7 +8,7 @@ def init(cfg):
 
     if cfg.filetype == 'jpg':
         assert cfg.size[0] == cfg.size[1]
-        size = cfg.size[0]
+        size = 128 if (cfg.size[0] <= 128) else 256 if (cfg.size[0] <= 256) else 512
         cfg.image_root = Path(f'/kaggle/input/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
         if cfg.cloud == 'drive':
             #cfg.image_root = Path(f'/content/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
