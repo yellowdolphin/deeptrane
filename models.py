@@ -717,6 +717,18 @@ class PoolCat(nn.Module):
         return torch.cat(pooled, dim=1)
 
 
+def last_n_feature_indices(arch_name, n_features):
+    """Return (hopefully) valid list `out_indices` for timm.create_model().
+    
+    Some timm models don't have feature_info, others don't accept negative out_indices.
+    Try first, fallback to second to get out_indices for the last n_features features."""
+    model = timm.create_model(arch_name, pretrained=False)
+    if hasattr(model, 'feature_info'):
+        feature_index = [i for i, _ in enumerate(model.feature_info)]
+        return feature_index[-n_features:]
+    return list(range(-n_features, 0))
+
+
 def get_pretrained_timm2(cfg):
     """Initialize pretrained_model for a new fold based on cfg
 
@@ -731,7 +743,7 @@ def get_pretrained_timm2(cfg):
     n_features = cfg.n_features or 1  # last n features to pool and concat from body
     try:
         body = timm.create_model(cfg.arch_name, pretrained=pretrained, features_only=True,
-                                out_indices=list(range(-n_features, 0)))
+                                 out_indices=last_n_feature_indices(cfg.arch_name, n_features))
         add_head = True
         in_features = sum(body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1))
     except (RuntimeError, AttributeError):
