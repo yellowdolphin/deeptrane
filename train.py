@@ -54,9 +54,11 @@ cfg.out_dir = Path(cfg.out_dir)
 
 wheels_path = cfg.wheels_path or ('/kaggle/input/popular-wheels' if cfg.cloud == 'kaggle' else None)
 pip_option = f'-f file://{wheels_path}' if wheels_path else ''
+print("")
 
 # Install torch.xla on TPU supported nodes
 tpu_vars = 'TPU_ACCELERATOR_TYPE TPU_PROCESS_ADDRESSES PYTORCH_LIBTPU PIP_LIBTPU ACCELERATOR_TYPE AGENT_BOOTSTRAP_IMAGE TPU_SKIP_MDS_QUERY TPU_TOPOLOGY_WRAP TPU_HOST_BOUNDS'.split()
+tpu_vars.extend(['COLAB_TPU_ADDR', 'XRT_TPU_CONFIG', 'TPU_ML_PLATFORM'])  # colab
 if any([v in os.environ for v in tpu_vars]):
     cfg.xla = True
     # '1.8.1' works on kaggle and colab, nightly only on kaggle
@@ -64,24 +66,17 @@ if any([v in os.environ for v in tpu_vars]):
     xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.10.0', '')
     # Auto installation
     if (cfg.cloud == 'drive'):
-        # check xla_version for python 3.7: $ gsutil ls gs://tpu-pytorch/wheels/colab | grep cp37
-        # 'nightly': installs torch-1.13.0a0+git83c6113, libmkl_intel_lp64.so.1 missing
-        # '1.12': on colab re-installs torch etc anyways, libmkl_intel_lp64.so.1 missing
-        # '1.11': on colab installs torch-1.11.0a0+git8d365ae, libmkl_intel_lp64.so.1 missing
-        # w/o --version, installs torch 1.6.0 which has no MpSerialExecutor
-        if False:  # install in notebook instead
-            quietly_run(
-                'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
-                f'{sys.executable} pytorch-xla-env-setup.py --version 1.8.1',
-                'pip install -U --progress-bar off catalyst',  # for DistributedSamplerWrapper
-                debug=cfg.DEBUG)
-        # LD_LIBRARY_PATH points to /usr/local/nvidia, which does not exist
-        # xla setup creates /usr/local/lib/libmkl_intel_lp64.so but not .so.1
-        print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
-        # For some reason this does not work:
-        #os.environ['LD_LIBRARY_PATH'] += ':/usr/local/lib'  # fix 'libmkl_intel_lp64.so.1 not found'
-        #if os.path.exists('/usr/local/lib/libmkl_intel_lp64.so'):
-        #    os.symlink('/usr/local/lib/libmkl_intel_lp64.so', '/usr/local/lib/libmkl_intel_lp64.so.1')
+        # Colab runs now python 3.10
+        # check xla_version for python 3.10: $ gsutil ls gs://tpu-pytorch/wheels/colab/*cp310*.whl
+        # There is only one python 3.10 wheel for torch_xla, none for torch/torchvision.
+        # Normal pip install works for torch/torchvision, though.
+        # Also cloud-tpu-client must be installed.
+        try:
+            import torch_xla
+        except ModuleNotFoundError:
+            wheel = 'https://storage.googleapis.com/tpu-pytorch/wheels/colab/torch_xla-2.0-cp310-cp310-linux_x86_64.whl'
+            quietly_run(f'pip install cloud-tpu-client==0.10 torch==2.0.0 torchvision==0.15.1 {wheel}', debug=cfg.DEBUG)
+            import torch_xla
     #elif (xla_version != '1.8.1') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
     elif (xla_version != '1.10.0') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
         #try:
@@ -98,20 +93,23 @@ if any([v in os.environ for v in tpu_vars]):
             print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
     elif not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla'):
         try:
-            import torch_xla
+            import torch_xla #_NO_DONT_IMPORT_TORCH2_XLA
             xla_version = torch_xla.__version__
         except ModuleNotFoundError:
             print("running pytorch-xla-env-setup.py --version 1.10.0 ...")
             quietly_run(
                 f'{sys.executable} pytorch-xla-env-setup.py --version 1.10.0',
                 debug=cfg.DEBUG)
+            # for some reason does not install torch
+            #quietly_run('pip install torch==1.10.0', debug=True)
     print("[ √ ] Python:", sys.version.replace('\n', ''))
     print("[ √ ] XLA:", xla_version, f"(XLA_USE_BF16: {os.environ.get('XLA_USE_BF16', None)})")
     # Install catalyst, required by DistributedSamplerWrapper
     try:
         import catalyst
     except ModuleNotFoundError:
-        quietly_run('pip install -U --progress-bar off catalyst')
+        #quietly_run('pip install -U --progress-bar off catalyst', debug=True)  # fails due to "torch>=1.4" is false
+        quietly_run('pip install --no-deps --progress-bar off catalyst', debug=False)
         import catalyst
     print("[ √ ] catalyst:", catalyst.__version__)
 import torch

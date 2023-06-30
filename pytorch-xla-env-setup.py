@@ -108,6 +108,7 @@ def install_vm(version, apt_packages, is_root=False):
 
   installation_cmds = [[sys.executable, '-m', 'pip', 'uninstall', '-y', 'torch', 'torchvision']]
   if dist_bucket.startswith('gs:'):
+    print("installing from", dist_bucket)
     installation_cmds.extend([
       ['gsutil', 'cp', torch_whl_path, '.'],
       ['gsutil', 'cp', torch_xla_whl_path, '.'],

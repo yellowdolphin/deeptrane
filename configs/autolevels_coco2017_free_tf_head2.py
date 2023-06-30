@@ -1,7 +1,7 @@
 # Setup
 project = 'autolevels'
 datasets = ['coco-2017-tfrecords']
-gcs_paths = ['gs://kds-02d47035299786f74bbdf310a154c4b52a7d529ef399bc3ed562f6ec']
+gcs_paths = ['gs://kds-8749f54c534b20aa2cedf5b5515ed18c2b44cc9bf829b443edb93a6c']
 gcs_filter = '*/*/coco*.tfrecord'
 tfrec_filename_pattern = None
 out_dir = '/kaggle/working'
@@ -53,7 +53,7 @@ bn_eps = 1e-5
 optimizer = "Adam"  # Adam AdamW SGD
 wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [9, 768, 768, 768]
+lin_ftrs = [12, 768, 768, 768]
 act_head = 'silu'
 
 

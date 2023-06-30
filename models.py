@@ -768,7 +768,7 @@ def get_pretrained_timm2(cfg):
             adjust_head_drop(body, head_dropout_p)
             print("    Adjusting original head:")
             print(body.get_classifier())
-            add_head = True
+            add_head = 'skip_pooling'
         else:
             print("    Only the classifier will be adapted.")
             #assert not cfg.lin_ftrs, f"cfg.lin_ftrs not supported by {cfg.arch_name}"
@@ -778,11 +778,13 @@ def get_pretrained_timm2(cfg):
     # Pooling
     if cfg.get_pooling is not None:
         pooling_layer = cfg.get_pooling(cfg, in_features)
-    elif add_head and body.__class__.__name__ != 'FeatureListNet':
+    elif add_head == 'skip_pooling':
         # pack optional head layers after first FC into "pooling_layer"
-        pooling_layer = nn.Sequential()
-        if act_head: pooling_layer.append(act_head())
-        if cfg.bn_head: pooling_layer.append(nn.BatchNorm1d(in_features))
+        pooling_layer = (
+            act_head() if (act_head and not cfg.bn_head) else
+            nn.BatchNorm1d(in_features) if (cfg.bn_head and not act_head) else
+            nn.Sequential() if (not act_head and not cfg.bn_head) else
+            nn.Sequential(act_head(), nn.BatchNorm1d(in_features)))
     elif add_head:
         if cfg.pool is None:
             # try to get pooling from original model head

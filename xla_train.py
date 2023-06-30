@@ -608,6 +608,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
 
     # Agnostic device setup
     device = xm.xla_device()
+    xm.master_print("device:", device)
 
     # Wrap DDP model
     if cfg.use_ddp:

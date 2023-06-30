@@ -48,7 +48,9 @@ def init(cfg):
         cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
 
     if cfg.filetype == 'JPEG':
-        cfg.image_root = cfg.competition_path / 'ILSVRC/Data/CLS-LOC/train'
+        cfg.image_root = (
+            cfg.image_root if (cfg.cloud == 'drive') else
+            cfg.competition_path / 'ILSVRC/Data/CLS-LOC/train')
     elif 'imagenet' in cfg.tags:
         # Customize data pipeline (see tf_data for definition and defaults)
         # To check out features in new tfrec dataset, set "cfg.tfrec_format = {}"
@@ -97,7 +99,9 @@ def init(cfg):
                            'width': 'width'}
         cfg.inputs = ['image']
 
-    cfg.meta_csv = cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt'
+    cfg.meta_csv = (
+        cfg.meta_csv if (cfg.cloud == 'drive') else
+        cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt')
 
     #elif cfg.filetype == 'tfrec':
     #    cfg.image_root = cfg.competition_path / 'train_tfrecords'
