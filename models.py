@@ -729,6 +729,16 @@ def last_n_feature_indices(arch_name, n_features):
     return list(range(-n_features, 0))
 
 
+def adjust_head_drop(model, dropout_p):
+    dropout_p = float(dropout_p)
+    if hasattr(model, 'head_drop'):
+        model.head_drop.p = dropout_p
+    elif hasattr(model, 'head') and hasattr(model.head, 'drop'):
+        model.head.drop.p = dropout_p
+    else:
+        print("Warning: no head_drop or head.drop found")
+
+
 def get_pretrained_timm2(cfg):
     """Initialize pretrained_model for a new fold based on cfg
 
@@ -741,6 +751,7 @@ def get_pretrained_timm2(cfg):
     """
     pretrained = (cfg.rst_name is None) and 'defaults' not in cfg.tags
     n_features = cfg.n_features or 1  # last n features to pool and concat from body
+    act_head = getattr(nn, cfg.act_head) if isinstance(cfg.act_head, str) else cfg.act_head
     try:
         body = timm.create_model(cfg.arch_name, pretrained=pretrained, features_only=True,
                                  out_indices=last_n_feature_indices(cfg.arch_name, n_features))
@@ -748,14 +759,30 @@ def get_pretrained_timm2(cfg):
         in_features = sum(body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1))
     except (RuntimeError, AttributeError):
         print(f"Warning: {cfg.arch_name} does not support the features_only kwarg.")
-        print("    Only the classifier will be adapted.")
-        assert not cfg.lin_ftrs, f"cfg.lin_ftrs not supported by {cfg.arch_name}"
-        add_head = False
-        in_features = None
+        if cfg.lin_ftrs:
+            if cfg.feature_size:
+                print("    feature_size ({cfg.feature_size}) will be ignored.")
+                cfg.feature_size = None
+            in_features, head_dropout_p = cfg.lin_ftrs.pop(0), cfg.dropout_ps.pop(0)
+            body = timm.create_model(cfg.arch_name, pretrained=pretrained, num_classes=in_features)
+            adjust_head_drop(body, head_dropout_p)
+            print("    Adjusting original head:")
+            print(body.get_classifier())
+            add_head = True
+        else:
+            print("    Only the classifier will be adapted.")
+            #assert not cfg.lin_ftrs, f"cfg.lin_ftrs not supported by {cfg.arch_name}"
+            add_head = False
+            in_features = None
 
     # Pooling
     if cfg.get_pooling is not None:
         pooling_layer = cfg.get_pooling(cfg, in_features)
+    elif add_head and body.__class__.__name__ != 'FeatureListNet':
+        # pack optional head layers after first FC into "pooling_layer"
+        pooling_layer = nn.Sequential()
+        if act_head: pooling_layer.append(act_head())
+        if cfg.bn_head: pooling_layer.append(nn.BatchNorm1d(in_features))
     elif add_head:
         if cfg.pool is None:
             # try to get pooling from original model head
@@ -771,13 +798,12 @@ def get_pretrained_timm2(cfg):
         bottleneck = cfg.get_bottleneck(cfg, in_features)
     elif add_head:
         lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
-        act_head = getattr(nn, cfg.act_head) if isinstance(cfg.act_head, str) else cfg.act_head
         bottleneck = []
         for p, out_features in zip(dropout_ps, lin_ftrs):
             if p > 0: bottleneck.append(nn.Dropout(p=p))
             bottleneck.append(nn.Linear(in_features, out_features))
-            if act_head: bottleneck.append(act_head())
             in_features = out_features
+            if act_head: bottleneck.append(act_head())
             if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(in_features))
         if final_dropout:
             bottleneck.append(nn.Dropout(p=final_dropout))
