@@ -449,7 +449,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             model_cls(weights=cfg.pretrained, input_shape=input_shape, include_top=False) if efnv1 else
             model_cls(input_shape=input_shape, num_classes=0, pretrained=cfg.pretrained) if efnv2 else
             hub.KerasLayer(TFHUB[cfg.arch_name], trainable=True) if tfhub else
-            tfimm.create_model(cfg.arch_name, pretrained="timm", nb_classes=0))
+            tfimm.create_model(cfg.arch_name, pretrained=True, nb_classes=0, input_size=cfg.size))
 
         if cfg.sync_bn:
             from experimental.normalization import replace_bn_layers
