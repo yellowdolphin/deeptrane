@@ -614,6 +614,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     if cfg.use_ddp:
         model_requires_labels = wrapped_model.requires_labels
         wrapped_model = DDP(wrapped_model.to(device), device_ids=[device])
+        xm.master_print("wrapped.module has requires_labels:", hasattr(wrapped_model.module, 'requires_labels'))
         wrapped_model.requires_labels = model_requires_labels
 
     # XLA deviceloader
@@ -862,7 +863,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
                 fn = cfg.out_dir / f'{model_name}_ep{epoch + 1}'
 
             #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
-            xm.save(model.state_dict(), f'{fn}.pth')
+            xm.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
 
             #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
             xm.save({'optimizer_state_dict': optimizer.state_dict(),
