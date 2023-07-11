@@ -1,7 +1,7 @@
 # Setup
 project = 'autolevels'
 datasets = ['coco-2017-tfrecords']
-gcs_paths = ['gs://kds-8749f54c534b20aa2cedf5b5515ed18c2b44cc9bf829b443edb93a6c']
+gcs_paths = ['gs://kds-d931abca6ee5a0bf582e5c0dd8b566ab6de4449c3603854352be11b1']
 gcs_filter = '*/*/coco*.tfrecord'
 tfrec_filename_pattern = None
 out_dir = '/kaggle/working'
