@@ -365,7 +365,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             if cfg.loss_weights is not None:
                 info_strings.extend([f'{m.current:.5f}' for m in weighted_loss_meters])
             info_strings.append(f'avg_loss {loss_meter.average:.5f}')
-            info_strings.append(f'lr {optimizer.param_groups[-1]["lr"] / cfg.n_replicas:7.1e}')
+            info_strings.append(f'lr {optimizer.param_groups[-1]["lr"]:7.1e}')
             info_strings.append(f'mom {optimizer.param_groups[-1]["betas"][0]:.3f}')
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
             xm.master_print(', '.join(info_strings))
