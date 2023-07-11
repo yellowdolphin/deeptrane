@@ -31,6 +31,7 @@ cfg = dict(
     use_batch_tfms = False,
     fake_data = False,
     deviceloader = None,
+    num_workers = None,
 
 # Optimizer, Scheduler
     optimizer = 'AdamW',

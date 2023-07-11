@@ -368,7 +368,8 @@ for use_fold in cfg.use_folds:
             pretrained_model = torch.nn.DataParallel(pretrained_model)
             pretrained_model.requires_labels = model_requires_labels
 
-        _mp_fn(None, cfg, metadata, pretrained_model, xm, use_fold)
+        local_rank = int(os.environ('LOCAL_RANK')) if cfg.use_ddp else None
+        _mp_fn(local_rank, cfg, metadata, pretrained_model, xm, use_fold)
         del pretrained_model
         gc.collect()
         torch.cuda.empty_cache()

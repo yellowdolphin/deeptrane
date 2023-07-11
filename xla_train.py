@@ -604,18 +604,20 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     # DDP init
     if cfg.use_ddp:
         from torch.nn.parallel import DistributedDataParallel as DDP
+        # Assuming torchrun has set all env variables (LOCAL_RANK, ...).
         torch.distributed.init_process_group("nccl")
 
     # Agnostic device setup
+    # xm.xla_device, xm.get_ordinal, rank (unused) are somewhat redundant.
+    # TODO: can we merge rank==device and get rid of xm.xla_device?
+    # TODO: change from xla to DDP API, adapt xla (how use xm?)
     device = xm.xla_device()
     xm.master_print("device:", device)
 
     # Wrap DDP model
     if cfg.use_ddp:
-        model_requires_labels = wrapped_model.requires_labels
-        wrapped_model = DDP(wrapped_model.to(device), device_ids=[device])
-        xm.master_print("wrapped.module has requires_labels:", hasattr(wrapped_model.module, 'requires_labels'))
-        wrapped_model.requires_labels = model_requires_labels
+        wrapped_model = DDP(wrapped_model.to(device), device_ids=[device], output_device=device)
+        wrapped_model.requires_labels = wrapped_model.module.requires_labels
 
     # XLA deviceloader
     if cfg.xla:
@@ -711,9 +713,12 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         fn = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.opt'
         if fn.exists() and not cfg.reset_opt:
             checkpoint = torch.load(fn, map_location='cpu')
+            xm.master_print("Restarting from previous opt state")
+            for i, pg in enumerate(checkpoint['optimizer_state_dict']['param_groups']):
+                pg['lr'] = max_lrs[i] if use_parameter_groups else max_lrs
+                print(f"    using lr = {pg['lr']} for param_group {i}")
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             rst_epoch = checkpoint['epoch'] + 1
-            xm.master_print("Restarting from previous opt state")
 
     # Scheduler
     if cfg.one_cycle:
