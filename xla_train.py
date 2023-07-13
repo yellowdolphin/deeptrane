@@ -714,11 +714,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         if fn.exists() and not cfg.reset_opt:
             checkpoint = torch.load(fn, map_location='cpu')
             xm.master_print("Restarting from previous opt state")
-            for i, pg in enumerate(checkpoint['optimizer_state_dict']['param_groups']):
-                pg['lr'] = max_lrs[i] if use_parameter_groups else max_lrs
-                print(f"    using lr = {pg['lr']} for param_group {i}")
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             rst_epoch = checkpoint['epoch'] + 1
+            cfg.optimizer_restarted = True
 
     # Scheduler
     if cfg.one_cycle:
@@ -744,6 +742,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in _lrs)}")
         if hasattr(scheduler, 'step'):
             xm.master_print(f"Batchwise stepping:", hasattr(scheduler, 'batchwise'))
+    if cfg.optimizer_restarted and scheduler is None:
+        for i, param_group in enumerate(optimizer.param_groups):
+            param_group['lr'] = max_lrs[i] if use_parameter_groups else max_lrs
 
     # Maybe freeze body
     if hasattr(model, 'body') and lr_body == 0:
