@@ -1,4 +1,5 @@
 from pathlib import Path
+from contextlib import nullcontext
 from future import removesuffix
 import time
 import math
@@ -30,6 +31,15 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     if cfg.use_aux_loss: seg_loss_meter = AverageMeter(xm)
     if cfg.loss_weights is not None:
         weighted_loss_meters = [AverageMeter(xm) for _ in cfg.loss_weights]
+    
+    # setup AMP
+    if cfg.dtype == 'float16' and not (cfg.gpu or cfg.xla):
+        xm.master_print(f'WARNING: dtype float16 not supported on CPU, changing to bfloat16.')
+        cfg.dtype = 'bfloat16'
+    amp_context = (
+        nullcontext() if cfg.dtype == 'float32' else
+        torch.amp.autocast('cuda' if cfg.gpu else 'cpu', dtype=getattr(torch, cfg.dtype)))
+    scaler = torch.cuda.amp.GradScaler(enabled=cfg.gpu and cfg.dtype.endswith('float16'))
 
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
@@ -303,41 +313,54 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             labels = labels.reshape(labels.shape[0], -1)
 
         # forward and backward pass
-        preds = model(inputs, labels) if model.requires_labels else model(inputs)
+        perform_optimizer_step = (batch_idx % cfg.n_acc == 0)
+        if cfg.use_ddp: model.require_backward_grad_sync = perform_optimizer_step
+        with amp_context:
+            preds = model(inputs, labels) if model.requires_labels else model(inputs)
+            
+            # calculate loss
+            if cfg.use_aux_loss:
+                seg_logits, preds = preds
+                seg_loss = seg_crit(seg_logits, masks)
+                cls_loss = criterion(preds, labels)
+                loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
+            if cfg.loss_weights is not None:
+                if cfg.curve == 'gamma':
+                    _preds = [preds - torch.mean(preds, dim=1, keepdim=True), preds]
+                    _labels = [rel_log_gamma, abs_log_gamma]
+                elif cfg.curve == 'beta':
+                    _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+                    _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+                else:
+                    _preds, _labels = preds, labels
 
-        if cfg.use_aux_loss:
-            seg_logits, preds = preds
-            seg_loss = seg_crit(seg_logits, masks)
-            cls_loss = criterion(preds, labels)
-            loss = cfg.seg_weight * seg_loss + (1 - cfg.seg_weight) * cls_loss
-        if cfg.loss_weights is not None:
-            if cfg.curve == 'gamma':
-                _preds = [preds - torch.mean(preds, dim=1, keepdim=True), preds]
-                _labels = [rel_log_gamma, abs_log_gamma]
-            elif cfg.curve == 'beta':
-                _preds = preds.reshape(preds.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
-                _labels = labels.reshape(labels.shape[0], -1, len(cfg.loss_weights)).transpose(0, 2)
+                weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
+                loss = sum(weighted_losses)
+
+                # DEBUG nan loss
+                #if any([torch.isnan(l.detach()) for l in weighted_losses]):
+                #    xm.master_print("NaN loss detected.")
+                #    xm.master_print("losses:", weighted_losses)
+                #    xm.master_print("labels:", _labels)
+                #    xm.master_print("preds:", _preds)
+
             else:
-                _preds, _labels = preds, labels
+                loss = criterion(preds, labels)
 
-            weighted_losses = [w * criterion(p, l) for w, p, l in zip(cfg.loss_weights, _preds, _labels)]
-            loss = sum(weighted_losses)
+            loss = loss / cfg.n_acc  # grads accumulate as 'sum' but loss reduction is 'mean'
+            scaler.scale(loss).backward()  # loss scaling in mixed-precision training
 
-            # DEBUG nan loss
-            #if any([torch.isnan(l.detach()) for l in weighted_losses]):
-            #    xm.master_print("NaN loss detected.")
-            #    xm.master_print("losses:", weighted_losses)
-            #    xm.master_print("labels:", _labels)
-            #    xm.master_print("preds:", _preds)
+        if cfg.grad_clip:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
 
-        else:
-            loss = criterion(preds, labels)
-
-        loss = loss / cfg.n_acc  # grads accumulate as 'sum' but loss reduction is 'mean'
-        loss.backward()
-        if batch_idx % cfg.n_acc == 0:
-            xm.optimizer_step(optimizer, barrier=True)  # rendevouz, required for proper xmp shutdown
-            optimizer.zero_grad()
+        if perform_optimizer_step:
+            if cfg.xla:
+                xm.optimizer_step(optimizer, barrier=True)  # rendevouz, required for proper xmp shutdown
+            else:
+                scaler.step(optimizer)
+                scaler.update()
+            optimizer.zero_grad(set_to_none=True)
             if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'):
                 maybe_step(scheduler, xm)
 

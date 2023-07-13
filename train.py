@@ -208,10 +208,6 @@ elif cfg.use_ddp:
             if torch.distributed.get_rank() == 0:
                 torch.save(*args, **kwargs)
 
-        @staticmethod
-        def optimizer_step(optimizer, barrier=False):
-            optimizer.step()
-
         @classmethod
         def mesh_reduce(cls, tag, data, reduce_fn):
             "Returns reduced data to process 0 (data to all others)"
@@ -254,10 +250,6 @@ else:
         @staticmethod
         def save(*args, **kwargs):
             torch.save(*args, **kwargs)
-
-        @staticmethod
-        def optimizer_step(optimizer, barrier=False):
-            optimizer.step()
 
         @staticmethod
         def mesh_reduce(tag, data, reduce_fn):

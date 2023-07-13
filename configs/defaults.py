@@ -70,6 +70,7 @@ cfg = dict(
     out_dir = 'output',
 
     xla = False,
+    dtype = 'float32',          # 'float32' or (automatic mixed precision) 'float16'
 
     ema = False,
     muliscale = False,
