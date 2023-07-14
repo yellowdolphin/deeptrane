@@ -85,6 +85,8 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     n_iter = len(dataloader)
     iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
     #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
+    ### DEBUG
+    timers = [0, 0, 0, 0, 0]
 
     for batch_idx, batch in enumerate(iterable, start=1):
 
@@ -315,8 +317,12 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
         # forward and backward pass
         perform_optimizer_step = (batch_idx % cfg.n_acc == 0)
         if cfg.use_ddp: model.require_backward_grad_sync = perform_optimizer_step
+        ### DEBUG
+        t0 = time.perf_counter()
         with amp_context:
             preds = model(inputs, labels) if model.requires_labels else model(inputs)
+            ### DEBUG
+            t1 = time.perf_counter()
             
             # calculate loss
             if cfg.use_aux_loss:
@@ -348,7 +354,11 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 loss = criterion(preds, labels)
 
             loss = loss / cfg.n_acc  # grads accumulate as 'sum' but loss reduction is 'mean'
+            ### DEBUG
+            t2 = time.perf_counter()
             scaler.scale(loss).backward()  # loss scaling in mixed-precision training
+            ### DEBUG
+            t3 = time.perf_counter()
 
         if cfg.grad_clip:
             scaler.unscale_(optimizer)
@@ -361,6 +371,8 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 scaler.step(optimizer)
                 scaler.update()
             optimizer.zero_grad(set_to_none=True)
+            ### DEBUG
+            t4 = time.perf_counter()
             if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'):
                 maybe_step(scheduler, xm)
 
@@ -399,6 +411,17 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
         if cfg.DEBUG and batch_idx == 1:
             xm.master_print(f"train inputs: {inputs.shape}, value range: {inputs.min():.2f} ... {inputs.max():.2f}")
             #break
+        ### DEBUG
+        t5 = time.perf_counter()
+        timers[0] += t1 - t0  # forward
+        timers[1] += t2 - t1  # loss
+        timers[2] += t3 - t2  # scale loss & backward
+        timers[3] += t4 - t3  # opt step
+        timers[4] += t5 - t4  # rest
+    xm.master_print("Timings:")
+    for name, value in zip('forward loss backward opt_step rest'.split(), timers):
+        xm.master_print(f"    {name:<10} {value}")
+    xm.master_print("")
 
     # scheduler step after epoch
     if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'):
