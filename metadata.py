@@ -52,7 +52,7 @@ def get_metadata(cfg, project):
         from projects.siimcovid import add_multilabel_cols
         df = add_multilabel_cols(df, cfg)
 
-    df = add_image_path(df, cfg.image_root, cfg.subdirs, cfg.filetype)
+    df = maybe_add_image_path(df, cfg.image_root, cfg.subdirs, cfg.filetype)
     print("[ √ ] image_path:", *df.image_path.iloc[:2], "...")
 
     if hasattr(project, 'add_bboxes'):
@@ -109,7 +109,10 @@ def get_metadata(cfg, project):
     return df
 
 
-def add_image_path(df, image_root, subdirs, filetype='png', xla=False):
+def maybe_add_image_path(df, image_root, subdirs, filetype='png', xla=False):
+    if 'image_path' in df.columns:
+        return df
+
     print("add_image_path.filetype:", filetype)
     # Copy data (colab) and set image_root path
     if xla and False:  # dataloader.show_batch() hangs
