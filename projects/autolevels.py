@@ -47,7 +47,7 @@ def init(cfg):
     #if cfg.cloud == 'drive':
     #    cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
 
-    if cfg.filetype == 'JPEG':
+    if cfg.filetype:
         cfg.image_root = (
             cfg.image_root if (cfg.cloud == 'drive') else
             Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/Data/CLS-LOC/train') if 'imagenet' in cfg.tags else
@@ -101,10 +101,11 @@ def init(cfg):
                            'width': 'width'}
         cfg.inputs = ['image']
 
+    # New datasets: Set meta_csv to None to search for images and generate metadata.csv on the fly 
     cfg.meta_csv = (
         cfg.meta_csv if (cfg.cloud == 'drive') else
         Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/ImageSets/CLS-LOC/train_cls.txt') if 'imagenet' in cfg.tags else
-        None if 'coco2017' in cfg.tags else
+        Path('/kaggle/input/autolevels-modelbox/coco2017.csv') if 'coco2017' in cfg.tags else
         Path('define cfg.meta_csv in project module!'))
 
     #elif cfg.filetype == 'tfrec':
@@ -155,9 +156,12 @@ def read_csv(cfg):
     if cfg.meta_csv is None:
         image_paths = find_images(cfg)
         image_ids = [Path(s).stem for s in image_paths]
-        df = pd.DataFrame({'image_id': image_ids, 'image_path': image_paths}) 
-    else:
+        df = pd.DataFrame({'image_id': image_ids, 'image_path': image_paths})
+        df.to_csv('metadata.csv', index=False)
+    elif 'imagenet' in cfg.tags:
         df = pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
+    else:
+        df = pd.read_csv(cfg.meta_csv)
 
     return df.sample(frac=0.01) if cfg.DEBUG else df
 

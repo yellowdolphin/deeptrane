@@ -1,8 +1,8 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'
-filetype = 'JPEG'
-meta_csv = '/content/meta.csv'  # for colab only
+filetype = 'jpg'
+meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
 
 # Training
 num_folds = 5
