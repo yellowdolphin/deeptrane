@@ -15,6 +15,7 @@ cfg = dict(
     datasets = [],
     gcs_paths = [],
     image_root = 'data/images',
+    meta_csv = 'data/deeptrane_test_meta.csv',
     size = (64, 64),
 
 # Dataloader

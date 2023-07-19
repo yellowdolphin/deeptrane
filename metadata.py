@@ -15,8 +15,8 @@ def get_metadata(cfg, project):
     "Return a DataFrame with labels, image paths, dims, splits required by the datasets."
     detection = any(s in cfg.tags for s in 'yolov5 mmdet'.split())
 
-    cfg.competition_path = Path(cfg.competition_path or 'data')
-    print("[ √ ] Competition path:", cfg.competition_path)
+    if cfg.competition_path:
+        print("cfg.competition_path is deprecated. Use cfg.meta_csv and cfg.image_root instead.")
 
     if 'colab' in cfg.tags:
         cfg.image_root = cfg.image_root.replace('/kaggle/input', '/content')
@@ -30,8 +30,8 @@ def get_metadata(cfg, project):
     cfg.filetype = cfg.filetype or 'png'
     print("[ √ ] type:", cfg.filetype)
 
-    cfg.meta_csv = cfg.meta_csv or 'data/deeptrane_test_meta.csv'
-    print("[ √ ] metadata:", cfg.meta_csv)
+    if cfg.meta_csv:
+        print("[ √ ] metadata:", cfg.meta_csv)
 
     if hasattr(project, 'read_csv'):
         df = project.read_csv(cfg)
