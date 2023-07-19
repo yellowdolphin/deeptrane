@@ -43,14 +43,16 @@ from augmentation import adjust_sharpness_tf
 
 
 def init(cfg):
-    cfg.competition_path = Path('/kaggle/input/imagenet-object-localization-challenge')
-    if cfg.cloud == 'drive':
-        cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
+    #cfg.competition_path = Path('/kaggle/input/imagenet-object-localization-challenge')
+    #if cfg.cloud == 'drive':
+    #    cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
 
     if cfg.filetype == 'JPEG':
         cfg.image_root = (
             cfg.image_root if (cfg.cloud == 'drive') else
-            cfg.competition_path / 'ILSVRC/Data/CLS-LOC/train')
+            Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/Data/CLS-LOC/train') if 'imagenet' in cfg.tags else
+            Path('/kaggle/input/coco-2017-dataset/coco2017') if 'coco2017' in cfg.tags else
+            Path('define image_root in project module!'))
     elif 'imagenet' in cfg.tags:
         # Customize data pipeline (see tf_data for definition and defaults)
         # To check out features in new tfrec dataset, set "cfg.tfrec_format = {}"
@@ -101,7 +103,9 @@ def init(cfg):
 
     cfg.meta_csv = (
         cfg.meta_csv if (cfg.cloud == 'drive') else
-        cfg.competition_path / 'ILSVRC/ImageSets/CLS-LOC/train_cls.txt')
+        Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/ImageSets/CLS-LOC/train_cls.txt') if 'imagenet' in cfg.tags else
+        None if 'coco2017' in cfg.tags else
+        Path('define cfg.meta_csv in project module!'))
 
     #elif cfg.filetype == 'tfrec':
     #    cfg.image_root = cfg.competition_path / 'train_tfrecords'
@@ -128,10 +132,28 @@ def init(cfg):
         cfg.targets = ['target']
 
 
-def read_csv(cfg):
+def find_images(cfg):
+    "Recursively find all images and return them in a sorted list"
+
+    image_root = Path(cfg.image_root)
+    filetype = cfg.filetype
     if cfg.DEBUG:
-        return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id']).sample(frac=0.01)
-    return pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
+        print(f"Searching recursively for {filetype} images in {image_root}")
+
+    return sorted(p.relative_to(image_root).as_posix() for p in image_root.glob(f'**/*.{filetype}'))
+
+
+def read_csv(cfg):
+    "Return pandas DataFrame with image_id and image_path, relative to cfg.image_root"
+
+    if cfg.meta_csv is None:
+        image_paths = find_images(cfg)
+        image_ids = [Path(s).stem for s in image_paths]
+        df = pd.DataFrame({'image_id': image_ids, 'image_path': image_paths}) 
+    else:
+        df = pd.read_csv(cfg.meta_csv, sep=' ', usecols=[0], header=None, names=['image_id'])
+
+    return df.sample(frac=0.01) if cfg.DEBUG else df
 
 
 def adjust_sharpness_alb(img, sharpness):
