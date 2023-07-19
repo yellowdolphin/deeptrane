@@ -359,6 +359,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             scaler.scale(loss).backward()  # loss scaling in mixed-precision training
             ### DEBUG
             t3 = time.perf_counter()
+            t4 = t3
 
         if cfg.grad_clip:
             scaler.unscale_(optimizer)

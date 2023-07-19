@@ -140,7 +140,13 @@ def find_images(cfg):
     if cfg.DEBUG:
         print(f"Searching recursively for {filetype} images in {image_root}")
 
-    return sorted(p.relative_to(image_root).as_posix() for p in image_root.glob(f'**/*.{filetype}'))
+    fns = sorted(p.relative_to(image_root).as_posix() for p in image_root.glob(f'**/*.{filetype}'))
+
+    if cfg.DEBUG:
+        print(f"    found {len(fns)} images")
+
+    return fns
+
 
 
 def read_csv(cfg):
