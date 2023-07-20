@@ -83,63 +83,19 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
 
     # training loop
     n_iter = len(dataloader)
-    iterable = range(n_iter) if (cfg.fake_data == 'on_device') else dataloader
-    #sample_iterator = iter(dataloader) if cfg.use_batch_tfms else None
+    iterator = iter(dataloader)
     ### DEBUG
     timers = [0, 0, 0, 0, 0]
 
-    for batch_idx, batch in enumerate(iterable, start=1):
+    # get first batch
+    inputs, labels = next(iterator)
+    if cfg.gpu:
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        inputs, labels = inputs.pin_memory().to(device, non_blocking=True), labels.pin_memory().to(device, non_blocking=True)
+    else:
+        inputs, labels = inputs.to(device), labels.to(device)
 
-        # extract inputs and labels
-        if cfg.fake_data == 'on_device':
-            inputs, labels = (
-                torch.ones(cfg.bs, 3, *cfg.size, dtype=torch.uint8, device=device) * 128,
-                torch.exp(torch.randn(cfg.bs, 3, device=device) * 0.6))
-                #torch.zeros(cfg.bs, dtype=torch.int64, device=device))
-        #elif cfg.use_batch_tfms:
-            # resize and collate images, labels
-            #samples = [next(sample_iterator) for _ in range(cfg.bs)]
-            #for s in samples:
-            #    assert s[0].device == device
-            #    assert s[1].device == device
-            #inputs = torch.stack([pre_size(s[0]) for s in samples])
-            #labels = torch.stack([s[1] for s in samples])
-            #del samples
-
-        #    inputs, labels = [], []
-        #    for _ in range(cfg.bs):
-        #        s = next(sample_iterator)
-        #        inputs.append(TF.resize(s[0], cfg.size, InterpolationMode('nearest')))
-        #        labels.append(s[1])
-        #    inputs = torch.stack(inputs)
-        #    labels = torch.stack(labels)
-
-            #assert inputs.shape == (cfg.bs, 3, *cfg.size)
-            #assert labels.shape == (cfg.bs,)
-            #xm.master_print(inputs.device, labels.device)
-
-        elif cfg.filetype == 'tfds':
-            inputs, labels = FloatTensor(batch[0]['inp1']), LongTensor(batch[0]['inp2'])
-            inputs = inputs.permute((0, 3, 1, 2))  #.contiguous()  # mem? speed?
-        elif cfg.use_aux_loss:
-            inputs, masks, labels = batch
-            masks = masks.to(device)
-        else:
-            inputs, labels = batch
-        del batch
-        #xm.master_print("inputs:", type(inputs), inputs.shape, inputs.dtype, inputs.device)
-        #assert inputs.shape == (cfg.bs, 3, *cfg.size), f'wrong inputs shape: {inputs.shape}'
-        #assert labels.shape == (cfg.bs,), f'wrong labels shape: {labels.shape}'
-        #print(f"rank {xm.get_ordinal()} labels: {labels}")
-
-        # send to device(s) if still on CPU (device_loaders do this automatically)
-        if True:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-        else:
-            inputs, labels = (
-                torch.zeros(cfg.bs, 3, *cfg.size, device=device),
-                torch.zeros(cfg.bs, dtype=torch.int64, device=device))
+    for batch_idx in range(1, n_iter + 1):
 
         # image batch_tfms
         if cfg.use_batch_tfms:
@@ -355,11 +311,21 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
 
             loss = loss / cfg.n_acc  # grads accumulate as 'sum' but loss reduction is 'mean'
             ### DEBUG
-            t2 = time.perf_counter()
-            scaler.scale(loss).backward()  # loss scaling in mixed-precision training
-            ### DEBUG
-            t3 = time.perf_counter()
-            t4 = t3
+        
+        # immediately async prefetch next batch while model is doing the forward pass on the GPU
+        if batch_idx < n_iter:
+            inputs, labels = next(iterator)
+            if cfg.gpu:
+                # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+                inputs, labels = inputs.pin_memory().to(device, non_blocking=True), labels.pin_memory().to(device, non_blocking=True)
+            else:
+                inputs, labels = inputs.to(device), labels.to(device)
+
+        t2 = time.perf_counter()
+        scaler.scale(loss).backward()  # loss scaling in mixed-precision training
+        ### DEBUG
+        t3 = time.perf_counter()
+        t4 = t3
 
         if cfg.grad_clip:
             scaler.unscale_(optimizer)
