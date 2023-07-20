@@ -318,6 +318,12 @@ for use_fold in cfg.use_folds:
     if hasattr(pretrained_model, 'arc'):
         print(pretrained_model.arc)
 
+    if cfg.compile_torch_model and hasattr(torch, 'compile'):
+        from time import perf_counter
+        print("compiling model...")
+        t0 = perf_counter()
+        pretrained_model = torch.compile(pretrained_model)
+        print(f"model compiled in {perf_counter() - t0:.1f} sec.")
 
     fn = cfg.out_dir / f'{cfg.name}_init.pth'
     if False and not fn.exists():

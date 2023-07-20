@@ -3,6 +3,7 @@ from pathlib import Path
 cfg = dict(
     name = Path(__file__).stem,
     DEBUG = False,
+    compile_torch_model = False,
     xla_metrics = False,
     xla_nightly = False,
 
