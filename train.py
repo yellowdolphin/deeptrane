@@ -263,6 +263,8 @@ elif cfg.gpu:
     cfg.n_replicas = torch.cuda.device_count() if (cfg.use_dp or cfg.use_ddp) else 1
     print(f"[ √ ] Using {cfg.n_replicas} GPUs", "(DP)" if cfg.use_dp else "(DDP)" if cfg.use_ddp else "")
     if cfg.use_dp: cfg.n_replicas = 1  # pretend single-GPU job for DP (model wrapper takes care of everything)
+    print("      Device capability:", torch.cuda.get_device_capability())
+    # For (7, 0) or higher, model should be compiled (torch>=2.0)
 else:
     cfg.n_replicas = 1
     #cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
