@@ -749,7 +749,7 @@ def get_pretrained_timm2(cfg):
 
     Custom bottleneck factory can be assigned to cfg.get_bottleneck.
     """
-    pretrained = (cfg.rst_name is None) and 'defaults' not in cfg.tags
+    pretrained = (cfg.rst_name is None or removesuffix(cfg.rst_name, ".pth").endswith('_head')) and 'defaults' not in cfg.tags
     n_features = cfg.n_features or 1  # last n features to pool and concat from body
     act_head = getattr(nn, cfg.act_head) if isinstance(cfg.act_head, str) else cfg.act_head
     try:
