@@ -1,16 +1,16 @@
 # Setup
 project = 'autolevels'
-datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
-            'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-dd89dd7e781de3db98a7b5fc06eb08f9ee7f4bb5aa9d4aded39d4caa', 'gs://kds-ae9794a42dd745dac5d4778eed6b1778ba40659b646849382e3c3679']
-gcs_filters = ['*/*-of-*', '*-of-*']
-tfrec_filename_pattern = r"-of-([0-9]*)$"
+datasets = [f'google-landmark-tfrecords-512-{i}' for i in range(1, 7)]
+gcs_paths = ['gs://kds-4e9105f6d8c25c528d469a56f0b1e1011c80a40a84a3f2a455bd31ca', 'gs://kds-5b234f8d0a991f7a12f533d74275f671d79f3c77ecf19ac1b20a1916', 'gs://kds-032fe42efa6ee7b0a4a4a736dc2cf5cd2e03abcafa4fbf6dc5594857', 'gs://kds-a02eea369def907c051359ce5e9808fe2a97c72439b31bd8969a1d85', 'gs://kds-a9260854dbac3f381bc848ccc251afafa21821851780eff5ee8a5c90', 'gs://kds-d31dd893bceb9b6ce60577ba65c7a271fd09371ae997c4bfdc614d37']
+gcs_filter = '*.tfrec'
+tfrec_filename_pattern = None
+BGR = True
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
 # Training
 seed = 42
-num_folds = 5
+num_folds = 10
 use_folds = [0]
 train_on_all = False
 size = (384, 384)
@@ -54,7 +54,7 @@ bn_eps = 1e-5
 optimizer = "Adam"  # Adam AdamW SGD
 wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [9, 768, 768, 768]
+lin_ftrs = [12, 768, 768, 768]
 act_head = 'silu'
 
 

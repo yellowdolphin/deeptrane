@@ -101,6 +101,11 @@ def init(cfg):
                            'width': 'width'}
         cfg.inputs = ['image']
 
+    elif 'landmark2021' in cfg.tags:
+        cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string)}
+        cfg.data_format = {'image': 'image'}
+        cfg.inputs = ['image']
+
     # New datasets: Set meta_csv to None to search for images and generate metadata.csv on the fly 
     cfg.meta_csv = (
         cfg.meta_csv if (cfg.cloud == 'drive') else
@@ -1333,10 +1338,14 @@ def parse_tfrecord(cfg, example):
 
         #tf.print("tfm:", tfm.shape, tf.reduce_min(tfm), tf.reduce_mean(tfm), tf.reduce_max(tfm))  # tfm: TensorShape([3, 256]) 0 0.598787069 1
 
-    features['height'] = example[cfg.data_format['height']]
-    features['width'] = example[cfg.data_format['width']]
+    if 'height' in cfg.data_format:
+        height = example[cfg.data_format['height']]
+        width = example[cfg.data_format['width']]
+    else:
+        height, width = 512, 512
+
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], tfm,
-                                     features['height'], features['width'])
+                                     height, width)
 
     if cfg.curve == 'beta':
         # split target into 2 (3) components for weighted loss
@@ -1375,19 +1384,28 @@ def count_examples_in_tfrec(fn):
 def count_data_items(filenames, tfrec_filename_pattern=None):
     if '-of-' in filenames[0]:
         # Imagenet: Got number of items from idx files
-        return np.sum([391 if 'validation' in fn else 1252 for fn in filenames])
+        return sum(391 if 'validation' in fn else 1252 for fn in filenames)
     if 'coco' in filenames[0]:
-        return np.sum([159 if 'train/coco184' in fn else 499 if 'val/coco7' in fn else 
-                       642 if '/train/' in fn else 643 
-                       for fn in filenames])
-        #print(f'{len(filenames)} urls:')
-        #total_count = 0
-        #for fn in filenames:
-        #    n = count_examples_in_tfrec(fn)
-        #    print("   ", Path(fn).parent, n)
-        #    total_count += n
-        #return total_count
-    raise NotImplementedError(f'autolevels.count_data_items: filename not recognized: {filenames[0]}')
+        return sum(159 if 'train/coco184' in fn else 499 if 'val/coco7' in fn else 
+                   642 if '/train/' in fn else 643 
+                   for fn in filenames)
+    if all('train_' in fn for fn in filenames) and len(filenames) in [45, 6]:
+        # landmark2021: no subfolders or identifiable string in urls
+        # if too large, valid raises out-of-range error
+        return 1448943 if len(filenames) == 45 else 193665
+    else:
+        if True:
+            # count them (slow)
+            print(f'Counting examples in {len(filenames)} urls:')
+            total_count = 0
+            for i, fn in enumerate(filenames):
+                n = count_examples_in_tfrec(fn)
+                #print(f"   {i:3d}", Path(fn).parent, n)
+                print(f"   {i:3d}", fn, n)
+                total_count += n
+            return total_count
+        else:
+            raise NotImplementedError(f'autolevels.count_data_items: filename not recognized: {filenames[0]}')
 
 
 class TFCurveRMSE(tf.keras.metrics.MeanSquaredError):
