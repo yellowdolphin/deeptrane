@@ -1,9 +1,10 @@
 # Setup
 project = 'autolevels'
-datasets = ['coco-2017-tfrecords']
-gcs_paths = ['gs://kds-dee0b1d788f713aad730c1065077c230c5509556f5416c5c17ddf33a']
-gcs_filter = '*/*/coco*.tfrecord'
-tfrec_filename_pattern = None
+datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
+            'imagenet-1k-tfrecords-ilsvrc2012-part-1']
+gcs_paths = ['gs://kds-dd89dd7e781de3db98a7b5fc06eb08f9ee7f4bb5aa9d4aded39d4caa', 'gs://kds-ae9794a42dd745dac5d4778eed6b1778ba40659b646849382e3c3679']
+gcs_filters = ['*/*-of-*', '*-of-*']
+tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
@@ -26,23 +27,25 @@ div_factor = 5                            # default: 25, from Chest14: 1
 pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
 lr_min = 1e-6
 save_best = 'loss'
+preprocess = 'gamma'
+freeze_body = True
+freeze_head = True
+freeze_preprocess = False
 predict_inverse = True
-blackpoint_range = (-30, 30)   # x-offset
-blackpoint2_range = (-30, 30)  # y-offset
-log_gamma_range = [-1.8, 1.8]
+blackpoint_range = (0, 0)   # x-offset
+blackpoint2_range = (0, 0)  # y-offset
+log_gamma_range = [0, 0]
 mirror_gamma = False
-curve3_a_range = (0.2, 1.06) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha
-curve3_beta_range = (0.5, 1)
-mirror_beta = False
-curve4_loga_range = (-1.8, 0.0)
-curve4_b_range = (0.4, 1.2)
-mirror_curve4 = True
-p_gamma = 0.4                  # probability for using Gamma curve
-p_beta = 0.33                  # probability for using Beta PDF rather than Curve4
-add_uniform_noise = False       # add uniform noise to mask uint8 discretization [bool|float]
-add_jpeg_artifacts = True
-sharpness_augment = True
-noise_level = 0.01             # random normal noise (augmentation)
+p_gamma = 1.0                  # probability for using Gamma curve
+p_beta = 0.0
+curve3_a_range = (1, 1) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha
+curve3_beta_range = (1, 1)
+curve4_loga_range = (0, 0)
+curve4_b_range = (1, 1)
+add_uniform_noise = False      # add uniform noise to mask uint8 discretization [bool|float]
+add_jpeg_artifacts = False
+sharpness_augment = False
+noise_level = 0.0              # random normal noise (augmentation)
 augmentation = 'autolevels_aug_tf'
 
 # Model
@@ -53,7 +56,7 @@ bn_eps = 1e-5
 optimizer = "Adam"  # Adam AdamW SGD
 wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [12, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'silu'
 
 

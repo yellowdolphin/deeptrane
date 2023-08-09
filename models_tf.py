@@ -379,6 +379,16 @@ def freeze_bn(model):
             assert layer.trainable is False, f'could not freeze {layer.name}'
 
 
+def freeze_body(model):
+    for layer in model.layers[:2]:
+        layer.trainable = False
+
+
+def unfreeze_body(model):
+    for layer in model.layers[:2]:
+        layer.trainable = True
+
+
 def freeze_head(model):
     for layer in model.layers[2:]:
         layer.trainable = False
@@ -392,6 +402,23 @@ def unfreeze_head(model):
 def check_model_inputs(cfg, model):
     for inp in model.inputs:
         assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
+
+
+def check_model_weights(model):
+    names = set()
+    valid = True
+
+    for w in model.weights:
+        if w.name in names:
+            valid = False
+            print(f'WARNING: found duplicate weight names:')
+            for i, w_i in enumerate(model.weights):
+                if w_i.name == w.name:
+                    print(f"    {i:<3} {w_i.name}")
+        names.add(w.name)
+
+    if not valid: 
+        raise ValueError("Duplicate weight names: this model will not save/load correctly!")
 
 
 def get_bottleneck_params(cfg):
@@ -440,6 +467,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if cfg.arcface and not inference:
             inputs.append(Input(shape=(), name='target'))
 
+        # Preprocessing
+        x = cfg.preprocess()(inputs[0]) if cfg.preprocess else inputs[0]
+
         # Body
         efnv1 = cfg.arch_name.startswith('efnv1')
         efnv2 = cfg.arch_name.startswith('efnv2')
@@ -465,7 +495,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         # Head(s)
         if efnv1:
-            x = pretrained_model(inputs[0])
+            x = pretrained_model(x)
             if cfg.pool == 'flatten':
                 embed = Flatten()(x)
             elif cfg.pool == 'fc':
@@ -483,7 +513,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
                 embed = GlobalAveragePooling2D()(x)
 
         elif efnv2:
-            x = pretrained_model(inputs[0])
+            x = pretrained_model(x)
             if cfg.pool == 'flatten':
                 embed = Flatten()(x)
             elif cfg.pool == 'fc':
@@ -504,11 +534,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
             # tfhub models cannot be modified => Pooling cannot be changed!
             assert cfg.pool in [None, False, 'avg', ''], 'tfhub model, no custom pooling supported!'
             print(f"{cfg.arch_name} from tfhub")
-            embed = pretrained_model(inputs[0])
+            embed = pretrained_model(x)
 
         else:
             print(f"{cfg.arch_name} from tfimm")
-            embed = pretrained_model(inputs[0])
+            embed = pretrained_model(x)
             # create_model(nb_classes=0) includes pooling as last layer
 
         # Bottleneck(s)
@@ -608,16 +638,31 @@ def get_pretrained_model(cfg, strategy, inference=False):
         else:
             model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
 
-        if cfg.freeze_bn:
-            print("freezing layer", model.layers[1].name)
-            freeze_bn(model.layers[1])  # freeze only backbone BN
-            #model.layers[1].layers[2].trainable = True  # unfreeze stem BN
+        # Freeze/unfreeze in train_tf after load_weights() to avoid shape-mismatch bug:
+        # https://stackoverflow.com/questions/51944836/keras-load-model-valueerror-axes-dont-match-array
+        if False:
+            if cfg.freeze_bn:
+                print("freezing layer", model.layers[1].name)
+                freeze_bn(model.layers[1])  # freeze only backbone BN
+                #model.layers[1].layers[2].trainable = True  # unfreeze stem BN
 
-        if cfg.freeze_head:
-            print("freezing head layers")
-            freeze_head(model)
-        else:
-            unfreeze_head(model)
+            if cfg.freeze_body:
+                print("freezing body layers")
+                freeze_body(model)
+            else:
+                unfreeze_body(model)
+
+            if cfg.freeze_head:
+                print("freezing head layers")
+                freeze_head(model)
+            else:
+                unfreeze_head(model)
+
+            if cfg.freeze_preprocess and (cfg.preprocess is not None):
+                print("freezing preprocessing layer:", model.layers[1])
+                model.layers[1].trainable = False
+            elif cfg.preprocess is not None:
+                model.layers[1].trainable = True
 
         # The following can probably be moved out of the strategy.scope...
 
@@ -686,5 +731,6 @@ def get_pretrained_model(cfg, strategy, inference=False):
             print("Warning: validation will fail with steps_per_execution > 1 if validation_steps cannot be inferred.")
 
     check_model_inputs(cfg, model)
+    check_model_weights(model)
 
     return model

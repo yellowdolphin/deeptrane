@@ -149,7 +149,8 @@ for use_fold in cfg.use_folds:
         f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
         monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
         mode='min' if 'loss' in cfg.save_best else 'max',
-        save_weights_only=True, save_freq='epoch', verbose=1)
+        save_weights_only=True,
+        save_freq='epoch', verbose=1)
     lr_callback = get_lr_callback(cfg)
 
     clear_session()
@@ -169,6 +170,32 @@ for use_fold in cfg.use_folds:
             model.load_weights(Path(cfg.rst_path) / cfg.rst_name, 
                                by_name=True, skip_mismatch=True)
         print(f"Weights loaded from {cfg.rst_name}")
+
+    # Freeze/unfreeze after load_weights() to avoid shape-mismatch bug
+    from models_tf import freeze_body, freeze_head, freeze_bn, unfreeze_body, unfreeze_head
+    if cfg.freeze_bn:
+        backbone_layer = model.layers[1 if cfg.preprocess is None else 2]
+        print("freezing BN layer in", backbone_layer.name)
+        freeze_bn(backbone_layer)  # freeze only backbone BN
+        #backbone_layer.layers[2].trainable = True  # unfreeze stem BN
+
+    if cfg.freeze_body:
+        print("freezing body layers")
+        freeze_body(model)
+    else:
+        unfreeze_body(model)
+
+    if cfg.freeze_head:
+        print("freezing head layers")
+        freeze_head(model)
+    else:
+        unfreeze_head(model)
+
+    if cfg.freeze_preprocess and (cfg.preprocess is not None):
+        print("freezing preprocessing layer:", model.layers[1].name)
+        model.layers[1].trainable = False
+    elif cfg.preprocess is not None:
+        model.layers[1].trainable = True
 
     t0 = perf_counter()
 

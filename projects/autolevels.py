@@ -138,6 +138,24 @@ def init(cfg):
         cfg.targets = ['target']
 
 
+    # Preprocessing of model inputs
+    if cfg.preprocess and (cfg.preprocess == 'gamma') and ('tf' in cfg.tags):
+        cfg.preprocess = GammaTransformTF  # instanciate in scope (models_tf.get_pretrained_model)
+
+
+class GammaTransformTF(tf.keras.layers.Layer):
+    "Gamma transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"
+    def __init__(self):
+        super().__init__()
+        self.bp = self.add_weight(shape=(3,), name='preprocess/bp', initializer="zeros", trainable=True)
+        self.gamma = self.add_weight(shape=(3,), name='preprocess/gamma', initializer="ones", trainable=True)
+        self.bp2 = self.add_weight(shape=(3,), name='preprocess/bp2', initializer="zeros", trainable=True)
+
+    def call(self, inputs):
+        inputs = tf.clip_by_value(self.bp + inputs * (1 - self.bp), 1e-6, 1)  # avoid nan
+        return tf.pow(inputs, self.gamma) * (1 - self.bp2) + self.bp2
+
+
 def find_images(cfg):
     "Recursively find all images and return them in a sorted list"
 
