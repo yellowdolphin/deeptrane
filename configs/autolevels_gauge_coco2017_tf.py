@@ -1,10 +1,9 @@
 # Setup
 project = 'autolevels'
-datasets = [f'google-landmark-tfrecords-512-{i}' for i in range(1, 7)]
-gcs_paths = ['gs://kds-8285bf4361c1ca055187f1d44d73d2f621d0c5c680d39013e79c970f', 'gs://kds-c1e675145dd782b54b1d2695e1ab842acd7618ae39225df25aaa5883', 'gs://kds-8b820e025265b89fff9341fde7e3206d40d7f4bd5ae902a53febe7fb', 'gs://kds-619c3bf64c1022adbdd2ce0f41171fc8221827f13346c3aaf6244d98', 'gs://kds-09fa8bd5d5990b17e83f006931d807ec78f37d6e4f1077a68e042149', 'gs://kds-9a6ae5ae37644a36de4648ca99a776ab95e20e2d9d3723c9bfb818e2']
-gcs_filter = '*.tfrec'
+datasets = ['coco-2017-tfrecords']
+gcs_paths = ['gs://kds-dee0b1d788f713aad730c1065077c230c5509556f5416c5c17ddf33a']
+gcs_filter = '*/*/coco*.tfrecord'
 tfrec_filename_pattern = None
-BGR = True
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
