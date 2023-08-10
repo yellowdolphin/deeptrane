@@ -215,3 +215,6 @@ for use_fold in cfg.use_folds:
     wall = perf_counter() - t0
     min_per_ep = wall / cfg.epochs / 60
     print(f"Training finished in {wall / 60:.2f} min ({min_per_ep:.2f} min/epoch)")
+
+    if hasattr(project, 'on_train_end'):
+        project.on_train_end(cfg, model, history)

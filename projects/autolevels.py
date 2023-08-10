@@ -1463,3 +1463,11 @@ class CurveRMSE(MeanSquaredError):
     
     def compute(self):
         return super().compute() * 255
+
+
+def on_train_end(cfg, model, metrics):
+    if ('tf' in cfg.tags) and (cfg.preprocess is not None) and not cfg.freeze_preprocess:
+        # print trained preprocess parameters
+        print(f"\nPreprocess weights:")
+        for w in model.layers[1].weights:
+            print(f"    {w.name:<20} {', '.join([f'{x:9.6f}' for x in w.numpy()])}")
