@@ -8,7 +8,7 @@ from multiprocessing import cpu_count
 from config import Config, parser
 from utils.general import quietly_run, sizify, listify, autotype, get_drive_out_dir
 from utils.tf_setup import install_model_libs
-from utils.tensorflow import CSVLogger
+from utils.tensorflow import CSVLogger, handle_deprecated_freeze_config
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -33,6 +33,7 @@ if cfg.batch_verbose not in ['auto', 0, 1, 2]:
 cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
 if cfg.cloud == 'drive':
     cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
+handle_deprecated_freeze_config(cfg)
 
 print(cfg)
 print("[ √ ] Cloud:", cfg.cloud)
@@ -146,7 +147,7 @@ for use_fold in cfg.use_folds:
     logfile = f'{cfg.out_dir}/metrics_fold{use_fold}.csv'
     csv_logger = CSVLogger(logfile)
     save_best = tf.keras.callbacks.ModelCheckpoint(
-        f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=False,
+        f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
         monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
         mode='min' if 'loss' in cfg.save_best else 'max',
         save_weights_only=True,
@@ -160,42 +161,6 @@ for use_fold in cfg.use_folds:
     else:
         model = get_pretrained_model(cfg, strategy)
     model.summary(line_length=120)
-
-    if cfg.rst_path and cfg.rst_name:
-        try:
-            model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
-        except ValueError:
-            print(f"{cfg.rst_name} mismatches model with body: {model.layers[1].name}")
-            print("Trying to load matching layers only...")
-            model.load_weights(Path(cfg.rst_path) / cfg.rst_name, 
-                               by_name=True, skip_mismatch=True)
-        print(f"Weights loaded from {cfg.rst_name}")
-
-    # Freeze/unfreeze after load_weights() to avoid shape-mismatch bug
-    from models_tf import freeze_body, freeze_head, freeze_bn, unfreeze_body, unfreeze_head
-    if cfg.freeze_bn:
-        backbone_layer = model.layers[1 if cfg.preprocess is None else 2]
-        print("freezing BN layer in", backbone_layer.name)
-        freeze_bn(backbone_layer)  # freeze only backbone BN
-        #backbone_layer.layers[2].trainable = True  # unfreeze stem BN
-
-    if cfg.freeze_body:
-        print("freezing body layers")
-        freeze_body(model)
-    else:
-        unfreeze_body(model)
-
-    if cfg.freeze_head:
-        print("freezing head layers")
-        freeze_head(model)
-    else:
-        unfreeze_head(model)
-
-    if cfg.freeze_preprocess and (cfg.preprocess is not None):
-        print("freezing preprocessing layer:", model.layers[1].name)
-        model.layers[1].trainable = False
-    elif cfg.preprocess is not None:
-        model.layers[1].trainable = True
 
     t0 = perf_counter()
 

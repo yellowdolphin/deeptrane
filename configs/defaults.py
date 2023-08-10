@@ -64,7 +64,7 @@ cfg = dict(
     bn_eps = 1e-5,
     bn_momentum = 0.1,
     wd = 0.05,                  # default 1e-2
-    freeze_head = False,
+    freeze_head = False,        # only pytorch, for tf use freeze, freeze_for_loading
 
     rst_path = '.',
     rst_name = None,

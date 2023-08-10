@@ -28,6 +28,7 @@ but there are issues:
     - UnimplementedError:  Fused conv implementation does not support grouped convolutions.
 """
 import math
+from pathlib import Path
 
 import tensorflow as tf
 from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax, BatchNormalization,
@@ -372,36 +373,64 @@ def BatchNorm(cfg, bn_type, name=None):
     raise ValueError(f'{bn_type} is no recognized bn_type')
 
 
+def check_model_inputs(cfg, model):
+    for inp in model.inputs:
+        assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
+
+
 def freeze_bn(model):
     for layer in model.layers:
         if isinstance(layer, BatchNormalization):
             layer.trainable = False
-            assert layer.trainable is False, f'could not freeze {layer.name}'
 
 
-def freeze_body(model):
-    for layer in model.layers[:2]:
-        layer.trainable = False
+def set_trainable(model, freeze):
+    """Set trainable attributes according to list `freeze`
+    
+    "none":       all layers trainable (default)
+    "all":        all layers frozen
+    "head":       freeze all head layers
+    "body":       freeze all body layers
+    "bn":         freeze all BatchNorm layers in the body
+    "preprocess": freeze any preprocess layer
+    """
+    freeze = freeze or set(['none'])
+    freeze = set(s.lower() for s in freeze)
 
+    if 'none' in freeze:
+        model.trainable = True
+        return
+    
+    if 'all' in freeze:
+        print("freezing entire model")
+        model.trainable = False
+        return
+    
+    # Freeze only specified parts of the model
+    model.trainable = True
+    body_index = 2 if model.layers[1].name.endswith('transform_tf') else 1
+    first_head_layer_index = body_index + 1
 
-def unfreeze_body(model):
-    for layer in model.layers[:2]:
-        layer.trainable = True
+    if 'head' in freeze:
+        print("freezing head layers")
+        for layer in model.layers[first_head_layer_index:]:
+            layer.trainable = False
 
+    if 'body' in freeze:
+        body = model.layers[body_index]
+        print("freezing body:", body.name)
+        body.trainable = False
 
-def freeze_head(model):
-    for layer in model.layers[2:]:
-        layer.trainable = False
+    if 'bn' in freeze:
+        # freeze only BN layers in body
+        body = model.layers[body_index]
+        print("freezing BN in", body.name)
+        freeze_bn(body)
+        #body.layers[2].trainable = True  # unfreeze stem BN
 
-
-def unfreeze_head(model):
-    for layer in model.layers[2:]:
-        layer.trainable = True
-
-
-def check_model_inputs(cfg, model):
-    for inp in model.inputs:
-        assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
+    if 'preprocess' in freeze and model.layers[1].name.endswith('transform_tf'):
+        print("freezing preprocess layer:", model.layers[1].name)
+        model.layers[1].trainable = False
 
 
 def check_model_weights(model):
@@ -638,31 +667,23 @@ def get_pretrained_model(cfg, strategy, inference=False):
         else:
             model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
 
-        # Freeze/unfreeze in train_tf after load_weights() to avoid shape-mismatch bug:
-        # https://stackoverflow.com/questions/51944836/keras-load-model-valueerror-axes-dont-match-array
-        if False:
-            if cfg.freeze_bn:
-                print("freezing layer", model.layers[1].name)
-                freeze_bn(model.layers[1])  # freeze only backbone BN
-                #model.layers[1].layers[2].trainable = True  # unfreeze stem BN
+        # Load restart weights
+        if cfg.rst_path and cfg.rst_name:
+            # avoid ValueError "axes don't match array":
+            # https://stackoverflow.com/questions/51944836/keras-load-model-valueerror-axes-dont-match-array
+            set_trainable(model, cfg.freeze_for_loading)
 
-            if cfg.freeze_body:
-                print("freezing body layers")
-                freeze_body(model)
-            else:
-                unfreeze_body(model)
+            try:
+                model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
+            except ValueError:
+                print(f"{cfg.rst_name} mismatches model with body: {model.layers[1].name}")
+                print("Trying to load matching layers only...")
+                model.load_weights(Path(cfg.rst_path) / cfg.rst_name, 
+                                   by_name=True, skip_mismatch=True)
+            print(f"Weights loaded from {cfg.rst_name}")
 
-            if cfg.freeze_head:
-                print("freezing head layers")
-                freeze_head(model)
-            else:
-                unfreeze_head(model)
-
-            if cfg.freeze_preprocess and (cfg.preprocess is not None):
-                print("freezing preprocessing layer:", model.layers[1])
-                model.layers[1].trainable = False
-            elif cfg.preprocess is not None:
-                model.layers[1].trainable = True
+        # Freeze/unfreeze
+        set_trainable(model, cfg.freeze)
 
         # The following can probably be moved out of the strategy.scope...
 

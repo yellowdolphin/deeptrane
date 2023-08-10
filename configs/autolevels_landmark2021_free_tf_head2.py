@@ -5,6 +5,9 @@ gcs_paths = ['gs://kds-8285bf4361c1ca055187f1d44d73d2f621d0c5c680d39013e79c970f'
 gcs_filter = '*.tfrec'
 tfrec_filename_pattern = None
 BGR = True
+preprocess = 'gamma'
+freeze_for_loading = ['body', 'head']
+freeze = ['preprocess', 'head']
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
@@ -49,8 +52,9 @@ augmentation = 'autolevels_aug_tf'
 # Model
 arch_name = 'efnv2s'
 bn_eps = 1e-5
-#rst_path = '/kaggle/input/cassava-deeptrane-rst'
-#rst_name = ''
+rst_path = '/kaggle/input/autolevels-modelbox'
+rst_name = 'free_efnv2s_r608.h5'
+rst_epoch = 48
 optimizer = "Adam"  # Adam AdamW SGD
 wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
