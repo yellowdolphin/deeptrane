@@ -139,8 +139,13 @@ def init(cfg):
 
 
     # Preprocessing of model inputs
-    if cfg.preprocess and (cfg.preprocess == 'gamma') and ('tf' in cfg.tags):
+    if isinstance(cfg.preprocess, str) and (cfg.preprocess == 'gamma') and ('tf' in cfg.tags):
+        # add learnable preprocessing layer to model
         cfg.preprocess = GammaTransformTF  # instanciate in scope (models_tf.get_pretrained_model)
+
+    elif isinstance(cfg.preprocess, dict):
+        # preprocess inputs with static params
+        cfg.preprocess = {key: np.array(value) for key, value in cfg.preprocess.items()}
 
 
 class GammaTransformTF(tf.keras.layers.Layer):
@@ -1129,6 +1134,20 @@ def decode_image(cfg, image_data, tfm, height, width):
     if cfg.normalize in ['torch', 'tf', 'caffe']:
         from keras.applications.imagenet_utils import preprocess_input
         return preprocess_input(image, mode=cfg.normalize)
+
+    elif isinstance(cfg.preprocess, dict):
+        # apply dataset-specific normalization
+        image = tf.cast(image, tf.float32) / 255.0
+        if 'bp' in cfg.preprocess:
+            bp = cfg.preprocess['bp']
+            image = bp + (1 - bp) * image
+        if 'gamma' in cfg.preprocess:
+            gamma = cfg.preprocess['gamma']
+            image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
+        if 'bp2' in cfg.preprocess:
+            bp2 = cfg.preprocess['bp2']
+            image = bp2 + (1 - bp2) * image
+        image = tf.cast(tf.clip_by_value(image * 255, 0, 255), tf.uint8)
     
     if cfg.curve is None:
         return tf.cast(image, tf.float32) / 255.0
@@ -1164,7 +1183,7 @@ def get_mask_uniform(ps, n_channels=3):
     mask = tf.stack([tf.less_equal(edges[i], r) & tf.less(r, edges[i+1]) for i in range(3)])
     return tf.cast(mask, tf.float32)
 
-
+ 
 def get_mask_categorical(ps, n_channels=3):
     """Returns float32 mask with shape [len(ps), n_channels]
     

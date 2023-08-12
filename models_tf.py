@@ -497,7 +497,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             inputs.append(Input(shape=(), name='target'))
 
         # Preprocessing
-        x = cfg.preprocess()(inputs[0]) if cfg.preprocess else inputs[0]
+        x = cfg.preprocess()(inputs[0]) if hasattr(cfg.preprocess, 'call') else inputs[0]
 
         # Body
         efnv1 = cfg.arch_name.startswith('efnv1')

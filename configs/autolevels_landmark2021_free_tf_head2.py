@@ -5,9 +5,11 @@ gcs_paths = ['gs://kds-8285bf4361c1ca055187f1d44d73d2f621d0c5c680d39013e79c970f'
 gcs_filter = '*.tfrec'
 tfrec_filename_pattern = None
 BGR = True
-preprocess = 'gamma'
-freeze_for_loading = ['body', 'head']
-freeze = ['preprocess', 'head']
+preprocess = {'bp': [0.040800,  0.060259,  0.024672],
+              'gamma': [1.026049,  1.054437,  1.010604],
+              'bp2': [-0.012288, -0.018215, -0.008333]}
+freeze_for_loading = ['none']
+freeze = ['head']
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
