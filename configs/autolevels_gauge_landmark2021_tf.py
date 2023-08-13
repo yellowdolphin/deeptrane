@@ -10,7 +10,7 @@ use_custom_training_loop = False
 
 # Training
 seed = 42
-num_folds = 5
+num_folds = 10
 use_folds = [0]
 train_on_all = False
 size = (384, 384)
@@ -27,7 +27,7 @@ div_factor = 5                            # default: 25, from Chest14: 1
 pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
 lr_min = 1e-6
 save_best = 'loss'
-preprocess = 'gamma'
+preprocess = 'curve4'
 freeze_for_loading = ['none']
 freeze = ['body', 'head']
 predict_inverse = True

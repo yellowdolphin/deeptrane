@@ -56,11 +56,13 @@ wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [9, 768, 768, 768]
 act_head = 'silu'
+freeze_for_loading = ['head']
+freeze = ['head']
 
 
 from pathlib import Path
 
-_accepted_types = (int, float, str, bool, tuple, list)
+_accepted_types = (int, float, str, bool, tuple, list, dict)
 cfg = {k: v for k, v in globals().items() if not k.startswith('_') and isinstance(v, _accepted_types)}
 
 cfg["name"] = Path(__file__).stem

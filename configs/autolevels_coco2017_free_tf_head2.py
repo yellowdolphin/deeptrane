@@ -59,7 +59,7 @@ act_head = 'silu'
 
 from pathlib import Path
 
-_accepted_types = (int, float, str, bool, tuple, list)
+_accepted_types = (int, float, str, bool, tuple, list, dict)
 cfg = {k: v for k, v in globals().items() if not k.startswith('_') and isinstance(v, _accepted_types)}
 
 cfg["name"] = Path(__file__).stem

@@ -5,9 +5,13 @@ gcs_paths = ['gs://kds-8285bf4361c1ca055187f1d44d73d2f621d0c5c680d39013e79c970f'
 gcs_filter = '*.tfrec'
 tfrec_filename_pattern = None
 BGR = True
-preprocess = {'bp': [0.040800,  0.060259,  0.024672],
-              'gamma': [1.026049,  1.054437,  1.010604],
-              'bp2': [-0.012288, -0.018215, -0.008333]}
+#preprocess = {'bp': [0.040800,  0.060259,  0.024672],
+#              'gamma': [1.026049,  1.054437,  1.010604],
+#              'bp2': [-0.012288, -0.018215, -0.008333]}
+preprocess = {'bp': [-0.111739,  0.033335, -0.000446],
+              'a': [0.446492,  0.536055,  0.487654],
+              'b': [0.773841,  0.842389,  0.802490],
+              'bp2': [0.061021, -0.012432, -0.006443]}
 freeze_for_loading = ['none']
 freeze = ['head']
 out_dir = '/kaggle/working'
@@ -66,7 +70,7 @@ act_head = 'silu'
 
 from pathlib import Path
 
-_accepted_types = (int, float, str, bool, tuple, list)
+_accepted_types = (int, float, str, bool, tuple, list, dict)
 cfg = {k: v for k, v in globals().items() if not k.startswith('_') and isinstance(v, _accepted_types)}
 
 cfg["name"] = Path(__file__).stem

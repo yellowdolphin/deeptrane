@@ -137,15 +137,20 @@ def init(cfg):
         cfg.channel_size = 256 * 3
         cfg.targets = ['target']
 
-
     # Preprocessing of model inputs
-    if isinstance(cfg.preprocess, str) and (cfg.preprocess == 'gamma') and ('tf' in cfg.tags):
-        # add learnable preprocessing layer to model
-        cfg.preprocess = GammaTransformTF  # instanciate in scope (models_tf.get_pretrained_model)
+    if isinstance(cfg.preprocess, str) and ('tf' in cfg.tags):
+        # add learnable preprocessing layer (instanciated in models_tf.get_pretrained_model)
+        cfg.preprocess = (
+            GammaTransformTF if (cfg.preprocess == 'gamma') else
+            Curve4TransformTF if (cfg.preprocess == 'curve4') else
+            cfg.preprocess)
 
     elif isinstance(cfg.preprocess, dict):
         # preprocess inputs with static params
-        cfg.preprocess = {key: np.array(value) for key, value in cfg.preprocess.items()}
+        print("Preprocessing images with", cfg.preprocess)
+        cfg.preprocess = {key: tf.constant(value) for key, value in cfg.preprocess.items()}
+    else:
+        print("No preprocessing, cfg.preprocess =", cfg.preprocess)
 
 
 class GammaTransformTF(tf.keras.layers.Layer):
@@ -159,6 +164,24 @@ class GammaTransformTF(tf.keras.layers.Layer):
     def call(self, inputs):
         inputs = tf.clip_by_value(self.bp + inputs * (1 - self.bp), 1e-6, 1)  # avoid nan
         return tf.pow(inputs, self.gamma) * (1 - self.bp2) + self.bp2
+
+
+π = np.pi
+π_half = 0.5 * np.pi
+class Curve4TransformTF(tf.keras.layers.Layer):
+    "Curve4 transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"
+    def __init__(self):
+        super().__init__()
+        self.bp = self.add_weight(shape=(3,), name='preprocess/bp', initializer="zeros", trainable=True)
+        self.a = self.add_weight(shape=(3,), name='preprocess/a', trainable=True,
+                                 initializer=tf.keras.initializers.Constant([0.5, 0.5, 0.5]))
+        self.b = self.add_weight(shape=(3,), name='preprocess/b', trainable=True,
+                                 initializer=tf.keras.initializers.Constant([8/(π**2), 8/(π**2), 8/(π**2)]))
+        self.bp2 = self.add_weight(shape=(3,), name='preprocess/bp2', initializer="zeros", trainable=True)
+
+    def call(self, inputs):
+        inputs = tf.clip_by_value(self.bp + inputs * (1 - self.bp), 1e-6, 1 - 1e-6)  # avoid nan
+        return (1 - tf.cos(π_half * inputs ** self.a) ** self.b) * (1 - self.bp2) + self.bp2
 
 
 def find_images(cfg):
@@ -1144,6 +1167,9 @@ def decode_image(cfg, image_data, tfm, height, width):
         if 'gamma' in cfg.preprocess:
             gamma = cfg.preprocess['gamma']
             image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
+        if ('a' in cfg.preprocess) and ('b' in cfg.preprocess):
+            a, b = cfg.preprocess['a'], cfg.preprocess['b']
+            image = 1 - tf.cos(π_half * tf.clip_by_value(image, 1e-6, 1 - 1e-6) ** a) ** b
         if 'bp2' in cfg.preprocess:
             bp2 = cfg.preprocess['bp2']
             image = bp2 + (1 - bp2) * image
@@ -1485,8 +1511,9 @@ class CurveRMSE(MeanSquaredError):
 
 
 def on_train_end(cfg, model, metrics):
-    if ('tf' in cfg.tags) and (cfg.preprocess is not None) and not cfg.freeze_preprocess:
+    if ('tf' in cfg.tags) and isinstance(cfg.preprocess, type) and ('preprocess' not in cfg.freeze):
         # print trained preprocess parameters
         print(f"\nPreprocess weights:")
         for w in model.layers[1].weights:
+            if w.shape != (3,): continue
             print(f"    {w.name:<20} {', '.join([f'{x:9.6f}' for x in w.numpy()])}")
