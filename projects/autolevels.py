@@ -1180,10 +1180,18 @@ def decode_image(cfg, image_data, tfm, height, width):
 
     elif cfg.curve == 'beta':
         curves = get_curves(tfm, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
+
+        if height is None or width is None:
+            height, width = [int(s * cfg.presize) for s in cfg.size]
+            image = tf.image.resize(image, [height, width])
         image = map_index(image, curves, cfg.add_uniform_noise, height, width)
 
     elif cfg.curve in ['gamma', 'free']:
         curves = tf.transpose(tfm)  # (256, C)
+
+        if height is None or width is None:
+            height, width = [int(s * cfg.presize) for s in cfg.size]
+            image = tf.image.resize(image, [height, width])
         image = map_index(image, curves, height, width, 3,
                           cfg.add_uniform_noise, cfg.add_jpeg_artifacts, cfg.sharpness_augment)
 
@@ -1405,7 +1413,7 @@ def parse_tfrecord(cfg, example):
         height = example[cfg.data_format['height']]
         width = example[cfg.data_format['width']]
     else:
-        height, width = 512, 512
+        height, width = (512, 512) if '-512-' in cfg.datasets[0] else (None, None)
 
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], tfm,
                                      height, width)

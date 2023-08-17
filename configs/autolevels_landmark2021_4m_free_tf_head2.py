@@ -23,6 +23,7 @@ num_folds = 10
 use_folds = [0]
 train_on_all = False
 size = (384, 384)
+presize = 1.0            # scale images to size * presize if tfrec with varying sizes contains no height/width
 multilabel = False
 metrics = ['curve_rmse']
 no_macro_metrics = True  # otherwise slow valid + 8-TPU-issue

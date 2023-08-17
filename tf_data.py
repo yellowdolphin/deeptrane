@@ -76,7 +76,17 @@ def get_gcs_paths(cfg):
                 pth = f'/kaggle/input/{ds}'
                 assert os.path.exists(pth), f'{pth} does not exist'
             print("trying again...")
-            gcs_paths = [KaggleDatasets().get_gcs_path(ds) for ds in cfg.datasets]
+            gcs_paths = []
+            for ds in cfg.datasets:
+                try:
+                    gcs_paths.append(KaggleDatasets().get_gcs_path(ds))
+                except BackendError as e:
+                    print(f"    {ds} failed:", e)
+                    pass
+            if len(gcs_paths) == len(cfg.datasets):
+                pass
+            else:
+                raise
 
         print("GCS paths:", gcs_paths)
         return gcs_paths
