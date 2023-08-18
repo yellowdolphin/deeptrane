@@ -66,7 +66,8 @@ def get_metadata(cfg, project):
         print("[ √ ] classes:", *cfg.classes[:4], '...' if len(cfg.classes) > 4 else '')
 
     # Check for unecessary columns, put columns in standard order, reset index
-    required_columns = ['image_id', 'image_path']
+    required_columns = ['image_path']
+    optional_columns = [s for s in ('image_id',) if s in df.columns]
     if cfg.classes:
         required_columns.append('category_id')
     if cfg.multilabel and not detection:
@@ -81,7 +82,7 @@ def get_metadata(cfg, project):
             required_columns.extend('height width'.split())
     if hasattr(project, 'extra_columns'):
         required_columns.extend(project.extra_columns(cfg))
-    df = df[required_columns].reset_index(drop=True)
+    df = df[required_columns + optional_columns].reset_index(drop=True)
 
     if DEBUG:
         print("metadata after purge:\n", df.head(3))
@@ -268,18 +269,19 @@ def maybe_filter_ar(df, cfg):
 def split_data(df, cfg, seed=42):
     if cfg.train_on_all:
         df['fold'] = -1  # fold marks the valid images of the corresponding CV fold
-        return df.set_index('image_id')
+        return df.set_index('image_id') if 'image_id' in df.columns else df
 
     if cfg.folds_json:
         # Get splitting from existing folds.json
         assert os.path.exists(cfg.folds_json), f'no file {cfg.folds_json}'
+        assert 'image_id' in df.columns, f'df needs column "image_id" for splitting with folds.json'
         folds = pd.read_json(cfg.folds_json)[['image_id', 'fold']]
         df = df.merge(folds, on='image_id')
         return df.set_index('image_id')
 
     df['fold'] = -1  # fold marks the valid images of the corresponding CV fold
     if cfg.train_on_all:
-        return df.set_index('image_id')
+        return df.set_index('image_id') if 'image_id' in df.columns else df
 
     try:
         import sklearn
@@ -305,4 +307,4 @@ def split_data(df, cfg, seed=42):
         for fold, subsets in enumerate(kf.split(df.index)):
             df.loc[subsets[1], 'fold'] = fold
 
-    return df.set_index('image_id')
+    return df.set_index('image_id') if 'image_id' in df.columns else df

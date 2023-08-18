@@ -132,6 +132,9 @@ def cv_split(cfg, use_fold):
 
     assert cfg.num_folds, 'need num_folds in config for shard splitting'
     all_files, n_files = get_shards(cfg)
+    assert n_files > 1 + use_fold, f'{n_files} shard(s) not enough with use_fold={use_fold}'
+    if n_files % cfg.num_folds:
+        print(f"Warning: number of shards ({n_files}) not divisible by num_folds ({cfg.num_folds})")
 
     train_files, valid_files = [], []
     for i, url in enumerate(all_files):

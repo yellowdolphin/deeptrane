@@ -1460,6 +1460,13 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
         return sum(159 if 'train/coco184' in fn else 499 if 'val/coco7' in fn else 
                    642 if '/train/' in fn else 643 
                    for fn in filenames)
+    if 'landmark-2021-gld2' in filenames[0]:
+        return sum(
+            203368 if 'gld2-0' in fn else 203303 if 'gld2-1' in fn else 
+            203376 if 'gld2-2' in fn else 203316 if 'gld2-4' in fn else 
+            203415 if 'gld2-7' in fn else 203400 if 'gld2-8' in fn else
+            203321 if 'gld2-9' in fn else 0  # gld2-3 is corrupt, 5 and 6 missing
+            for fn in filenames)
     if all('train_' in fn for fn in filenames) and len(filenames) in [45, 6]:
         # landmark2021: no subfolders or identifiable string in urls
         # if too large, valid raises out-of-range error
