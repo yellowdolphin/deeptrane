@@ -1471,6 +1471,11 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
         # landmark2021: no subfolders or identifiable string in urls
         # if too large, valid raises out-of-range error
         return 1448943 if len(filenames) == 45 else 193665
+    if all('train_' in fn for fn in filenames) and len(filenames) in [46, 4]:
+        # landmark2020: no subfolders or identifiable string in urls
+        # if too large, valid raises out-of-range error
+        # all 31610 except train_20 ...31 (31609)
+        return 31610 * 46 if len(filenames) == 46 else 31609 * 4
     else:
         if True:
             # count them (slow)
