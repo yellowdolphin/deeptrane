@@ -106,6 +106,11 @@ def init(cfg):
         cfg.data_format = {'image': 'image'}
         cfg.inputs = ['image']
 
+    elif 'flickr' in cfg.tags:
+        cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string)}
+        cfg.data_format = {'image': 'image'}
+        cfg.inputs = ['image']
+
     # New datasets: Set meta_csv to None to search for images and generate metadata.csv on the fly 
     cfg.meta_csv = (
         cfg.meta_csv if (cfg.cloud == 'drive') else
@@ -1413,7 +1418,10 @@ def parse_tfrecord(cfg, example):
         height = example[cfg.data_format['height']]
         width = example[cfg.data_format['width']]
     else:
-        height, width = (512, 512) if '-512-' in cfg.datasets[0] else (None, None)
+        height, width = (
+            (512, 512) if '-512-' in cfg.datasets[0] else 
+            (512, 512) if (cfg.datasets[0] == 'flickrfacestfrecords') else 
+            (None, None))
 
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], tfm,
                                      height, width)
@@ -1456,6 +1464,9 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
     if '-of-' in filenames[0]:
         # Imagenet: Got number of items from idx files
         return sum(391 if 'validation' in fn else 1252 for fn in filenames)
+    if 'FlickrFaces' in filenames[0]:
+        # flickr: number of items in filename
+        return sum(int(fn[-10:-6]) for fn in filenames)
     if 'coco' in filenames[0]:
         return sum(159 if 'train/coco184' in fn else 499 if 'val/coco7' in fn else 
                    642 if '/train/' in fn else 643 
