@@ -65,7 +65,7 @@ if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
 from tensorflow.keras.backend import clear_session
 from models_tf import get_pretrained_model
 import tf_data
-from tf_data import cv_split, count_data_items, get_dataset, configure_data_pipeline
+from tf_data import cv_split, split_by_name, count_data_items, get_dataset, configure_data_pipeline
 from utils.tensorflow import get_lr_callback
 
 # Import project (code, constant settings)
@@ -113,6 +113,8 @@ for use_fold in cfg.use_folds:
 
     if hasattr(project, 'split'):
         project.split(cfg)
+    elif cfg.split_by_name:
+        split_by_name(cfg)
     else:
         cv_split(cfg, use_fold)
     assert cfg.train_files and cfg.valid_files

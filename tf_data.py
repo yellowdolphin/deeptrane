@@ -116,15 +116,23 @@ def get_shards(cfg):
 
 
 def split_by_name(cfg):
-    "Split shards into train/valid, based on filename."
+    """Split shards into train/valid, based on filename.
+    
+    Specify filename substring for 'train' or 'valid', for example:
+        cfg.split_by_name = {'train': '/train-'}"""
+
+    assert isinstance(cfg.split_by_name, dict), 'cfg.split_by_name must be a dict'
+    assert ('train' in cfg.split_by_name or 'valid' in cfg.split_by_name, 
+            'cfg.split_by_name must map "train" or "valid" to a filename substring')
 
     all_files, n_files = get_shards(cfg)
 
-    train_files = [f for f in all_files if Path(f).name.startswith('train')]
-    valid_files = [f for f in all_files if Path(f).name.startswith('val')]
-    if (n_files > len(train_files) > 0) and (len(train_files) + len(valid_files) == n_files):
-        cfg.train_files = train_files
-        cfg.valid_files = valid_files
+    if 'train' in cfg.split_by_name:
+        cfg.train_files = [f for f in all_files if cfg.split_by_name['train'] in f]
+        cfg.valid_files = [f for f in all_files if f not in cfg.train_files]
+    else:
+        cfg.valid_files = [f for f in all_files if cfg.split_by_name['valid'] in f]
+        cfg.train_files = [f for f in all_files if f not in cfg.valid_files]
 
 
 def cv_split(cfg, use_fold):

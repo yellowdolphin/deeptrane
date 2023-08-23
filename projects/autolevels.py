@@ -111,7 +111,12 @@ def init(cfg):
         cfg.data_format = {'image': 'image'}
         cfg.inputs = ['image']
 
-    # New datasets: Set meta_csv to None to search for images and generate metadata.csv on the fly 
+    elif 'places365' in cfg.tags:
+        cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string)}
+        cfg.data_format = {'image': 'image'}
+        cfg.inputs = ['image']
+
+    # New datasets for pytorch: Set meta_csv to None to search for images and generate metadata.csv on the fly 
     cfg.meta_csv = (
         cfg.meta_csv if (cfg.cloud == 'drive') else
         Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/ImageSets/CLS-LOC/train_cls.txt') if 'imagenet' in cfg.tags else
@@ -1487,6 +1492,9 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
         # if too large, valid raises out-of-range error
         # all 31610 except train_20 ...31 (31609)
         return 31610 * 46 if len(filenames) == 46 else 31609 * 4
+    if Path(filenames[0]).stem[3] == '-':
+        # places365-tfrec: number of items in filename
+        return sum(int(Path(fn).stem[4:]) for fn in filenames)
     else:
         if True:
             # count them (slow)
