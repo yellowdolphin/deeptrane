@@ -5,6 +5,7 @@ from functools import partial
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.framework.errors import PermissionDeniedError
 
 from augmentation import get_tf_tfms
 
@@ -38,9 +39,38 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
     return np.sum(n)
 
 
+def enable_private_datasets(cfg):
+    if cfg.cloud == 'kaggle':
+        # Enable GCS for private datasets
+        if not all(os.path.exists(f'/kaggle/input/{ds}') for ds in cfg.datasets):
+            print('Warning: private kaggle datasets might need to be added to your notebook')
+        from kaggle_secrets import UserSecretsClient, NotFoundError
+        user_secrets = UserSecretsClient()
+        try:
+            user_credential = user_secrets.get_gcloud_credential()
+        except NotFoundError:
+            print("NotFoundError: In notebook editor set 'Add-ons/Google Cloud SDK'")
+            raise
+        try:
+            user_secrets.set_tensorflow_credential(user_credential)
+        except NotImplementedError:
+            print("tensorflow_gcs_config import failed, probably because of installed tf version")
+            print("Using /kaggle/input instead")
+        print("[ √ ] tensorflow credential set for kaggle private datasets")
+        return
+    
+    try:
+        from google.colab import auth
+        auth.authenticate_user()  # on colab: AttributeError: 'NoneType' object has no attribute 'kernel'
+    except AttributeError:
+        print("AttributeError: call auth.authenticate_user() in colab notebook interactively!")
+    print("[ √ ] google.colab.auth.authenticate_user called")
+
+
 def get_gcs_paths(cfg):
     "Get GCS dataset paths from cfg.datasets and kaggle, fallback to cfg.gcs_paths"
 
+    if cfg.enable_private_datasets: enable_private_datasets(cfg)
     if cfg.gcs_paths: return cfg.gcs_paths
     assert cfg.datasets, 'specify either gcs_paths or datasets in config'
 
@@ -50,19 +80,6 @@ def get_gcs_paths(cfg):
 
         cfg.datasets = [Path(ds).name for ds in cfg.datasets]
 
-        if cfg.private_datasets and any([ds in cfg.private_datasets for ds in cfg.datasets]):
-            # Enable GCS for private datasets
-            for ds in cfg.private_datasets:
-                assert os.path.exists(f'/kaggle/input/{ds}'), f'Add {ds} to your notebook!'
-            from kaggle_secrets import UserSecretsClient
-            user_secrets = UserSecretsClient()
-            user_credential = user_secrets.get_gcloud_credential()
-            try:
-                user_secrets.set_tensorflow_credential(user_credential)
-            except NotImplementedError:
-                print("tensorflow_gcs_config import failed, probably because of installed tf version")
-                print("Using /kaggle/input instead")
-
         try:
             gcs_paths = [KaggleDatasets().get_gcs_path(ds) for ds in cfg.datasets]
         except ConnectionError:
@@ -70,7 +87,11 @@ def get_gcs_paths(cfg):
             assert cfg.gcs_paths, 'No gcs_paths defined in config'
             assert len(cfg.gcs_paths) == len(cfg.datasets), f"cfg.gcs_paths mismatch cfg.datasets"
             gcs_paths = cfg.gcs_paths
-        except BackendError:
+        except BackendError as e:
+            # obsolete?
+            #if 'private dataset' in e.args[0]:
+            #    print("Private kaggle datasets? In notebook editor set 'Add-ons/Google Cloud SDK'")
+            #    raise
             print(f"BackendError: checking dataset paths...")
             for ds in cfg.datasets:
                 pth = f'/kaggle/input/{ds}'
@@ -81,7 +102,7 @@ def get_gcs_paths(cfg):
                 try:
                     gcs_paths.append(KaggleDatasets().get_gcs_path(ds))
                 except BackendError as e:
-                    print(f"    {ds} failed:", e)
+                    print(f"    {ds} failed:", e.args[0])
                     pass
             if len(gcs_paths) == len(cfg.datasets):
                 pass
@@ -91,27 +112,41 @@ def get_gcs_paths(cfg):
         print("GCS paths:", gcs_paths)
         return gcs_paths
 
-    if cfg.private_datasets and any([ds in cfg.private_datasets for ds in cfg.datasets]):
-        from google.colab import auth
-        auth.authenticate_user()
-
     gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
-
     return gcs_paths
+
+
+def gcs_glob(url, pattern, cfg):
+    try:
+        paths = tf.io.gfile.glob(f'{url}/{pattern}')
+    except PermissionDeniedError:
+        # tf.io.gfile.glob fails if private datasets are not enabled
+        if cfg.enable_private_datasets:
+            raise
+        print("PermissionDeniedError: trying with cfg.enable_private_datasets = True ...")
+        cfg.enable_private_datasets = True
+        enable_private_datasets(cfg)
+        paths = tf.io.gfile.glob(f'{url}/{pattern}')
+    if len(paths) == 0: print(f"WARNING: no urls {url}/{pattern} found")
+    return np.sort(paths)
 
 
 def get_shards(cfg):
     assert cfg.gcs_paths, 'need gcs_paths for splitting!'
+
     if cfg.gcs_filters:
-        patterns, paths = cfg.gcs_filters, cfg.gcs_paths
-        assert len(patterns) == len(paths), f'len mismatch of cfg.gcs_filters ({len(patters)}) and cfg.gcs_paths ({len(paths)})'
-        all_files = [np.sort(tf.io.gfile.glob(f'{path}/{pattern}')) for path, pattern in zip(paths, patterns)]
+        urls, patterns = cfg.gcs_paths, cfg.gcs_filters
+        assert len(patterns) == len(urls), (f'len mismatch of cfg.gcs_filters ({len(patterns)}) '
+                                            f'and cfg.gcs_paths ({len(urls)})')
+        all_files = [gcs_glob(url, pattern, cfg) for url, pattern in zip(urls, patterns)]
     else:
         pattern = cfg.gcs_filter or '*.tfrec*'
-        all_files = [np.sort(tf.io.gfile.glob(f'{gcs_path}/{pattern}')) for gcs_path in cfg.gcs_paths]
+        all_files = [gcs_glob(url, pattern, cfg) for url in cfg.gcs_paths]
+
     all_files = np.concatenate(all_files)
     n_files = len(all_files)
     assert n_files > 0, f'no tfrec files found at {cfg.gcs_paths}'
+
     return all_files, n_files
 
 
@@ -122,7 +157,7 @@ def split_by_name(cfg):
         cfg.split_by_name = {'train': '/train-'}"""
 
     assert isinstance(cfg.split_by_name, dict), 'cfg.split_by_name must be a dict'
-    assert ('train' in cfg.split_by_name or 'valid' in cfg.split_by_name, 
+    assert 'train' in cfg.split_by_name or 'valid' in cfg.split_by_name, (
             'cfg.split_by_name must map "train" or "valid" to a filename substring')
 
     all_files, n_files = get_shards(cfg)

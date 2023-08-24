@@ -1200,6 +1200,7 @@ def decode_image(cfg, image_data, tfm, height, width):
         curves = tf.transpose(tfm)  # (256, C)
 
         if height is None or width is None:
+            assert cfg.presize, f'neither image height/width nor cfg.presize is defined'
             height, width = [int(s * cfg.presize) for s in cfg.size]
             image = tf.image.resize(image, [height, width])
         image = map_index(image, curves, height, width, 3,
@@ -1425,7 +1426,8 @@ def parse_tfrecord(cfg, example):
     else:
         height, width = (
             (512, 512) if '-512-' in cfg.datasets[0] else 
-            (512, 512) if (cfg.datasets[0] == 'flickrfacestfrecords') else 
+            (512, 512) if (cfg.datasets[0] == 'flickrfacestfrecords') else
+            (256, 256) if 'places365' in cfg.tags else
             (None, None))
 
     features['image'] = decode_image(cfg, example[cfg.data_format['image']], tfm,
@@ -1495,6 +1497,16 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
     if Path(filenames[0]).stem[3] == '-':
         # places365-tfrec: number of items in filename
         return sum(int(Path(fn).stem[4:]) for fn in filenames)
+    if tfrec_filename_pattern is not None:
+        "Infer number of items from tfrecord file names."
+        tfrec_filename_pattern = tfrec_filename_pattern or r"-([0-9]*)\."
+        pattern = re.compile(tfrec_filename_pattern)
+        n = [int(pattern.search(fn).group(1)) for fn in filenames if pattern.search(fn)]
+        if len(n) < len(filenames):
+            print(f"WARNING: only {len(n)} / {len(filenames)} urls follow the convention:")
+            for fn in filenames:
+                print(fn)
+        return sum(n)
     else:
         if True:
             # count them (slow)

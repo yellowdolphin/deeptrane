@@ -1,9 +1,14 @@
 # Setup
 project = 'autolevels'
-datasets = ['places365-tfrec-0', 'places365-tfrec-0']
-gcs_paths = ['gs://kds-f97ff9e60fce011d6acf56c5223ac9a3d1236885b50d7baf9eaa0451']
-gcs_filters = ['*.tfrec']
-tfrec_filename_pattern = None
+datasets = ['places365-tfrec-0', 'places365-tfrec-1']
+enable_private_datasets = True
+gcs_paths = ['gs://kds-b9522d37646f5292f6376eea3f3bd63a8fbc2d8e2bad53f3d7e65b97', 'gs://kds-b9522d37646f5292f6376eea3f3bd63a8fbc2d8e2bad53f3d7e65b97']
+
+#gcs_filters = ['*/*.tfrec', '*/*.tfrec']  # individual filter for each gcs_path
+gcs_filter = '*/*.tfrec'
+#tfrec_filename_pattern = r'*.tfrec'  # for count_data_items
+### TODO: can cases in autolevels.count_data_items be replaced by a tfrec_filename_pattern?
+
 split_by_name = {'valid': 'valid'}  # specify filename substring for 'train' or 'valid'
 BGR = False
 #preprocess = {'bp': [],
