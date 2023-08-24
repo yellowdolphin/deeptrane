@@ -2,7 +2,8 @@
 project = 'autolevels'
 datasets = ['places365-tfrec-0', 'places365-tfrec-1']
 enable_private_datasets = True
-gcs_paths = ['gs://kds-b9522d37646f5292f6376eea3f3bd63a8fbc2d8e2bad53f3d7e65b97', 'gs://kds-db5957173dabc751d4970483122e29658abc123e9ac350c3ed76dc5b']
+gcs_paths = ['gs://kds-b9522d37646f5292f6376eea3f3bd63a8fbc2d8e2bad53f3d7e65b97', 
+             'gs://kds-db5957173dabc751d4970483122e29658abc123e9ac350c3ed76dc5b']
 
 #gcs_filters = ['*/*.tfrec', '*/*.tfrec']  # individual filter for each gcs_path
 gcs_filter = '*/*.tfrec'

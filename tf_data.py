@@ -71,7 +71,8 @@ def get_gcs_paths(cfg):
     "Get GCS dataset paths from cfg.datasets and kaggle, fallback to cfg.gcs_paths"
 
     if cfg.enable_private_datasets: enable_private_datasets(cfg)
-    if cfg.gcs_paths: return cfg.gcs_paths
+    if cfg.gcs_paths and isinstance(cfg.gcs_paths, list): 
+        return cfg.gcs_paths
     assert cfg.datasets, 'specify either gcs_paths or datasets in config'
 
     if cfg.cloud == 'kaggle':
@@ -112,8 +113,11 @@ def get_gcs_paths(cfg):
         print("GCS paths:", gcs_paths)
         return gcs_paths
 
-    gcs_paths = [cfg.gcs_paths[ds] for ds in cfg.datasets]
-    return gcs_paths
+    if isinstance(cfg.gcs_paths, dict):
+        print("Deprecated: defining cfg.gcs_paths as a dict, use list instead!")
+        return [cfg.gcs_paths[ds] for ds in cfg.datasets]
+
+    raise ValueError("gcs_paths can only be determined in kaggle notebooks!")
 
 
 def gcs_glob(url, pattern, cfg):
