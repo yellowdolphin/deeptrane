@@ -154,6 +154,10 @@ for use_fold in cfg.use_folds:
         mode='min' if 'loss' in cfg.save_best else 'max',
         save_weights_only=True,
         save_freq='epoch', verbose=1)
+    save_all = tf.keras.callbacks.ModelCheckpoint(
+        f'{cfg.out_dir}/{cfg.arch_name}_ep.h5', save_best_only=False,
+        save_weights_only=True,
+        save_freq='epoch', verbose=1)
     lr_callback = get_lr_callback(cfg)
 
     clear_session()
@@ -175,7 +179,7 @@ for use_fold in cfg.use_folds:
                         steps_per_epoch=batches_per_epoch,
                         validation_steps=cfg.validation_steps,
                         epochs=cfg.epochs,
-                        callbacks=[lr_callback, save_best, csv_logger],
+                        callbacks=[lr_callback, (save_best if cfg.save_best else save_all), csv_logger],
                         verbose=cfg.batch_verbose,
                         initial_epoch=cfg.rst_epoch,
                         )
