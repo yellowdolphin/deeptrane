@@ -155,7 +155,7 @@ for use_fold in cfg.use_folds:
         save_weights_only=True,
         save_freq='epoch', verbose=1)
     save_all = tf.keras.callbacks.ModelCheckpoint(
-        f'{cfg.out_dir}/{cfg.arch_name}_ep.h5', save_best_only=False,
+        f'{cfg.out_dir}/{cfg.arch_name}''_ep{epoch:03d}.h5', save_best_only=False,
         save_weights_only=True,
         save_freq='epoch', verbose=1)
     lr_callback = get_lr_callback(cfg)
