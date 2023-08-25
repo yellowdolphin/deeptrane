@@ -53,7 +53,6 @@ bn_eps = 1e-5
 #rst_path = '/kaggle/input/cassava-deeptrane-rst'
 #rst_name = ''
 optimizer = "Adam"  # Adam AdamW SGD
-wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [24, 768, 768, 768]
 act_head = 'silu'

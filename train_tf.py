@@ -148,16 +148,17 @@ for use_fold in cfg.use_folds:
     # Training callbacks
     logfile = f'{cfg.out_dir}/metrics_fold{use_fold}.csv'
     csv_logger = CSVLogger(logfile)
-    save_best = tf.keras.callbacks.ModelCheckpoint(
-        f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
-        monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
-        mode='min' if 'loss' in cfg.save_best else 'max',
-        save_weights_only=True,
-        save_freq='epoch', verbose=1)
-    save_all = tf.keras.callbacks.ModelCheckpoint(
-        f'{cfg.out_dir}/{cfg.arch_name}''_ep{epoch:03d}.h5', save_best_only=False,
-        save_weights_only=True,
-        save_freq='epoch', verbose=1)
+    save_chk = (
+        tf.keras.callbacks.ModelCheckpoint(
+            f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
+            monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
+            mode='min' if 'loss' in cfg.save_best else 'max',
+            save_weights_only=True,
+            save_freq='epoch', verbose=1) if cfg.save_best else
+        tf.keras.callbacks.ModelCheckpoint(
+            f'{cfg.out_dir}/{cfg.arch_name}''_ep{epoch:03d}.h5', save_best_only=False,
+            save_weights_only=True,
+            save_freq='epoch', verbose=1))
     lr_callback = get_lr_callback(cfg)
 
     clear_session()
@@ -179,7 +180,7 @@ for use_fold in cfg.use_folds:
                         steps_per_epoch=batches_per_epoch,
                         validation_steps=cfg.validation_steps,
                         epochs=cfg.epochs,
-                        callbacks=[lr_callback, (save_best if cfg.save_best else save_all), csv_logger],
+                        callbacks=[lr_callback, save_chk, csv_logger],
                         verbose=cfg.batch_verbose,
                         initial_epoch=cfg.rst_epoch,
                         )

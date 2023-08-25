@@ -40,7 +40,6 @@ cfg = dict(
     rst_path = '/kaggle/input/autolevels-modelbox',
     #rst_name = '',
     optimizer = "Adam",  # Adam, AdamW, SGD
-    wd = 5e-2,
     dropout_ps = [],
 )
 

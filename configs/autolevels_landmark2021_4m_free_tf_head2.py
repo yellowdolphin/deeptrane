@@ -70,7 +70,6 @@ rst_path = '/kaggle/input/autolevels-modelbox'
 rst_name = 'free_efnv2s_r608.h5'
 rst_epoch = 48
 optimizer = "Adam"  # Adam AdamW SGD
-wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [12, 768, 768, 768]
 act_head = 'silu'

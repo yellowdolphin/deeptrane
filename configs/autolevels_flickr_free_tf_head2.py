@@ -1,19 +1,17 @@
 # Setup
 project = 'autolevels'
 datasets = ['flickrfacestfrecords']
-gcs_paths = ['gs://kds-f97ff9e60fce011d6acf56c5223ac9a3d1236885b50d7baf9eaa0451']
+gcs_paths = ['gs://kds-c922a5927286da71f584b1434bd5b31d19e55d463b3f38f39190dc8d']
 gcs_filters = ['FlickrFaces*.tfrec']
 tfrec_filename_pattern = None
 BGR = False
 #preprocess = {'bp': [],
 #              'gamma': [],
 #              'bp2': []}
-#preprocess = {'bp': [0.0, 0.0, 0.0],
-#              'a': [0.463185,  0.483004,  0.409333],
-#              'b': [0.776565,  0.797041,  0.729030],
-#              'bp2': [0.014465,  0.021648, -0.015674]}
-freeze_for_loading = ['none']
-freeze = ['head']
+preprocess = {'bp': [0.008605,  0.007362, -0.000540],
+              'a': [0.488820,  0.487319,  0.485125],
+              'b': [0.822143,  0.823371,  0.821874],
+              'bp2': [0.008913,  0.008150,  0.003478]}
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
@@ -59,14 +57,13 @@ augmentation = 'autolevels_aug_tf'
 arch_name = 'efnv2s'
 bn_eps = 1e-5
 rst_path = '/kaggle/input/autolevels-modelbox'
-rst_name = 'free_efnv2s_r432.h5'
+#rst_name = 'free_efnv2s_r432.h5'
 optimizer = "Adam"  # Adam AdamW SGD
-wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [9, 768, 768, 768]
 act_head = 'silu'
-freeze_for_loading = ['head']
-freeze = ['head']
+freeze_for_loading = ['none']
+freeze = ['head', 'bn']
 
 
 from pathlib import Path

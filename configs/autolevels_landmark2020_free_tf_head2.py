@@ -2,10 +2,10 @@
 project = 'autolevels'
 datasets = [f'google-landmark-clean-tfrecords-512-{i}' for i in (1, 2, 3, 4)]
 gcs_paths = [
-    'gs://kds-285d28a37006484fd6b75c193fdfc8e9bc699dd88364ea0031a85def', 
-    'gs://kds-64ce1f613517f97c1abea3d13edc6b453f76d1b66ea3b16605edd00f', 
-    'gs://kds-20ad401e0bd5b0edada05119f11878681a060b3c77b1f3f22d9fb639', 
-    'gs://kds-e0756fa88fbd87ce7be6f9f29d3c4f2dec70dfaff148889098d9f305'
+    'gs://kds-47e8c8e0498fd2a73c64f08dfbc5c5c7717d038647d1f61be9d9e7d9', 
+    'gs://kds-42c17b0d60051b066cdc8bc86242e4ef12aee7067011bca59769264b', 
+    'gs://kds-6ff3aaf6f62e12fc31f6fbac6093f61fc8babe0215cb271655e01923', 
+    'gs://kds-296708b03433ff192f31a9eeb48471fe583d0df4ff50103e50b244e3'
 ]
 gcs_filter = '*.tfrec'
 tfrec_filename_pattern = None
@@ -17,8 +17,6 @@ BGR = True
 #              'a': [0.463185,  0.483004,  0.409333],
 #              'b': [0.776565,  0.797041,  0.729030],
 #              'bp2': [0.014465,  0.021648, -0.015674]}
-freeze_for_loading = ['none']
-freeze = ['head']
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
@@ -65,13 +63,14 @@ augmentation = 'autolevels_aug_tf'
 arch_name = 'efnv2s'
 bn_eps = 1e-5
 rst_path = '/kaggle/input/autolevels-modelbox'
-rst_name = 'free_efnv2s_r608.h5'
+#rst_name = 'free_efnv2s_r608.h5'
 rst_epoch = 48
 optimizer = "Adam"  # Adam AdamW SGD
-wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [12, 768, 768, 768]
 act_head = 'silu'
+freeze_for_loading = ['head', 'bn']
+freeze = ['head', 'bn']
 
 
 from pathlib import Path

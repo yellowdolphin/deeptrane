@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-bcc2ef9e500b39b7fe6231a480ccec03e67f3e0845a06ea3e2d978c2', 'gs://kds-e84b1a850a5c4d8646876103b3f9bf4b0df417a2d3e2369c31e74907']
+gcs_paths = ['gs://kds-9e46f1c90d37d3f3ef3afd5bfe1ba1a6338ce107518ce661773f517b', 'gs://kds-6d3f0c6cc6f01044f6d66e3bdd7b105d60bd74eb0327884840dbbc9d']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -52,12 +52,11 @@ bn_eps = 1e-5
 #rst_path = '/kaggle/input/cassava-deeptrane-rst'
 #rst_name = ''
 optimizer = "Adam"  # Adam AdamW SGD
-wd = 5e-2
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [9, 768, 768, 768]
 act_head = 'silu'
-freeze_for_loading = ['head']
-freeze = ['head']
+freeze_for_loading = ['head', 'bn']
+freeze = ['head', 'bn']
 
 
 from pathlib import Path

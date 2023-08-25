@@ -47,7 +47,6 @@ cfg = dict(
     #rst_path = '/kaggle/input/cassava-deeptrane-rst',
     #rst_name = '',
     optimizer = "Adam",  # Adam, AdamW, SGD
-    wd = 5e-2,
     dropout_ps = [],
 )
 
