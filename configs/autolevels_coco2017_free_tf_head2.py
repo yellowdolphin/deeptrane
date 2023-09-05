@@ -4,6 +4,14 @@ datasets = ['coco-2017-tfrecords']
 gcs_paths = ['gs://kds-ab1a589f039440f4f06746ab061b6ef63b2f1534520566b8be00a454']
 gcs_filter = '*/*/coco*.tfrecord'
 tfrec_filename_pattern = None
+preprocess = {
+    'bp': [0.0084, 0.0102, 0.0091],
+    'gamma': [0.9937, 1.0027, 0.9919],
+    'bp2': [0.0088, 0.0103, 0.0097],
+    'bp_ref': [0.0085, 0.0232, 0.0068],
+    'gamma_ref': [0.9992, 1.0180, 0.9982],
+    'bp2_ref': [0.0095, 0.0031, 0.0111],
+}
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
@@ -54,6 +62,8 @@ optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [12, 768, 768, 768]
 act_head = 'silu'
+freeze_for_loading = ['none']
+freeze = ['head', 'bn']
 
 
 from pathlib import Path

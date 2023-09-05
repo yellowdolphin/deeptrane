@@ -1183,6 +1183,18 @@ def decode_image(cfg, image_data, tfm, height, width):
         if 'bp2' in cfg.preprocess:
             bp2 = cfg.preprocess['bp2']
             image = bp2 + (1 - bp2) * image
+
+        # restore bias from reference dataset (inverse transform) 
+        if 'bp2_ref' in cfg.preprocess:
+            bp = cfg.preprocess['bp2'] / (cfg.preprocess['bp2'] - 1)
+            image = bp + (1 - bp) * image
+        if 'gamma_ref' in cfg.preprocess:
+            gamma = 1 / cfg.preprocess['gamma_ref']
+            image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
+        if 'bp_ref' in cfg.preprocess:
+            bp2 = cfg.preprocess['bp_ref'] / (cfg.preprocess['bp_ref'] - 1)
+            image = bp2 + (1 - bp2) * image
+        
         image = tf.cast(tf.clip_by_value(image * 255, 0, 255), tf.uint8)
     
     if cfg.curve is None:
