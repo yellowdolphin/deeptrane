@@ -247,6 +247,9 @@ def get_tf_tfms(cfg, mode='train'):
     flags = Config(f'configs/{cfg.augmentation}')
     # inputs is dict or tuple. index/keys must accord to data_format!
 
+    # catmix doubles the size of input images
+    size = [s // 2 for s in cfg.size] if cfg.catmix else cfg.size
+
     if mode == 'train':
         def random_h_or_v_crop(image, size):
             if tf.random.uniform([]) > 0.5:  # crop either horizontally or vertically
@@ -270,7 +273,7 @@ def get_tf_tfms(cfg, mode='train'):
 
         def tfms(inputs, targets, sample_weights=None):
             image = inputs[0] if isinstance(inputs, tuple) else inputs['image']
-            image = tf.image.resize(image, cfg.size)
+            image = tf.image.resize(image, size)
             image = tf.image.transpose(image) if flags.transpose and tf.random.uniform([]) < 0.5 else image
             image = tf.image.random_flip_left_right(image) if flags.hflip else image
             image = tf.image.random_flip_up_down(image) if flags.vflip else image
@@ -280,7 +283,7 @@ def get_tf_tfms(cfg, mode='train'):
             image = tf.image.random_brightness(image, **flags.brightness) if flags.brightness else image
             image = rotate(image) if (flags.rotate and tf.random.uniform([]) < 0.5) else image
             if flags.random_crop and (tf.random.uniform([]) < 0.75):
-                image = random_h_or_v_crop(image, cfg.size)
+                image = random_h_or_v_crop(image, size)
 
             # tf.image_random_jpeg_quality broken on kaggle TPUs
             #if flags.random_jpeg_quality and tf.random.uniform([]) < 0.75:
@@ -296,7 +299,7 @@ def get_tf_tfms(cfg, mode='train'):
 
             if flags.noise_level:
                 rnd_factor = tf.random.uniform(())
-                image += cfg.noise_level * rnd_factor * tf.random.normal((*cfg.size, 3))
+                image += cfg.noise_level * rnd_factor * tf.random.normal((*size, 3))
                 image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
 
             if isinstance(inputs, tuple):
@@ -312,7 +315,7 @@ def get_tf_tfms(cfg, mode='train'):
     else:
         def tfms(inputs, targets, sample_weights=None):
             image = inputs[0] if isinstance(inputs, tuple) else inputs['image']
-            image = tf.image.resize(image, cfg.size)
+            image = tf.image.resize(image, size)
             if isinstance(inputs, tuple):
                 inputs = (image, *inputs[1:])
             else:

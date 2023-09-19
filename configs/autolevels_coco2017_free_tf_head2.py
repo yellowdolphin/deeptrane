@@ -52,6 +52,7 @@ add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)
 augmentation = 'autolevels_aug_tf'
+catmix = False                 # compose input of 4 images
 
 # Model
 arch_name = 'efnv2s'
@@ -60,10 +61,10 @@ bn_eps = 1e-5
 #rst_name = ''
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [12, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'silu'
 freeze_for_loading = ['none']
-freeze = ['head']
+freeze = ['head', 'bn']
 
 
 from pathlib import Path

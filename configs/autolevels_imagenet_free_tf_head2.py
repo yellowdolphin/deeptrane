@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-9e46f1c90d37d3f3ef3afd5bfe1ba1a6338ce107518ce661773f517b', 'gs://kds-6d3f0c6cc6f01044f6d66e3bdd7b105d60bd74eb0327884840dbbc9d']
+gcs_paths = ['gs://kds-ae055ee1ec472a6396216b6cb62636b49a2977e86ee4caf1f4dfb827', 'gs://kds-326b671ea9274fa5879156fa3bc0e99abb178bcd95927c43984ff20b']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -40,11 +40,12 @@ curve4_b_range = (0.4, 1.2)
 mirror_curve4 = True
 p_gamma = 0.4                  # probability for using Gamma curve
 p_beta = 0.33                  # probability for using Beta PDF rather than Curve4
-add_uniform_noise = False       # add uniform noise to mask uint8 discretization [bool|float]
+add_uniform_noise = False      # add uniform noise to mask uint8 discretization [bool|float]
 add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)
 augmentation = 'autolevels_aug_tf'
+catmix = True                  # compose input of 4 images
 
 # Model
 arch_name = 'efnv2s'
@@ -55,8 +56,8 @@ optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [9, 768, 768, 768]
 act_head = 'silu'
-freeze_for_loading = ['head', 'bn']
-freeze = ['head', 'bn']
+freeze_for_loading = ['none']
+freeze = ['head']
 
 
 from pathlib import Path

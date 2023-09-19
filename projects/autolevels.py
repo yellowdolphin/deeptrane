@@ -145,7 +145,7 @@ def init(cfg):
     else:
         cfg.dataset_class = AugInvCurveDataset3
         cfg.channel_size = 256 * 3
-        cfg.targets = ['target']
+        cfg.targets = ['target', 'tfm'] if cfg.catmix else ['target']
 
     # Preprocessing of model inputs
     if isinstance(cfg.preprocess, str) and ('tf' in cfg.tags):
@@ -1229,7 +1229,7 @@ def decode_image(cfg, image_data, tfm, height, width):
     elif isinstance(cfg.preprocess, dict):
         image = preprocess_image(image, cfg.preprocess)
 
-    if isinstance(cfg.curve, str):
+    if isinstance(cfg.curve, str) and not cfg.catmix:
         return curve_tfm_image(cfg, image, tfm, height, width)
 
     return tf.cast(image, tf.float32) / 255.0
@@ -1469,20 +1469,36 @@ def parse_tfrecord(cfg, example):
         features['target_bp2'] = target_bp2
         features['target_log_gamma'] = target_log_gamma
 
+    if cfg.catmix and isinstance(cfg.curve, str):
+        # apply tfm in post_catmix
+        features['tfm'] = tfm
+        features['height'] = height
+        features['width'] = width
+
     # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict
     inputs = tuple(features[key] for key in cfg.inputs)
     targets = tuple(features[key] for key in cfg.targets)
-    #print("inputs:", type(inputs), inputs)  # <class 'tuple'> (<tf.Tensor 'clip_by_value_2:0' shape=(None, None, 3) dtype=float32>,)
-    #print("targets", type(targets), targets)  # <class 'tuple'> (<tf.Tensor 'Const_1:0' shape=(768,) dtype=float32>,)
 
     return inputs, targets
+
+
+def post_catmix(cfg, inputs, targets):
+    # apply curve tfm
+    target, tfm = targets
+    height, width = cfg.size  # fixed size of images composed by catmix
+    image = inputs[0]
+    image = tf.cast(tf.clip_by_value(image * 255, 0, 255), tf.uint8)
+    image = curve_tfm_image(cfg, image, tfm, height, width)
+    return (image,), (target,)
+
 
 def count_examples_in_tfrec(fn):
     count = 0
     for _ in tf.data.TFRecordDataset(fn):
         count += 1
     return count
+
 
 def count_data_items(filenames, tfrec_filename_pattern=None):
     if '-of-' in filenames[0]:

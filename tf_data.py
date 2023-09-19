@@ -287,6 +287,19 @@ def parse_tfrecord(cfg, example):
     return inputs, targets
 
 
+def two_by_two(t):
+    # concatenate batch of 4 images: [4, H, W, C] -> [2*H, 2*W, C]
+    return tf.concat([tf.concat([t[0], t[1]], axis=0), tf.concat([t[2], t[3]], axis=0)], axis=1)
+
+
+def catmix(inputs, targets):
+    # after batch(N), each tuple element e has new dim: e.shape[0] = N
+    images = inputs[0]
+    single_image = two_by_two(images)
+    four_identical_images = tf.tile(single_image[None, ...], [4, 1, 1, 1])
+    return (four_identical_images,), targets
+
+
 def get_dataset(cfg, project, mode='train'):
     filenames = cfg.train_files if mode == 'train' else cfg.valid_files
     if cfg.DEBUG: tf.print(f'urls for mode "{mode}":', filenames)
@@ -294,7 +307,6 @@ def get_dataset(cfg, project, mode='train'):
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = False  # enables parallel data streaming, loses order
     tfms = get_tf_tfms(cfg, mode)
-    data_format = cfg.data_format  # assume is mode agnostic for now
     bs = cfg.bs
     bs *= cfg.n_replicas
     if cfg.double_bs_in_valid and (mode != 'train'): bs *= 2
@@ -310,6 +322,12 @@ def get_dataset(cfg, project, mode='train'):
     dataset = dataset.map(tfms, num_parallel_calls=AUTO) if tfms else dataset
     dataset = dataset.repeat() if mode == 'train' else dataset
     dataset = dataset.shuffle(shuffle) if shuffle else dataset
+    if cfg.catmix:
+        dataset = dataset.batch(4)
+        dataset = dataset.map(catmix, num_parallel_calls=AUTO)
+        dataset = dataset.unbatch()
+        if hasattr(project, 'post_catmix'):
+            dataset = dataset.map(partial(project.post_catmix, cfg), num_parallel_calls=AUTO)
     dataset = dataset.batch(bs)
     dataset = dataset.prefetch(AUTO)
 
