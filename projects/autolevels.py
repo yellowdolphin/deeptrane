@@ -1154,53 +1154,38 @@ def map_index(image, curves, height=None, width=None, channels=3,
     return image
 
 
-def decode_image(cfg, image_data, tfm, height, width):
-    "Decode image and apply curve transform tfm"
-    # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
-    # => read height, width features from tfrec.
-    
-    image = tf.image.decode_jpeg(image_data, channels=3)
-    
-    if cfg.BGR:
-        image = tf.reverse(image, axis=[-1])
+def preprocess_image(image, preprocess):
+    # apply dataset-specific normalization
+    image = tf.cast(image, tf.float32) / 255.0
+    if 'bp' in preprocess:
+        bp = preprocess['bp']
+        image = bp + (1 - bp) * image
+    if 'gamma' in preprocess:
+        gamma = preprocess['gamma']
+        image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
+    if ('a' in preprocess) and ('b' in preprocess):
+        a, b = preprocess['a'], preprocess['b']
+        image = 1 - tf.cos(π_half * tf.clip_by_value(image, 1e-6, 1 - 1e-6) ** a) ** b
+    if 'bp2' in preprocess:
+        bp2 = preprocess['bp2']
+        image = bp2 + (1 - bp2) * image
 
-    if cfg.normalize in ['torch', 'tf', 'caffe']:
-        from keras.applications.imagenet_utils import preprocess_input
-        return preprocess_input(image, mode=cfg.normalize)
+    # restore bias from reference dataset (inverse transform) 
+    if 'bp2_ref' in preprocess:
+        bp = preprocess['bp2'] / (preprocess['bp2'] - 1)
+        image = bp + (1 - bp) * image
+    if 'gamma_ref' in preprocess:
+        gamma = 1 / preprocess['gamma_ref']
+        image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
+    if 'bp_ref' in preprocess:
+        bp2 = preprocess['bp_ref'] / (preprocess['bp_ref'] - 1)
+        image = bp2 + (1 - bp2) * image
 
-    elif isinstance(cfg.preprocess, dict):
-        # apply dataset-specific normalization
-        image = tf.cast(image, tf.float32) / 255.0
-        if 'bp' in cfg.preprocess:
-            bp = cfg.preprocess['bp']
-            image = bp + (1 - bp) * image
-        if 'gamma' in cfg.preprocess:
-            gamma = cfg.preprocess['gamma']
-            image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
-        if ('a' in cfg.preprocess) and ('b' in cfg.preprocess):
-            a, b = cfg.preprocess['a'], cfg.preprocess['b']
-            image = 1 - tf.cos(π_half * tf.clip_by_value(image, 1e-6, 1 - 1e-6) ** a) ** b
-        if 'bp2' in cfg.preprocess:
-            bp2 = cfg.preprocess['bp2']
-            image = bp2 + (1 - bp2) * image
+    return tf.cast(tf.clip_by_value(image * 255, 0, 255), tf.uint8)
 
-        # restore bias from reference dataset (inverse transform) 
-        if 'bp2_ref' in cfg.preprocess:
-            bp = cfg.preprocess['bp2'] / (cfg.preprocess['bp2'] - 1)
-            image = bp + (1 - bp) * image
-        if 'gamma_ref' in cfg.preprocess:
-            gamma = 1 / cfg.preprocess['gamma_ref']
-            image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
-        if 'bp_ref' in cfg.preprocess:
-            bp2 = cfg.preprocess['bp_ref'] / (cfg.preprocess['bp_ref'] - 1)
-            image = bp2 + (1 - bp2) * image
-        
-        image = tf.cast(tf.clip_by_value(image * 255, 0, 255), tf.uint8)
-    
-    if cfg.curve is None:
-        return tf.cast(image, tf.float32) / 255.0
 
-    elif cfg.curve == 'beta':
+def curve_tfm_image(cfg, image, tfm, height, width):
+    if cfg.curve == 'beta':
         curves = get_curves(tfm, alpha_scale=cfg.alpha_scale or 1, beta_decay=cfg.beta_decay or 10)  # (256, C)
 
         if height is None or width is None:
@@ -1225,9 +1210,29 @@ def decode_image(cfg, image_data, tfm, height, width):
         rnd_factor = tf.random.uniform(())
         image += cfg.noise_level * rnd_factor * tf.random.normal((height, width, 3))
     
-    image = tf.clip_by_value(image, 0, 1)  # does it matter?
+    return tf.clip_by_value(image, 0, 1)  # does it matter?
 
-    return image
+
+def decode_image(cfg, image_data, tfm, height, width):
+    "Decode image and apply curve transform tfm"
+    # Cannot use image.shape: ValueError: Cannot convert a partially known TensorShape (None, None, 3) to a Tensor
+    # => read height, width features from tfrec.
+    
+    image = tf.image.decode_jpeg(image_data, channels=3)
+    
+    if cfg.BGR:
+        image = tf.reverse(image, axis=[-1])
+
+    if cfg.normalize in ['torch', 'tf', 'caffe']:
+        from keras.applications.imagenet_utils import preprocess_input
+        return preprocess_input(image, mode=cfg.normalize)
+    elif isinstance(cfg.preprocess, dict):
+        image = preprocess_image(image, cfg.preprocess)
+
+    if isinstance(cfg.curve, str):
+        return curve_tfm_image(cfg, image, tfm, height, width)
+
+    return tf.cast(image, tf.float32) / 255.0
 
 
 def get_mask_uniform(ps, n_channels=3):

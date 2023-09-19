@@ -1,7 +1,7 @@
 # Setup
 project = 'autolevels'
 datasets = ['coco-2017-tfrecords']
-gcs_paths = ['gs://kds-ab1a589f039440f4f06746ab061b6ef63b2f1534520566b8be00a454']
+gcs_paths = ['gs://kds-16ca2f3bd610050e7be6f4c8cbdfc87bf140d389cf490e7186ffa5f5']
 gcs_filter = '*/*/coco*.tfrecord'
 tfrec_filename_pattern = None
 preprocess = {
@@ -63,7 +63,7 @@ dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [12, 768, 768, 768]
 act_head = 'silu'
 freeze_for_loading = ['none']
-freeze = ['head', 'bn']
+freeze = ['head']
 
 
 from pathlib import Path
