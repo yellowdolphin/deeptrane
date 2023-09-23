@@ -148,22 +148,34 @@ for use_fold in cfg.use_folds:
     # Training callbacks
     logfile = f'{cfg.out_dir}/metrics_fold{use_fold}.csv'
     csv_logger = CSVLogger(logfile)
+    cfg.checkpoint_format = cfg.checkpoint_format or 'hdf5'
+    chk_ep = '_best' if cfg.save_best else '_ep{epoch:03d}'
+    chk_suffix = '.keras' if (cfg.checkpoint_format == 'keras') else '.h5'
+    chk_filepath = f'{cfg.out_dir}/{cfg.arch_name}{chk_ep}{chk_suffix}'
+    
     save_chk = (
         tf.keras.callbacks.ModelCheckpoint(
-            f'{cfg.out_dir}/{cfg.arch_name}_best.h5', save_best_only=True,
+            chk_filepath, save_best_only=True,
             monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
             mode='min' if 'loss' in cfg.save_best else 'max',
-            save_weights_only=True,
+            save_weights_only=(not cfg.save_full_model),
             save_freq='epoch', verbose=1) if cfg.save_best else
         tf.keras.callbacks.ModelCheckpoint(
-            f'{cfg.out_dir}/{cfg.arch_name}''_ep{epoch:03d}.h5', save_best_only=False,
-            save_weights_only=True,
+            chk_filepath, save_best_only=False,
+            save_weights_only=(not cfg.save_full_model),
             save_freq='epoch', verbose=1))
     lr_callback = get_lr_callback(cfg)
 
     clear_session()
 
-    if hasattr(project, 'get_pretrained_model'):
+    if cfg.rst_name and (rst_file.suffix == '.keras'):
+        with strategy.scope():
+            model = tf.keras.models.load_model(rst_file)
+            print(f"Keras model loaded from {rst_file}")
+            if cfg.freeze is not None:
+                from models_tf import set_trainable
+                set_trainable(model, cfg.freeze)
+    elif hasattr(project, 'get_pretrained_model'):
         model = project.get_pretrained_model(cfg, strategy)
     else:
         model = get_pretrained_model(cfg, strategy)

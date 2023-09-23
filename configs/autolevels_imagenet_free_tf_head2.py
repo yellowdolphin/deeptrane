@@ -56,7 +56,7 @@ optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [9, 768, 768, 768]
 act_head = 'silu'
-freeze_for_loading = ['none']
+freeze_for_loading = ['head', 'bn']
 freeze = ['head']
 
 

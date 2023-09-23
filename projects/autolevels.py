@@ -1555,11 +1555,15 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
             raise NotImplementedError(f'autolevels.count_data_items: filename not recognized: {filenames[0]}')
 
 
+@tf.keras.utils.register_keras_serializable()
 class TFCurveRMSE(tf.keras.metrics.MeanSquaredError):
     def __init__(self, name='curve_rmse', curve='gamma', **kwargs):
         if curve == 'gamma': name = 'rmse'
         super().__init__(name=name, **kwargs)
         self.curve = curve
+
+    def get_config(self):
+        return dict(name=self.name, curve=self.curve, dtype=self.dtype)
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         if False and (self.curve == 'gamma'):
