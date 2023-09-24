@@ -379,9 +379,18 @@ def check_model_inputs(cfg, model):
 
 
 def freeze_bn(model, unfreeze=False):
+    normalization_classes = [
+        BatchNormalization,
+        tf.keras.layers.LayerNormalization]
+    if hasattr(tf.keras.layers.experimental, 'SyncBatchNormalization'):
+        normalization_classes.append(tf.keras.layers.experimental.SyncBatchNormalization)
+    if hasattr(tf.keras.layers, 'GroupNormalization'):
+        normalization_classes.append(tf.keras.layers.GroupNormalization)
+    normalization_classes = tuple(normalization_classes)
     for layer in model.layers:
-        if isinstance(layer, BatchNormalization):
+        if isinstance(layer, normalization_classes):
             layer.trainable = unfreeze
+            #print(f"setting {layer.name} trainable to {unfreeze}")
 
 
 def set_trainable(model, freeze):
@@ -408,6 +417,7 @@ def set_trainable(model, freeze):
         return
     
     # Freeze only specified parts of the model
+    # Note: layers are only trained if also their parents are trainable
     model.trainable = True
     body_index = 2 if model.layers[1].name.endswith('transform_tf') else 1
     first_head_layer_index = body_index + 1
@@ -431,8 +441,14 @@ def set_trainable(model, freeze):
 
     if 'all_but_bn' in freeze:
         print("freezing all except BN layers")
-        model.trainable = False
-        freeze_bn(model, unfreeze=True)
+        for layer in model.layers:
+            layer.trainable = False
+        freeze_bn(model, unfreeze=True)  # BN in head
+        body = model.layers[body_index]
+        body.trainable = True
+        for layer in body.layers:
+            layer.trainable = False
+        freeze_bn(body, unfreeze=True)  # BN in body
 
     if 'preprocess' in freeze and model.layers[1].name.endswith('transform_tf'):
         print("freezing preprocess layer:", model.layers[1].name)
@@ -531,7 +547,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
             from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
                                                  tf.keras.layers.GroupNormalization,
-                                                 keep_weights=False)
+                                                 keep_weights=False,
+                                                 groups=4)
 
         # Head(s)
         if efnv1:
