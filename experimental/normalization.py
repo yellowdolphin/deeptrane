@@ -9,6 +9,7 @@ def replace_bn_layers(model, layer_class, keep_weights=False, **kwargs):
     class_name = layer_class.__name__
     kwargs_str = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
     vbs = kwargs.get('virtual_batch_size', None)
+    n_replacements = 0
 
     # Auxiliary dictionary to describe the network graph
     network_dict = {'input_layers_of': {}, 'new_output_tensor_of': {}}
@@ -38,6 +39,7 @@ def replace_bn_layers(model, layer_class, keep_weights=False, **kwargs):
 
         # Replace layer (keep name)
         if isinstance(layer, BatchNormalization):
+            n_replacements += 1
             new_layer = layer_class(**kwargs, name=layer.name)
             if keep_weights:
                 new_layer.build(layer.input_shape)
@@ -94,5 +96,9 @@ def replace_bn_layers(model, layer_class, keep_weights=False, **kwargs):
                     #print("restored axis:", l.axis[0])
         else:
             raise
+
+    if n_replacements:
+        print(f"Replaced {n_replacements} instances of BatchNormalization by"
+              f" {class_name}{'(virtual_batch_size)' if vbs else ''}.")
 
     return new_model

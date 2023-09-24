@@ -61,6 +61,7 @@ freeze = ['all_but_bn']
 group_norm = False
 sync_bn = False
 instance_norm = False
+test_replace_bn_layers = False
 
 
 from pathlib import Path

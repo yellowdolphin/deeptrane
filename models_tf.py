@@ -547,8 +547,13 @@ def get_pretrained_model(cfg, strategy, inference=False):
             from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
                                                  tf.keras.layers.GroupNormalization,
-                                                 keep_weights=False,
+                                                 keep_weights=True,
                                                  groups=4)
+        elif cfg.test_replace_bn_layers:
+            from experimental.normalization import replace_bn_layers
+            pretrained_model = replace_bn_layers(pretrained_model,
+                                                 BatchNormalization,
+                                                 keep_weights=False)
 
         # Head(s)
         if efnv1:
