@@ -379,6 +379,7 @@ def check_model_inputs(cfg, model):
 
 
 def freeze_bn(model, unfreeze=False):
+    "Freeze or (unfreeze=True) unfreeze all normalization layers"
     normalization_classes = [
         BatchNormalization,
         tf.keras.layers.LayerNormalization]
@@ -400,8 +401,8 @@ def set_trainable(model, freeze):
     "all":        all layers frozen
     "head":       freeze all head layers
     "body":       freeze all body layers
-    "bn":         freeze all BatchNorm layers in the body
-    "all_but_bn": only BN is trainable
+    "bn":         freeze all normalization layers in the body
+    "all_but_bn": only normalization layers are trainable
     "preprocess": freeze any preprocess layer
     """
     freeze = freeze or set(['none'])
@@ -435,12 +436,12 @@ def set_trainable(model, freeze):
     if 'bn' in freeze:
         # freeze only BN layers in body
         body = model.layers[body_index]
-        print("freezing BN in", body.name)
+        print("freezing normalization layers in", body.name)
         freeze_bn(body)
         #body.layers[2].trainable = True  # unfreeze stem BN
 
     if 'all_but_bn' in freeze:
-        print("freezing all except BN layers")
+        print("freezing all except normalization layers")
         for layer in model.layers:
             layer.trainable = False
         freeze_bn(model, unfreeze=True)  # BN in head
@@ -533,6 +534,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
             tfimm.create_model(cfg.arch_name, pretrained=True, nb_classes=0, input_size=cfg.size))
 
         if cfg.sync_bn:
+            if cfg.gpu < 2: 
+                print("Info: sync_bn only affects distributed GPU training!")
             from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
                                                  BatchNormalization,
@@ -549,7 +552,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             pretrained_model = replace_bn_layers(pretrained_model,
                                                  tf.keras.layers.GroupNormalization,
                                                  keep_weights=True,
-                                                 groups=4)
+                                                 groups=1)
         elif cfg.test_replace_bn_layers:
             from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
@@ -718,6 +721,12 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         # Freeze/unfreeze
         set_trainable(model, cfg.freeze)
+
+        # Try setting BN momentum
+        if cfg.bn_momentum:
+            for layer in model.layers[1].layers:
+                if isinstance(layer, BatchNormalization):
+                    layer.momentum = cfg.bn_momentum
 
         # The following can probably be moved out of the strategy.scope...
 

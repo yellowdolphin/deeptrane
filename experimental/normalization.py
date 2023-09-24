@@ -98,7 +98,7 @@ def replace_bn_layers(model, layer_class, keep_weights=False, **kwargs):
             raise
 
     if n_replacements:
-        print(f"Replaced {n_replacements} instances of BatchNormalization by"
+        print(f"Replaced {n_replacements} instances of BatchNormalization with"
               f" {class_name}{'(virtual_batch_size)' if vbs else ''}.")
 
     return new_model
