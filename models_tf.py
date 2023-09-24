@@ -378,10 +378,10 @@ def check_model_inputs(cfg, model):
         assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
 
 
-def freeze_bn(model):
+def freeze_bn(model, unfreeze=False):
     for layer in model.layers:
         if isinstance(layer, BatchNormalization):
-            layer.trainable = False
+            layer.trainable = unfreeze
 
 
 def set_trainable(model, freeze):
@@ -392,6 +392,7 @@ def set_trainable(model, freeze):
     "head":       freeze all head layers
     "body":       freeze all body layers
     "bn":         freeze all BatchNorm layers in the body
+    "all_but_bn": only BN is trainable
     "preprocess": freeze any preprocess layer
     """
     freeze = freeze or set(['none'])
@@ -427,6 +428,11 @@ def set_trainable(model, freeze):
         print("freezing BN in", body.name)
         freeze_bn(body)
         #body.layers[2].trainable = True  # unfreeze stem BN
+
+    if 'all_but_bn' in freeze:
+        print("freezing all except BN layers")
+        model.trainable = False
+        freeze_bn(model, unfreeze=True)
 
     if 'preprocess' in freeze and model.layers[1].name.endswith('transform_tf'):
         print("freezing preprocess layer:", model.layers[1].name)
