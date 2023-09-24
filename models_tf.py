@@ -363,7 +363,7 @@ def BatchNorm(cfg, bn_type, name=None):
     if (bn_type == 'batch_norm') or (bn_type is True):
         return BatchNormalization(name=name)  # default
     if bn_type == 'sync_bn':
-        return tf.keras.layers.experimental.SyncBatchNormalization(name=name)
+        return BatchNormalization(name=name, synchronized=True)
     if bn_type == 'layer_norm':
         return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
     if bn_type == 'instance_norm':
@@ -535,8 +535,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if cfg.sync_bn:
             from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
-                                                 tf.keras.layers.experimental.SyncBatchNormalization,
-                                                 keep_weights=True)
+                                                 BatchNormalization,
+                                                 keep_weights=True,
+                                                 synchronized=True)
         elif cfg.instance_norm:
             from experimental.normalization import replace_bn_layers
             pretrained_model = replace_bn_layers(pretrained_model,
