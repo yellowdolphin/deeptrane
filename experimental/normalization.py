@@ -48,6 +48,10 @@ def replace_bn_layers(model, layer_class, keep_weights=False, **kwargs):
                     w_new.assign(w_old)
             x = new_layer(layer_input)
             #print(f'replaced {layer.name} by {class_name}({kwargs_str})')
+        elif layer.name.startswith('tf.math.reduce_mean'):
+            # call with inferred kwargs
+            axis = [i for i, n in enumerate(layer.get_output_shape_at(0)) if n == 1]
+            x = layer(layer_input, axis=axis, keepdims=True)
         else:
             x = layer(layer_input)
 
