@@ -360,17 +360,17 @@ def get_margin(cfg):
 
 
 def BatchNorm(cfg, bn_type, name=None):
-    if bn_type == 'batch_norm':
-        return BatchNormalization(name=name)
+    if (bn_type == 'batch_norm') or (bn_type is True):
+        return BatchNormalization(name=name)  # default
     if bn_type == 'sync_bn':
         return tf.keras.layers.experimental.SyncBatchNormalization(name=name)
     if bn_type == 'layer_norm':
         return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
     if bn_type == 'instance_norm':
         return BatchNormalization(virtual_batch_size=cfg.bs, name=name)
-    if bn_type:
-        return BatchNormalization(name=name)  # default
-    raise ValueError(f'{bn_type} is no recognized bn_type')
+    if (bn_type == 'group_norm') and hasattr(tf.keras.layers, 'GroupNormalization'):
+        return tf.keras.layers.GroupNormalization(name=name)
+    raise ValueError(f'{bn_type} is not recognized bn_type')
 
 
 def check_model_inputs(cfg, model):
