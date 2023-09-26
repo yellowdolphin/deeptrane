@@ -378,8 +378,8 @@ def check_model_inputs(cfg, model):
         assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
 
 
-def freeze_bn(model, unfreeze=False):
-    "Freeze or (unfreeze=True) unfreeze all normalization layers"
+def get_normalization_classes():
+    "Return a tuple of all supported normalization classes"
     normalization_classes = [
         BatchNormalization,
         tf.keras.layers.LayerNormalization]
@@ -387,7 +387,12 @@ def freeze_bn(model, unfreeze=False):
         normalization_classes.append(tf.keras.layers.experimental.SyncBatchNormalization)
     if hasattr(tf.keras.layers, 'GroupNormalization'):
         normalization_classes.append(tf.keras.layers.GroupNormalization)
-    normalization_classes = tuple(normalization_classes)
+    return tuple(normalization_classes)
+
+
+def freeze_bn(model, unfreeze=False):
+    "Freeze or (unfreeze=True) unfreeze all normalization layers"
+    normalization_classes = get_normalization_classes()
     for layer in model.layers:
         if isinstance(layer, normalization_classes):
             layer.trainable = unfreeze
@@ -418,7 +423,10 @@ def set_trainable(model, freeze):
         return
     
     # Freeze only specified parts of the model
-    # Note: layers are only trained if also their parents are trainable
+    # Notes: 
+    # - layers are only trained if also their parents are trainable
+    # - moving_mean, moving_var in BN are always non-trainable params but updated 
+    #   in training if (layer.momentum < 1) and (layer.trainable is True)
     model.trainable = True
     body_index = 2 if model.layers[1].name.endswith('transform_tf') else 1
     first_head_layer_index = body_index + 1
@@ -454,6 +462,29 @@ def set_trainable(model, freeze):
     if 'preprocess' in freeze and model.layers[1].name.endswith('transform_tf'):
         print("freezing preprocess layer:", model.layers[1].name)
         model.layers[1].trainable = False
+
+
+def set_bn_parameters(model, momentum=None, eps=None, debug=False):
+    "Modify `momentum` and `eps` (epsilon) parameters in all supported normalization layers"
+    if not (momentum or eps): return
+    body_index = 2 if model.layers[1].name.endswith('transform_tf') else 1
+    body = model.layers[body_index]
+
+    normalization_classes = get_normalization_classes()
+
+    n_replaced = 0
+    for layer in body.layers:
+        if isinstance(layer, normalization_classes):
+            if momentum:
+                if debug and layer.momentum != momentum:
+                    print(f"{layer.name}: changing momentum {layer.momentum} -> {momentum}")
+                layer.momentum = momentum
+            if eps:
+                if debug and layer.epsilon != eps:
+                    print(f"{layer.name}: changing eps {layer.epsilon} -> {eps}")
+                layer.epsilon = eps
+    if n_replaced:
+        print(f"Set momentum, epsilon in {n_replaced} normalization layers")
 
 
 def check_model_weights(model):
@@ -719,14 +750,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
                                    by_name=True, skip_mismatch=True)
             print(f"Weights loaded from {cfg.rst_name}")
 
-        # Freeze/unfreeze
+        # Freeze/unfreeze, set BN parameters
         set_trainable(model, cfg.freeze)
-
-        # Try setting BN momentum
-        if cfg.bn_momentum:
-            for layer in model.layers[1].layers:
-                if isinstance(layer, BatchNormalization):
-                    layer.momentum = cfg.bn_momentum
+        set_bn_parameters(model, momentum=cfg.bn_momentum, eps=cfg.bn_eps, debug=cfg.DEBUG)
 
         # The following can probably be moved out of the strategy.scope...
 

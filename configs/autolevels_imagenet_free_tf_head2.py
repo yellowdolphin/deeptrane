@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-ae055ee1ec472a6396216b6cb62636b49a2977e86ee4caf1f4dfb827', 'gs://kds-326b671ea9274fa5879156fa3bc0e99abb178bcd95927c43984ff20b']
+gcs_paths = ['gs://kds-23af25aafbbc33fb2af2e46eac28b7297e10f044b04aedaa42f590fb', 'gs://kds-6213d135f4b220083d7cf7c57a8cf38f4979ac833eda1946a146fc1e']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -57,7 +57,7 @@ dropout_ps = [0, 0, 0, 0]
 lin_ftrs = [9, 768, 768, 768]
 act_head = 'silu'
 freeze_for_loading = ['all_but_bn']
-freeze = ['head']
+freeze = ['none']
 group_norm = False
 sync_bn = False
 instance_norm = False

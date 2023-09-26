@@ -422,15 +422,8 @@ def get_pretrained_model(cfg):
             if len(incomp[0]) + len(incomp[1]) > 2:
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)
 
-    # change BN running average parameters
-    n_bn_layers = 0
-    for n, m in pretrained_model.named_modules():
-        if isinstance(m, torch.nn.BatchNorm2d) or isinstance(m, torch.nn.BatchNorm1d):
-            n_bn_layers += 1
-            m.eps = cfg.bn_eps
-            m.momentum = cfg.bn_momentum
-    if n_bn_layers:
-        print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
+    # set BN running average parameters
+    set_bn_parameters(pretrained_model, cfg.bn_momentum, cfg.bn_eps, cfg.DEBUG)
 
     # EfficientNet-V2 body has SiLU, BN (everywhere), but no Dropout.
     # Fused-MBConv (stages 1-3) and SE + 3x3-group_conv (group_size=1, stages 4-7).
@@ -659,15 +652,8 @@ def get_pretrained_timm(cfg):
             if len(incomp[0]) + len(incomp[1]) > 2:
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)
 
-    # change BN running average parameters
-    n_bn_layers = 0
-    for n, m in pretrained_model.named_modules():
-        if isinstance(m, torch.nn.BatchNorm2d) or isinstance(m, torch.nn.BatchNorm1d):
-            n_bn_layers += 1
-            m.eps = cfg.bn_eps
-            m.momentum = cfg.bn_momentum
-    if n_bn_layers:
-        print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
+    # set BN running average parameters
+    set_bn_parameters(pretrained_model, cfg.bn_momentum, cfg.bn_eps, cfg.DEBUG)
 
     # either freeze or unfreeze head layers
     head = list(pretrained_model.children())[-1]
@@ -737,6 +723,35 @@ def adjust_head_drop(model, dropout_p):
         model.head.drop.p = dropout_p
     else:
         print("Warning: no head_drop or head.drop found")
+
+
+def get_normalization_classes():
+    "Return tuple of all supported normalization classes"
+    normalization_classes = [
+        torch.nn.BatchNorm1d,
+        torch.nn.BatchNorm2d]
+    return tuple(normalization_classes)
+
+
+def set_bn_parameters(model, momentum=None, eps=None, debug=False):
+    "Modify `momentum` and `eps` parameters in all supported normalization layers"
+    if not (momentum or eps): return
+    normalization_classes = get_normalization_classes()
+
+    n_replaced = 0
+    for name, m in model.named_modules():
+        if isinstance(m, normalization_classes):
+            n_replaced += 1
+            if momentum:
+                if debug and (m.momentum != momentum):
+                    print(f"{name} ({m.__class__.__name__}): changing momentum {m.momentum} -> {momentum}")
+                m.momentum = momentum
+            if eps:
+                if debug and (m.eps != eps):
+                    print(f"{name} ({m.__class__.__name__}): changing eps {m.eps} -> {eps}")
+                m.eps = eps
+    if n_replaced:
+        print(f"Setting eps, momentum in {n_replaced} normalization layers")
 
 
 def get_pretrained_timm2(cfg):
@@ -873,15 +888,9 @@ def get_pretrained_timm2(cfg):
             if len(incomp[0]) + len(incomp[1]) > 2:
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)
 
-    # Change BN running average parameters
-    n_bn_layers = 0
-    for m in pretrained_model.modules():
-        if isinstance(m, torch.nn.BatchNorm2d) or isinstance(m, torch.nn.BatchNorm1d):
-            n_bn_layers += 1
-            m.eps = cfg.bn_eps
-            m.momentum = cfg.bn_momentum
-    if n_bn_layers:
-        print(f"Setting eps, momentum for {n_bn_layers} BatchNorm layers")
+    # Set BN running average parameters
+    set_bn_parameters(pretrained_model, cfg.bn_momentum, cfg.bn_eps, cfg.DEBUG)
+
 
     # Either freeze or unfreeze head layers
     head = pretrained_model.head if hasattr(pretrained_model, 'head') else pretrained_model.get_classifier()
@@ -1001,11 +1010,7 @@ def get_smp_model(cfg):
             if len(missing) + len(unexpected) > 2:
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)
 
-    # change BN running average parameters
-    for n, m in pretrained_model.named_modules():
-        if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
-            if DEBUG: print("Setting BN eps, momentum")
-            m.eps = cfg.bn_eps
-            m.momentum = cfg.bn_momentum
+    # set BN running average parameters
+    set_bn_parameters(pretrained_model, cfg.bn_momentum, cfg.bn_eps, cfg.DEBUG)
 
     return pretrained_model

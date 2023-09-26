@@ -61,10 +61,12 @@ cfg = dict(
     lin_ftrs = [],
     scale_output_layer = 1.0,   # modify initialization of the output layer weights
     bn_head = False,
-    bn_eps = 1e-5,
-    bn_momentum = 0.1,
-    wd = 0.05,                  # default 1e-2
-    freeze_head = False,        # only pytorch, for tf use freeze, freeze_for_loading
+    bn_momentum = None,         # default 0.1 (PyTorch), 0.99 (TF), 0.9 (efficientnet)
+    bn_eps = None,              # default 1e-5 (PyTorch), 1e-3 (TF)
+    wd = 0.05,                  # default 1e-2 (AdamW)
+    freeze_head = False,        # only pytorch, for tf use freeze/freeze_for_loading
+    freeze_for_loading = [],    # options: 'none', 'all', 'head', 'body', 'bn',
+    freeze = [],                #     'all_but_bn', 'preprocess'
 
     rst_path = '.',
     rst_name = None,

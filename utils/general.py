@@ -47,8 +47,21 @@ def autotype(cfg, key, value):
         cfg[key] = int(value)
     elif isinstance(cfg[key], float):
         cfg[key] = float(value)
-    elif isinstance(cfg[key], str) or cfg[key] is None:
+    elif isinstance(cfg[key], str):
         cfg[key] = str(value)
+    elif cfg[key] is None:
+        # infer from value if default is None
+        if value.lower() == 'true':
+            cfg[key] = True
+        elif value.lower() == 'false':
+            cfg[key] = False
+        try:
+            cfg[key] = int(value)
+        except ValueError:
+            try:
+                cfg[key] = float(value)
+            except ValueError:
+                cfg[key] = value  # keep str
     else:
         raise TypeError(f"Type {type(cfg[key])} of `{key}` not supported by `--set`")
     return None
