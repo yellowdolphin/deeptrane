@@ -475,6 +475,61 @@ def set_output_layer(model, layer):
     return None
 
 
+def set_requires_grad(model, freeze):
+    """Set requires_grad attributes according to list `freeze`
+
+    "none":       all layers trainable (default)
+    "all":        all layers frozen
+    "head":       freeze all head layers
+    "body":       freeze all body layers
+    "bn":         freeze all normalization layers in the body
+    "all_but_bn": only normalization layers are trainable
+    """
+    freeze = freeze or set(['none'])
+    freeze = set(s.lower() for s in freeze)
+    if ('none' in freeze or 'all' in freeze) and len(freeze) > 1:
+        raise ValueError(f'invalid freeze {freeze}: "none" and "all" are exclusive')
+
+    # Freeze or unfreeze entire model
+    for p in model.parameters():
+        p.requires_grad = False if 'all' in freeze or 'all_but_bn' in freeze else True
+
+    if 'none' in freeze or 'all' in freeze:
+        if 'all' in freeze: print(f"Freezing entire {model.__class__.__name__}")
+        return
+
+    # Freeze (or unfreeze) specified parts of the model
+    head = (
+        model.head if hasattr(model, 'head') else 
+        model.get_classifier() if hasattr(model, 'get_classifier') else
+        list(model.children())[-1])
+    body_layers = (
+        model.body if hasattr(model, 'body') else
+        list(model.children())[:-1])
+    body_layers = list(body_layers.values()) if hasattr(body_layers, 'values') else body_layers
+
+    if 'head' in freeze:
+        print("Freezing head layers")
+        #print(head)
+        for p in head.parameters():
+            p.requires_grad = False
+
+    if 'body' in freeze:
+        print("Freezing all body layers")
+        for layer in body_layers:
+            #print(layer)
+            for p in layer.parameters():
+                p.requires_grad = False
+
+    if 'bn' in freeze or 'all_but_bn' in freeze:
+        normalization_classes = get_normalization_classes()
+        print(f"Freezing all normalization layers in {model.__class__.__name__}")
+        for m in model.modules():  # recursive
+            if isinstance(m, normalization_classes):
+                for p in m.parameters():
+                    p.requires_grad = True if 'all_but_bn' in freeze else False        
+
+
 def get_pretrained_timm(cfg):
     """Initialize pretrained_model for a new fold based on cfg
 
@@ -652,29 +707,10 @@ def get_pretrained_timm(cfg):
             if len(incomp[0]) + len(incomp[1]) > 2:
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)
 
-    # set BN running average parameters
+    # set BN running average parameters, freeze/unfreeze
     set_bn_parameters(pretrained_model, cfg.bn_momentum, cfg.bn_eps, cfg.DEBUG)
+    set_requires_grad(pretrained_model, cfg.freeze)
 
-    # either freeze or unfreeze head layers
-    head = list(pretrained_model.children())[-1]
-    if cfg.freeze_head:
-        print("Freezing head layers:")
-        print(head)
-        for p in head.parameters():
-            p.requires_grad = False
-    else:
-        for p in head.parameters():
-            p.requires_grad = True
-
-    # EfficientNet-V2 body has SiLU, BN (everywhere), but no Dropout.
-    # Fused-MBConv (stages 1-3) and SE + 3x3-group_conv (group_size=1, stages 4-7).
-    #print("FC stats:")
-    #print("weight:",
-    #      pretrained_model.state_dict()['head.3.weight'].mean(),
-    #      pretrained_model.state_dict()['head.3.weight'].std())
-    #print("bias:  ",
-    #      pretrained_model.state_dict()['head.3.bias'].mean(),
-    #      pretrained_model.state_dict()['head.3.bias'].std())
     return pretrained_model
 
 
@@ -888,20 +924,9 @@ def get_pretrained_timm2(cfg):
             if len(incomp[0]) + len(incomp[1]) > 2:
                 compare_state_dicts(pretrained_model.state_dict(), state_dict)
 
-    # Set BN running average parameters
+    # set BN running average parameters, freeze/unfreeze
     set_bn_parameters(pretrained_model, cfg.bn_momentum, cfg.bn_eps, cfg.DEBUG)
-
-
-    # Either freeze or unfreeze head layers
-    head = pretrained_model.head if hasattr(pretrained_model, 'head') else pretrained_model.get_classifier()
-    if cfg.freeze_head:
-        print("Freezing head layers:")
-        print(head)
-        for p in head.parameters():
-            p.requires_grad = False
-    else:
-        for p in head.parameters():
-            p.requires_grad = True
+    set_requires_grad(pretrained_model, cfg.freeze)
 
     return pretrained_model
 
@@ -1012,5 +1037,6 @@ def get_smp_model(cfg):
 
     # set BN running average parameters
     set_bn_parameters(pretrained_model, cfg.bn_momentum, cfg.bn_eps, cfg.DEBUG)
+    set_requires_grad(pretrained_model, cfg.freeze)
 
     return pretrained_model

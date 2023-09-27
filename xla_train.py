@@ -356,7 +356,8 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             loss = loss / cfg.n_acc  # grads accumulate as 'sum' but loss reduction is 'mean'
             ### DEBUG
             t2 = time.perf_counter()
-            scaler.scale(loss).backward()  # loss scaling in mixed-precision training
+            if not 'all' in cfg.freeze:
+                scaler.scale(loss).backward()  # loss scaling in mixed-precision training
             ### DEBUG
             t3 = time.perf_counter()
             t4 = t3

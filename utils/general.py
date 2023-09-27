@@ -40,7 +40,7 @@ def autotype(cfg, key, value):
     if key not in cfg:
         raise KeyError(f"Unrecognized key: `{key}` is not an attribute of cfg")
     if isinstance(cfg[key], bool):
-        cfg[key] = value.lower() == 'true'
+        cfg[key] = True if (value.lower() == 'true') else False if (value.lower() == 'false') else value
     elif value.lower() == 'none':
         cfg[key] = [] if isinstance(cfg[key], list) else None
     elif isinstance(cfg[key], int) or key in none_or_int:

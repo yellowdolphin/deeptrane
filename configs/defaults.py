@@ -64,9 +64,8 @@ cfg = dict(
     bn_momentum = None,         # default 0.1 (PyTorch), 0.99 (TF), 0.9 (efficientnet)
     bn_eps = None,              # default 1e-5 (PyTorch), 1e-3 (TF)
     wd = 0.05,                  # default 1e-2 (AdamW)
-    freeze_head = False,        # only pytorch, for tf use freeze/freeze_for_loading
-    freeze_for_loading = [],    # options: 'none', 'all', 'head', 'body', 'bn',
-    freeze = [],                #     'all_but_bn', 'preprocess'
+    freeze = [],                # options: 'none', 'all', 'head', 'body', 'bn', 'all_but_bn', 'preprocess'
+    freeze_for_loading = [],    # TF only, see freeze
 
     rst_path = '.',
     rst_name = None,

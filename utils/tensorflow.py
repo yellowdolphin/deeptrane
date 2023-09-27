@@ -126,13 +126,3 @@ class CSVLogger(tf.keras.callbacks.CSVLogger):
                 self.append = False
                 break
         self.on_train_begin(logs=logs)
-
-
-def handle_deprecated_freeze_config(cfg):
-    deprecated_keys = 'freeze_body freeze_head freeze_bn'.split()
-    for key in deprecated_keys:
-        if cfg.get(key):
-            print(f"WARNING: {key} is deprecated, use cfg.freeze instead")
-            cfg.freeze = cfg.freeze or []
-            if key[7:] not in cfg.freeze:
-                cfg.freeze.append(key[7:])

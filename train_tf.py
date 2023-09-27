@@ -8,7 +8,7 @@ from multiprocessing import cpu_count
 from config import Config, parser
 from utils.general import quietly_run, sizify, listify, autotype, get_drive_out_dir
 from utils.tf_setup import install_model_libs
-from utils.tensorflow import CSVLogger, handle_deprecated_freeze_config
+from utils.tensorflow import CSVLogger
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -33,7 +33,6 @@ if cfg.batch_verbose not in ['auto', 0, 1, 2]:
 cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
 if cfg.cloud == 'drive':
     cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
-handle_deprecated_freeze_config(cfg)
 
 print(cfg)
 print("[ √ ] Cloud:", cfg.cloud)

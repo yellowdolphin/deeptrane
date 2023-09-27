@@ -25,7 +25,7 @@ cfg.batch_verbose = parser_args.batch_verbose or cfg.batch_verbose
 cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
 cfg.metrics = parser_args.metrics or cfg.metrics
 cfg.betas = parser_args.betas or cfg.betas
-for key in 'dropout_ps lin_ftrs'.split():
+for key in 'dropout_ps lin_ftrs freeze'.split():
     setattr(cfg, key, cfg[key] if getattr(parser_args, key) is None else listify(getattr(parser_args, key)))
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
@@ -317,6 +317,20 @@ for use_fold in cfg.use_folds:
         print(pretrained_model.model.head)
     if hasattr(pretrained_model, 'arc'):
         print(pretrained_model.arc)
+
+    # Print parameter counts
+    num_params, num_trainable, num_el, num_trainable_el = 0, 0, 0, 0
+    for p in pretrained_model.parameters():
+        num_params += 1
+        num_el += p.numel()
+        if p.requires_grad: 
+            num_trainable += 1
+            num_trainable_el += p.numel()
+    print("="*50)
+    print(f"Total params:         {num_params:6d} {num_el:20,}")
+    print(f"Trainable params:     {num_trainable:6d} {num_trainable_el:20,}")
+    print(f"Non-trainable params: {num_params - num_trainable:6d} {num_el - num_trainable_el:20,}")
+    print()
 
     if cfg.compile_torch_model and hasattr(torch, 'compile'):
         from time import perf_counter
