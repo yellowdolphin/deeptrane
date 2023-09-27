@@ -73,4 +73,6 @@ parser.add_argument("--metrics", nargs="+", type=str, help="metrics (str) keywor
 parser.add_argument("--dropout_ps", nargs="+", type=float, help="Dropout probabilities for head Dropout layers")
 parser.add_argument("--lin_ftrs", nargs="+", type=int, help="None|output dims of linear (FC) head layers before output layer")
 parser.add_argument("--betas", nargs=2, type=float, help="Adam (β1, β2) or SGD (μ, 1 - τ) parameters")
+parser.add_argument("--freeze_for_loading", nargs="+", type=str, help="freeze used previously (restart)")
+parser.add_argument("--freeze", nargs="+", type=str, help='Options: "none", "all", "head", "body", "bn", "all_but_bn", "preprocess"')
 parser.add_argument("--set", nargs=2, action='append', help="(key, value) pair for setting (non-iterable) cfg attributes")

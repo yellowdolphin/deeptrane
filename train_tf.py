@@ -24,6 +24,8 @@ cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
 cfg.betas = parser_args.betas or cfg.betas
 cfg.dropout_ps = cfg.dropout_ps if parser_args.dropout_ps is None else listify(parser_args.dropout_ps)
 cfg.lin_ftrs = cfg.lin_ftrs if parser_args.lin_ftrs is None else listify(parser_args.lin_ftrs)
+cfg.freeze_for_loading = cfg.freeze_for_loading if parser_args.freeze_for_loading is None else listify(parser_args.freeze_for_loading)
+cfg.freeze = cfg.freeze if parser_args.freeze is None else listify(parser_args.freeze)
 cfg.batch_verbose = cfg.batch_verbose or 'auto'
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
