@@ -22,10 +22,8 @@ cfg.epochs = parser_args.epochs or cfg.epochs
 cfg.rst_epoch = (cfg.rst_epoch or 0) if (cfg.rst_path and cfg.rst_name) else 0
 cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
 cfg.betas = parser_args.betas or cfg.betas
-cfg.dropout_ps = cfg.dropout_ps if parser_args.dropout_ps is None else listify(parser_args.dropout_ps)
-cfg.lin_ftrs = cfg.lin_ftrs if parser_args.lin_ftrs is None else listify(parser_args.lin_ftrs)
-cfg.freeze_for_loading = cfg.freeze_for_loading if parser_args.freeze_for_loading is None else listify(parser_args.freeze_for_loading)
-cfg.freeze = cfg.freeze if parser_args.freeze is None else listify(parser_args.freeze)
+for key in 'dropout_ps lin_ftrs freeze_for_loading freeze'.split():
+    setattr(cfg, key, cfg[key] if getattr(parser_args, key) is None else listify(getattr(parser_args, key)))
 cfg.batch_verbose = cfg.batch_verbose or 'auto'
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
