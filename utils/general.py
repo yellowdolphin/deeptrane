@@ -4,7 +4,7 @@ from typing import Iterable
 
 
 def quietly_run(*commands, debug=False, cwd=None):
-    "Run `commands` in subprocess, only report on errors, unless debug is True"
+    "Run `commands` in subprocess, only report on errors, unless debug is True."
     for cmd in commands:
         if debug:
             print(f'$ {cmd}')
@@ -16,6 +16,15 @@ def quietly_run(*commands, debug=False, cwd=None):
             print(f'$ {cmd}')
             print(res.stdout.decode())
             raise Exception(res.stderr.decode())
+
+
+def get_package_version(name):
+    """Return version of python package `name` as list (str).
+    
+    Uses pip to get package version without import so it can be updated if required.
+    Requires linux/unix."""
+    res = run(f'pip freeze | grep {name}==', shell=True, capture_output=True)
+    return res.stdout.decode().split('==')[-1].split('.')
 
 
 def listify(o):
@@ -35,26 +44,20 @@ def sizify(o, dims=2):
 
 
 def autotype(cfg, key, value):
-    "Update `cfg.key` with converted `value`, infer type from `cfg.key`."
-    none_or_int = set(['batch_verbose', 'step_lr_after'])
+    "Update `cfg.key` with `value`, converted from str to inferred type."
+    if False:
+        print(f"autotype key: {key}, value: {value}, cfg[key]: {cfg[key]}")
     if key not in cfg:
         raise KeyError(f"Unrecognized key: `{key}` is not an attribute of cfg")
-    if isinstance(cfg[key], bool):
-        cfg[key] = True if (value.lower() == 'true') else False if (value.lower() == 'false') else value
+
+    # infer type from value
+    if value.lower() == 'true':
+        cfg[key] = True
+    elif value.lower() == 'false':
+        cfg[key] = False
     elif value.lower() == 'none':
         cfg[key] = [] if isinstance(cfg[key], list) else None
-    elif isinstance(cfg[key], int) or key in none_or_int:
-        cfg[key] = int(value)
-    elif isinstance(cfg[key], float):
-        cfg[key] = float(value)
-    elif isinstance(cfg[key], str):
-        cfg[key] = str(value)
-    elif cfg[key] is None:
-        # infer from value if default is None
-        if value.lower() == 'true':
-            cfg[key] = True
-        elif value.lower() == 'false':
-            cfg[key] = False
+    else:
         try:
             cfg[key] = int(value)
         except ValueError:
@@ -62,9 +65,6 @@ def autotype(cfg, key, value):
                 cfg[key] = float(value)
             except ValueError:
                 cfg[key] = value  # keep str
-    else:
-        raise TypeError(f"Type {type(cfg[key])} of `{key}` not supported by `--set`")
-    return None
 
 
 def get_drive_out_dir(cfg):

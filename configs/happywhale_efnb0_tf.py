@@ -44,7 +44,7 @@ cfg = dict(
     #channel_size = 2048,  # embedding size (set automatically if deotte)
     arcface_s = 30,
     arcface_m = 0.3,
-    bn_head = 'batch_norm',
+    normalization_head = 'batch_norm',
     bn_eps = 1e-5,
     aux_loss = 0.0,
 

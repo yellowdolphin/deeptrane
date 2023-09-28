@@ -58,10 +58,6 @@ lin_ftrs = [9, 768, 768, 768]
 act_head = 'silu'
 freeze_for_loading = ['all_but_bn']
 freeze = ['none']
-group_norm = False
-sync_bn = False
-instance_norm = False
-test_replace_bn_layers = False
 
 
 from pathlib import Path

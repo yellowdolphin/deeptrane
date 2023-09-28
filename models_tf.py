@@ -31,8 +31,9 @@ import math
 from pathlib import Path
 
 import tensorflow as tf
-from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax, BatchNormalization,
+from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax,
                                      GlobalAveragePooling2D, GlobalMaxPooling2D, concatenate)
+from normalization import Normalization, get_normalization_classes
 
 # if cfg.arch_name.startswith('efnv1'):
 #     import efficientnet.tfkeras as efn
@@ -359,35 +360,9 @@ def get_margin(cfg):
     raise ValueError(f'ArcFace type {cfg.arcface} not supported')
 
 
-def BatchNorm(cfg, bn_type, name=None):
-    if (bn_type == 'batch_norm') or (bn_type is True):
-        return BatchNormalization(name=name)  # default
-    if bn_type == 'sync_bn':
-        return BatchNormalization(name=name, synchronized=True)
-    if bn_type == 'layer_norm':
-        return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
-    if bn_type == 'instance_norm':
-        return BatchNormalization(virtual_batch_size=cfg.bs, name=name)
-    if (bn_type == 'group_norm') and hasattr(tf.keras.layers, 'GroupNormalization'):
-        return tf.keras.layers.GroupNormalization(name=name)
-    raise ValueError(f'{bn_type} is not recognized bn_type')
-
-
 def check_model_inputs(cfg, model):
     for inp in model.inputs:
         assert inp.name in cfg.data_format, f'"{inp.name}" (model.inputs) missing in cfg.data_format'
-
-
-def get_normalization_classes():
-    "Return a tuple of all supported normalization classes"
-    normalization_classes = [
-        BatchNormalization,
-        tf.keras.layers.LayerNormalization]
-    if hasattr(tf.keras.layers.experimental, 'SyncBatchNormalization'):
-        normalization_classes.append(tf.keras.layers.experimental.SyncBatchNormalization)
-    if hasattr(tf.keras.layers, 'GroupNormalization'):
-        normalization_classes.append(tf.keras.layers.GroupNormalization)
-    return tuple(normalization_classes)
 
 
 def freeze_bn(model, unfreeze=False):
@@ -564,31 +539,13 @@ def get_pretrained_model(cfg, strategy, inference=False):
             hub.KerasLayer(TFHUB[cfg.arch_name], trainable=True) if tfhub else
             tfimm.create_model(cfg.arch_name, pretrained=True, nb_classes=0, input_size=cfg.size))
 
-        if cfg.sync_bn:
-            if cfg.gpu < 2: 
-                print("Info: sync_bn only affects distributed GPU training!")
-            from experimental.normalization import replace_bn_layers
-            pretrained_model = replace_bn_layers(pretrained_model,
-                                                 BatchNormalization,
+        if cfg.normalization:
+            from normalization import replace_bn_layers
+            pretrained_model = replace_bn_layers(pretrained_model, cfg.normalization, 
                                                  keep_weights=True,
-                                                 synchronized=True)
-        elif cfg.instance_norm:
-            from experimental.normalization import replace_bn_layers
-            pretrained_model = replace_bn_layers(pretrained_model,
-                                                 BatchNormalization,
-                                                 keep_weights=True,
-                                                 virtual_batch_size=1)
-        elif cfg.group_norm:
-            from experimental.normalization import replace_bn_layers
-            pretrained_model = replace_bn_layers(pretrained_model,
-                                                 tf.keras.layers.GroupNormalization,
-                                                 keep_weights=True,
-                                                 groups=1)
-        elif cfg.test_replace_bn_layers:
-            from experimental.normalization import replace_bn_layers
-            pretrained_model = replace_bn_layers(pretrained_model,
-                                                 BatchNormalization,
-                                                 keep_weights=False)
+                                                 gn_groups=cfg.gn_groups,
+                                                 vbs=cfg.virtual_batch_size,
+                                                 n_gpu=cfg.gpu)
 
         # Head(s)
         if efnv1:
@@ -647,11 +604,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
             for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
                 embed = Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
                 embed = Dense(out_channels, activation=cfg.act_head, name=f"FC_{i}")(embed)
-                embed = BatchNorm(cfg, bn_type=cfg.bn_head, name=f"BN_{i}")(embed) if cfg.bn_head else embed
+                embed = Normalization(cfg.normalization_head, name=f"BN_{i}")(embed) if cfg.normalization_head else embed
             embed = Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
                 embed) if final_dropout else embed
-            if cfg.bn_head and not lin_ftrs:
-                embed = BatchNorm(cfg, bn_type=cfg.bn_head, name="BN_final")(embed)  # does this help?
+            if cfg.normalization_head and not lin_ftrs:
+                embed = Normalization(cfg.normalization_head, name="BN_final")(embed)  # does this help?
 
         # Output layer or Margin
         if cfg.arcface and inference:

@@ -1,8 +1,15 @@
 import os
-from utils.general import quietly_run
+from utils.general import quietly_run, get_package_version
 
 
 def install_model_libs(cfg):
+    if (isinstance(cfg.normalization, str) and (cfg.normalization.lower() == 'gn') or
+        isinstance(cfg.normalization_head, str) and (cfg.normalization_head.lower() == 'gn')):
+        vers, subvers = get_package_version('tensorflow')[:2]
+        if (int(vers) < 2) or (int(subvers) < 11):
+            print(f"Info: GroupNormalization requires TF >= 2.11, updating from {vers}.{subvers}...")
+            quietly_run('pip install tensorflow>=2.11', debug=False)
+
     if cfg.arch_name.startswith('efnv1'):
         quietly_run('pip install efficientnet', debug=False)
     elif cfg.arch_name.startswith('efnv2'):

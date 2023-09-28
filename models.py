@@ -355,7 +355,7 @@ def get_pretrained_model(cfg):
             bottleneck.append(nn.Linear(n_features, out_features))
             if act_head: bottleneck.append(act_head())
             n_features = out_features
-            if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(n_features))
+            if cfg.normalization_head: bottleneck.append(nn.BatchNorm1d(n_features))
         if final_dropout:
             bottleneck.append(nn.Dropout(p=final_dropout))
 
@@ -618,7 +618,7 @@ def get_pretrained_timm(cfg):
             bottleneck.append(nn.Linear(n_features, out_features))
             if act_head: bottleneck.append(act_head())
             n_features = out_features
-            if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(n_features))
+            if cfg.normalization_head: bottleneck.append(nn.BatchNorm1d(n_features))
         if final_dropout:
             bottleneck.append(nn.Dropout(p=final_dropout))
 
@@ -832,9 +832,9 @@ def get_pretrained_timm2(cfg):
     elif add_head == 'skip_pooling':
         # pack optional head layers after first FC into "pooling_layer"
         pooling_layer = (
-            act_head() if (act_head and not cfg.bn_head) else
-            nn.BatchNorm1d(in_features) if (cfg.bn_head and not act_head) else
-            nn.Sequential() if (not act_head and not cfg.bn_head) else
+            act_head() if (act_head and not cfg.normalization_head) else
+            nn.BatchNorm1d(in_features) if (cfg.normalization_head and not act_head) else
+            nn.Sequential() if (not act_head and not cfg.normalization_head) else
             nn.Sequential(act_head(), nn.BatchNorm1d(in_features)))
     elif add_head:
         if cfg.pool is None:
@@ -857,7 +857,7 @@ def get_pretrained_timm2(cfg):
             bottleneck.append(nn.Linear(in_features, out_features))
             in_features = out_features
             if act_head: bottleneck.append(act_head())
-            if cfg.bn_head: bottleneck.append(nn.BatchNorm1d(in_features))
+            if cfg.normalization_head: bottleneck.append(nn.BatchNorm1d(in_features))
         if final_dropout:
             bottleneck.append(nn.Dropout(p=final_dropout))
     if in_features: print(f"features after bottleneck: {in_features}")
