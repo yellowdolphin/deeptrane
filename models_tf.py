@@ -547,10 +547,13 @@ def get_pretrained_model(cfg, strategy, inference=False):
                                                  vbs=cfg.virtual_batch_size,
                                                  n_gpu=cfg.gpu)
 
+        x = pretrained_model(x)
+
         # Head(s)
         if efnv1:
-            x = pretrained_model(x)
-            if cfg.pool == 'flatten':
+            if isinstance(cfg.pool, tf.keras.layers.Layer):
+                embed = cfg.pool(x, inputs) if hasattr(cfg.pool, 'requires_inputs') else cfg.pool(x)
+            elif cfg.pool == 'flatten':
                 embed = Flatten()(x)
             elif cfg.pool == 'fc':
                 embed = Flatten()(x)
@@ -567,8 +570,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
                 embed = GlobalAveragePooling2D()(x)
 
         elif efnv2:
-            x = pretrained_model(x)
-            if cfg.pool == 'flatten':
+            if isinstance(cfg.pool, tf.keras.layers.Layer):
+                print(f"pool requires inputs:", hasattr(cfg.pool, 'requires_inputs'))
+                print(f"calling pool with x {x.shape}, inputs [{inputs[0].shape}]")
+                embed = cfg.pool(x, inputs) if hasattr(cfg.pool, 'requires_inputs') else cfg.pool(x)
+            elif cfg.pool == 'flatten':
                 embed = Flatten()(x)
             elif cfg.pool == 'fc':
                 embed = Flatten()(x)
@@ -588,11 +594,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
             # tfhub models cannot be modified => Pooling cannot be changed!
             assert cfg.pool in [None, False, 'avg', ''], 'tfhub model, no custom pooling supported!'
             print(f"{cfg.arch_name} from tfhub")
-            embed = pretrained_model(x)
+            embed = x
 
         else:
             print(f"{cfg.arch_name} from tfimm")
-            embed = pretrained_model(x)
+            embed = x
             # create_model(nb_classes=0) includes pooling as last layer
 
         # Bottleneck(s)

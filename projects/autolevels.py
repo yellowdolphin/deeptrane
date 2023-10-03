@@ -162,6 +162,13 @@ def init(cfg):
     else:
         print("No preprocessing, cfg.preprocess =", cfg.preprocess)
 
+    # Custom Pooling
+    if cfg.pool == 'quantile':
+        receptive_fields = [12, 12]  # efnv2s, size=384
+        bins = 32
+        out_shape = [*receptive_fields, bins * 3]
+        cfg.pool = QuantilePooling(out_shape, activation=cfg.act_head)
+
 
 class GammaTransformTF(tf.keras.layers.Layer):
     "Gamma transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"
@@ -1022,6 +1029,61 @@ class AugInvCurveDataset3(Dataset):
         image = self.resize(image)
 
         return image, target
+
+
+class StatPooling(tf.keras.layers.Layer):
+    requires_inputs = True  # if this class attribute exists: call(embed, inputs) 
+    def __init__(self, out_shape, activation=None, **kwargs):
+        super().__init__(**kwargs)
+        self.out_shape = out_shape
+        self.pool = tf.keras.layers.GlobalAveragePooling2D()
+        self.bn1 = tf.keras.layers.BatchNormalization()
+        self.bn2 = tf.keras.layers.BatchNormalization()
+        filters = 1280 + out_shape[-1]
+        input_shape = [*out_shape[:1], filters]
+        self.conv1 = tf.keras.layers.Conv2D(filters, 1, input_shape=input_shape, activation=activation)
+        self.conv2 = tf.keras.layers.Conv2D(filters, 1, input_shape=input_shape, activation=activation)
+
+    def stat(self, img):
+        # Implement a statistics of img that outputs a tensor of shape [N, *self.out_shape]
+        return None
+
+    def call(self, x, inputs):
+        # devide input image into same receptive fields as x
+        # x: [N, h, w, C]
+        # img: [N, H, W, 3] -> hist: [N, h, w, 3 * 256] or quantiles [N, h, w, n_quantiles]
+        img = inputs[0]  # shape [N, H, W, 3]
+        stat = self.stat(img)
+        x = tf.concat([x, stat], axis=-1, name="hist_concat")
+        x = self.bn1(x)
+        x = self.conv1(x)
+        x = self.bn2(x)
+        x = self.conv2(x)
+        return self.pool(x)
+
+
+class QuantilePooling(StatPooling):    
+    def stat(self, img):
+        h, w, c = self.out_shape
+        N, W, H, C = img.shape
+        agg_h, agg_w = H // h, W // w
+        agg_numel = agg_h * agg_w
+        img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
+        stats = tfp.stats.quantiles(img, num_quantiles=c // C - 1, axis=-1)
+        return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (-1, h, w, c))
+
+
+class HistPooling(StatPooling):    
+    def stat(self, img):
+        h, w, c = self.out_shape
+        N, W, H, C = img.shape
+        agg_h, agg_w = H // h, W // w
+        agg_numel = agg_h * agg_w
+        bins = c // 3
+        edges = tf.linspace(-0.5, 255.5, bins + 1) / 255  # first will be replaced by -inf
+        img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
+        stats = tfp.stats.histogram(img, edges=edges, axis=-1, extend_lower_interval=True, extend_upper_interval=True)
+        return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (-1, h, w, c))
 
 
 # TF data pipeline --------------------------------------------------------
