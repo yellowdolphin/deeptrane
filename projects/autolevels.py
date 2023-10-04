@@ -163,11 +163,20 @@ def init(cfg):
         print("No preprocessing, cfg.preprocess =", cfg.preprocess)
 
     # Custom Pooling
-    if cfg.pool == 'quantile':
-        receptive_fields = [12, 12]  # efnv2s, size=384
-        bins = 32
-        out_shape = [*receptive_fields, bins * 3]
-        cfg.pool = QuantilePooling(out_shape, activation=cfg.act_head)
+    if cfg.pool in {'quantile', 'histogram'}:
+        emb_size = (1024 if cfg.arch_name == 'efnv2t' else
+                    1280 if cfg.arch_name in [f'efnv2{x}' for x in 's m l xl'.split()] else
+                    0 if cfg.arch_name == 'pool_baseline' else None)
+        input_shape = [12, 12, emb_size]  # efnv2s, size=384
+        bins = cfg.stat_pooling_bins or 32  # image statistic bins per color channel
+        add_channels = 1280 if (cfg.arch_name == 'pool_baseline') else 0
+
+        if cfg.pool == 'histogram':
+            cfg.pool = HistogramPooling(input_shape, stat_channels=bins * 3, activation=cfg.act_head,
+                                        add_channels=add_channels)
+        else:
+            cfg.pool = QuantilePooling(input_shape, stat_channels=bins * 3, activation=cfg.act_head,
+                                       add_channels=add_channels)
 
 
 class GammaTransformTF(tf.keras.layers.Layer):
@@ -266,6 +275,53 @@ def map_index_torch(image, tfm, add_uniform_noise=False):
     image_plus_one = torch.gather(expanded_curves, dim=1, index=(torch.LongTensor(image) + 1).clamp(max=255))    
     image = torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))
     return image + torch.rand_like(image) * (image_plus_one - image)
+
+
+def get_pretrained_model(cfg, strategy):
+    if cfg.arch_name != 'pool_baseline':
+        from models_tf import get_pretrained_model as default_get_pretrained_model
+        return default_get_pretrained_model(cfg, strategy)
+
+    import tensorflow as tf
+    from tensorflow.keras.layers import Input, Dense, Dropout
+    from normalization import Normalization
+    from models_tf import get_bottleneck_params
+
+    with strategy.scope():
+
+        # Inputs & Pooling
+        input_shape = (*cfg.size, 3)
+        inputs = [Input(shape=input_shape, name='image')]
+        x = None
+        embed = cfg.pool(x, inputs)
+
+        # Bottleneck
+        lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
+        for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
+            embed = Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
+            embed = Dense(out_channels, activation=cfg.act_head, name=f"FC_{i}")(embed)
+            embed = Normalization(cfg.normalization_head, name=f"BN_{i}")(embed) if cfg.normalization_head else embed
+        embed = Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
+            embed) if final_dropout else embed
+        if cfg.normalization_head and not lin_ftrs:
+            embed = Normalization(cfg.normalization_head, name="BN_final")(embed)  # does this help?
+
+        # Output
+        assert cfg.curve and (cfg.curve == 'free')
+        output = Dense(cfg.channel_size, name='regressor')(embed)
+        outputs = [output]
+
+        # Build model
+        model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+
+        assert not (cfg.rst_path and cfg.rst_name)
+
+        optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.lr, beta_1=cfg.betas[0], beta_2=cfg.betas[1])
+        metrics_classes = {'curve_rmse': TFCurveRMSE(curve=cfg.curve)}
+        metrics = [metrics_classes[m] for m in cfg.metrics]
+        model.compile(optimizer=optimizer, loss='mean_squared_error', metrics=metrics)
+
+    return model
 
 
 class Curve0():
@@ -1033,28 +1089,40 @@ class AugInvCurveDataset3(Dataset):
 
 class StatPooling(tf.keras.layers.Layer):
     requires_inputs = True  # if this class attribute exists: call(embed, inputs) 
-    def __init__(self, out_shape, activation=None, **kwargs):
+    def __init__(self, input_shape, stat_channels, add_channels=0, squeeze=False, activation=None, **kwargs):
+        """
+        input_shape: embed shape, e.g., (12, 12, 1280)
+        channels:  channels of the image statistics, max: 256 * 3
+        """
         super().__init__(**kwargs)
-        self.out_shape = out_shape
+        self.fields = input_shape[:2]
+        emb_ch = input_shape[2]
+        self.stat_channels = stat_channels
         self.pool = tf.keras.layers.GlobalAveragePooling2D()
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.bn2 = tf.keras.layers.BatchNormalization()
-        filters = 1280 + out_shape[-1]
-        input_shape = [*out_shape[:1], filters]
-        self.conv1 = tf.keras.layers.Conv2D(filters, 1, input_shape=input_shape, activation=activation)
-        self.conv2 = tf.keras.layers.Conv2D(filters, 1, input_shape=input_shape, activation=activation)
+        c0 = emb_ch + stat_channels  # concatenated channels
+        c1 = c0 + add_channels       # excite
+        c2 = c0 if squeeze else c1   # squeeze
+        self.conv1 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv2 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        print(f"{self.__class__.__name__}:")
+        print("fields:", self.fields)
+        print("embed channels:", emb_ch)
+        print("bins:", self.stat_channels // 3)
+        print("c0, c1, c2:", c0, c1, c2)
 
     def stat(self, img):
-        # Implement a statistics of img that outputs a tensor of shape [N, *self.out_shape]
+        # Implement a statistics of img that outputs a tensor of shape [N, h, w, stat_channels]
         return None
 
     def call(self, x, inputs):
         # devide input image into same receptive fields as x
         # x: [N, h, w, C]
-        # img: [N, H, W, 3] -> hist: [N, h, w, 3 * 256] or quantiles [N, h, w, n_quantiles]
+        # img: [N, H, W, 3] -> stat: [N, h, w, stat_channels]
         img = inputs[0]  # shape [N, H, W, 3]
         stat = self.stat(img)
-        x = tf.concat([x, stat], axis=-1, name="hist_concat")
+        x = tf.concat([x, stat], axis=-1, name="hist_concat") if x is not None else stat
         x = self.bn1(x)
         x = self.conv1(x)
         x = self.bn2(x)
@@ -1062,10 +1130,11 @@ class StatPooling(tf.keras.layers.Layer):
         return self.pool(x)
 
 
-class QuantilePooling(StatPooling):    
+class QuantilePooling(StatPooling):
     def stat(self, img):
-        h, w, c = self.out_shape
-        N, W, H, C = img.shape
+        h, w, = self.fields
+        c = self.stat_channels
+        _, W, H, C = img.shape
         agg_h, agg_w = H // h, W // w
         agg_numel = agg_h * agg_w
         img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
@@ -1073,17 +1142,19 @@ class QuantilePooling(StatPooling):
         return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (-1, h, w, c))
 
 
-class HistPooling(StatPooling):    
+class HistogramPooling(StatPooling):
     def stat(self, img):
-        h, w, c = self.out_shape
-        N, W, H, C = img.shape
+        h, w, = 12, 12 #self.fields
+        c = 32 * 3 #self.stat_channels
+        bins = 32 #self.stat_channels // 3
+        W, H, C = 384, 384, 3#_, W, H, C = img.shape
         agg_h, agg_w = H // h, W // w
         agg_numel = agg_h * agg_w
-        bins = c // 3
         edges = tf.linspace(-0.5, 255.5, bins + 1) / 255  # first will be replaced by -inf
-        img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
-        stats = tfp.stats.histogram(img, edges=edges, axis=-1, extend_lower_interval=True, extend_upper_interval=True)
-        return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (-1, h, w, c))
+        #img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
+        img = tf.reshape(tf.transpose(tf.reshape(img, [64, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [64, h, w, C, agg_numel])
+        stats = tfp.stats.histogram(img, edges=edges, axis=4, extend_lower_interval=True, extend_upper_interval=True)
+        return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (64, h, w, c))
 
 
 # TF data pipeline --------------------------------------------------------

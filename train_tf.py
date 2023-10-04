@@ -179,6 +179,9 @@ for use_fold in cfg.use_folds:
     else:
         model = get_pretrained_model(cfg, strategy)
     model.summary(line_length=120)
+    ### DEBUG
+    #for w in model.layers[2].weights:
+    #    print(w.name, w.shape)
 
     t0 = perf_counter()
 

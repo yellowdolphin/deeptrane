@@ -2,7 +2,8 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-23af25aafbbc33fb2af2e46eac28b7297e10f044b04aedaa42f590fb', 'gs://kds-6213d135f4b220083d7cf7c57a8cf38f4979ac833eda1946a146fc1e']
+gcs_paths = ['gs://kds-852e4570a10264190e603ad115283afe1f33cff54dbd4f70579b6d4a', 
+             'gs://kds-20764fac2a5507850857339a952dcd8642eb3bef36f2583ab5c9e0a5']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -58,6 +59,8 @@ lin_ftrs = [24, 768, 768, 768]
 act_head = 'silu'
 freeze_for_loading = ['none']
 freeze = ['none']
+pool = 'quantile'
+stat_pooling_bins = 32  # statistic bins per color channel
 
 
 from pathlib import Path

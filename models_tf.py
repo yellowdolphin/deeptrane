@@ -562,8 +562,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             elif cfg.pool == 'gem':
                 embed = GeMPoolingLayer(train_p=True)(x)
             elif cfg.pool == 'concat':
-                embed = concatenate([GlobalAveragePooling2D()(x),
-                                                     GlobalAveragePooling2D()(x)])
+                embed = concatenate([GlobalAveragePooling2D()(x), GlobalAveragePooling2D()(x)])
             elif cfg.pool == 'max':
                 embed = GlobalMaxPooling2D()(x)
             else:
@@ -571,8 +570,6 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
         elif efnv2:
             if isinstance(cfg.pool, tf.keras.layers.Layer):
-                print(f"pool requires inputs:", hasattr(cfg.pool, 'requires_inputs'))
-                print(f"calling pool with x {x.shape}, inputs [{inputs[0].shape}]")
                 embed = cfg.pool(x, inputs) if hasattr(cfg.pool, 'requires_inputs') else cfg.pool(x)
             elif cfg.pool == 'flatten':
                 embed = Flatten()(x)
@@ -583,8 +580,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             elif cfg.pool == 'gem':
                 embed = GeMPoolingLayer(train_p=True)(x)
             elif cfg.pool == 'concat':
-                embed = concatenate([GlobalAveragePooling2D()(x),
-                                                     GlobalAveragePooling2D()(x)])
+                embed = concatenate([GlobalAveragePooling2D()(x), GlobalAveragePooling2D()(x)])
             elif cfg.pool == 'max':
                 embed = GlobalMaxPooling2D()(x)
             else:
