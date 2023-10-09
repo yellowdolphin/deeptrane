@@ -278,10 +278,70 @@ def map_index_torch(image, tfm, add_uniform_noise=False):
 
 
 def get_pretrained_model(cfg, strategy):
-    if cfg.arch_name != 'pool_baseline':
+    if cfg.arch_name == 'pool_baseline':
+        return get_pool_baseline_model(cfg, strategy)
+    if cfg.arch_name.startswith('stat_augmented_efnv2'):
+        return get_stat_augmented_efnv2_model(cfg, strategy)
+    else:
         from models_tf import get_pretrained_model as default_get_pretrained_model
         return default_get_pretrained_model(cfg, strategy)
 
+
+def get_stat_augmented_efnv2_model(cfg, strategy):
+    import tensorflow as tf
+    from tensorflow.keras.layers import Input, Dense, Dropout
+    from normalization import Normalization
+    from models_tf import get_bottleneck_params
+    import keras_efficientnet_v2 as efn
+
+    with strategy.scope():
+
+        # Inputs & Pooling
+        input_shape = (*cfg.size, 3)
+        inputs = [Input(shape=input_shape, name='image')]
+
+        # Body and Feature Extractor
+        model_cls = getattr(efn, f'EfficientNetV2{cfg.arch_name[20:].upper()}')
+        pretrained_model = model_cls(input_shape=input_shape, num_classes=0, pretrained=cfg.pretrained)
+
+        features = pretrained_model(inputs[0])
+        if not isinstance(features, list):
+            # Currently, there is no feature extraction option for neither
+            # keras_efficientnet_v2 nor tf.keras.applications.EfficientNetV2* classes
+            raise NotImplementedError('implement feature extractor: body(x) --> features')
+        pooled_features = [cfg.pool(x, inputs[0]) for x in features]
+        embed = tf.concat(pooled_features, axis=-1)
+
+        # Bottleneck
+        lin_ftrs, dropout_ps, final_dropout = get_bottleneck_params(cfg)
+        for i, (p, out_channels) in enumerate(zip(dropout_ps, lin_ftrs)):
+            embed = Dropout(p, name=f"dropout_{i}_{p}")(embed) if p > 0 else embed
+            embed = Dense(out_channels, activation=cfg.act_head, name=f"FC_{i}")(embed)
+            embed = Normalization(cfg.normalization_head, name=f"BN_{i}")(embed) if cfg.normalization_head else embed
+        embed = Dropout(final_dropout, name=f"dropout_final_{final_dropout}")(
+            embed) if final_dropout else embed
+        if cfg.normalization_head and not lin_ftrs:
+            embed = Normalization(cfg.normalization_head, name="BN_final")(embed)  # does this help?
+
+        # Output
+        assert cfg.curve and (cfg.curve == 'free')
+        output = Dense(cfg.channel_size, name='regressor')(embed)
+        outputs = [output]
+
+        # Build model
+        model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+
+        assert not (cfg.rst_path and cfg.rst_name)
+
+        optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.lr, beta_1=cfg.betas[0], beta_2=cfg.betas[1])
+        metrics_classes = {'curve_rmse': TFCurveRMSE(curve=cfg.curve)}
+        metrics = [metrics_classes[m] for m in cfg.metrics]
+        model.compile(optimizer=optimizer, loss='mean_squared_error', metrics=metrics)
+
+    return model
+
+
+def get_pool_baseline_model(cfg, strategy):
     import tensorflow as tf
     from tensorflow.keras.layers import Input, Dense, Dropout
     from normalization import Normalization
