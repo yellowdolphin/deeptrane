@@ -1,9 +1,9 @@
 # Setup
 project = 'imagenet'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
-            'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-852e4570a10264190e603ad115283afe1f33cff54dbd4f70579b6d4a', 
-             'gs://kds-20764fac2a5507850857339a952dcd8642eb3bef36f2583ab5c9e0a5']
+            'imagenet-1k-tfrecords-ilsvrc2012-part-1']  # target_map defined in configs/imagenet_aug_tf.py
+gcs_paths = ['gs://kds-b82d4220a658d96cc9944a562792277dba4f6d8a4367faf42c01ed25', 
+             'gs://kds-8b208708b137ae5643e8cd144348c8b467a6cd7dad15ab57e3e3de0e']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -28,7 +28,7 @@ div_factor = 5                            # default: 25, from Chest14: 1
 pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
 lr_min = 1e-6
 save_best = 'loss'
-augmentation = 'autolevels_aug_tf'
+augmentation = 'imagenet_aug_tf'
 
 # Model
 arch_name = 'efnv2s'

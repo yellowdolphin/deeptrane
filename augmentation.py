@@ -306,6 +306,16 @@ def get_tf_tfms(cfg, mode='train'):
                 inputs = (image, *inputs[1:])
             else:
                 inputs['image'] = image
+
+            # Map sinlgle (target_map) or multiple (target_maps) targets
+            if flags.target_map:
+                targets = (flags.target_map(targets) if hasattr(flags.target_map, '__call__') else 
+                           flags.target_map[targets])
+            elif flags.target_maps:
+                targets = tuple(
+                    target_map(target) if hasattr(target_map, '__call__') else 
+                    target_map[target] for target, target_map in zip(targets, flags.target_maps))
+
             if sample_weights is None:
                 return inputs, targets
             return inputs, targets, sample_weights
@@ -320,6 +330,16 @@ def get_tf_tfms(cfg, mode='train'):
                 inputs = (image, *inputs[1:])
             else:
                 inputs['image'] = image
+
+            # Map sinlgle (target_map) or multiple (target_maps) targets
+            if flags.target_map:
+                targets = (flags.target_map(targets) if hasattr(flags.target_map, '__call__') else 
+                           flags.target_map[targets])
+            elif flags.target_maps:
+                targets = tuple(
+                    target_map(target) if hasattr(target_map, '__call__') else 
+                    target_map[target] for target, target_map in zip(targets, flags.target_maps))
+
             if sample_weights is None:
                 return inputs, targets
             return inputs, targets, sample_weights

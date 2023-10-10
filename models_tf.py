@@ -481,6 +481,8 @@ def check_model_weights(model):
 
 def get_bottleneck_params(cfg):
     "Define one Dropout (maybe zero) per FC + optional final Dropout"
+    if cfg.keep_pretrained_head:
+        return [], [], False
     dropout_ps = cfg.dropout_ps or []
     lin_ftrs = cfg.lin_ftrs or []
     if len(dropout_ps) > len(lin_ftrs) + 1:
@@ -534,8 +536,11 @@ def get_pretrained_model(cfg, strategy, inference=False):
         tfhub = cfg.arch_name in TFHUB
 
         pretrained_model = (
-            model_cls(weights=cfg.pretrained, input_shape=input_shape, include_top=False) if efnv1 else
-            model_cls(input_shape=input_shape, num_classes=0, pretrained=cfg.pretrained) if efnv2 else
+            model_cls(weights=cfg.pretrained, input_shape=input_shape, 
+                      include_top=cfg.keep_pretrained_head or False) if efnv1 else
+            model_cls(input_shape=input_shape, 
+                      num_classes=cfg.n_classes if cfg.keep_pretrained_head else 0, 
+                      pretrained=cfg.pretrained) if efnv2 else
             hub.KerasLayer(TFHUB[cfg.arch_name], trainable=True) if tfhub else
             tfimm.create_model(cfg.arch_name, pretrained=True, nb_classes=0, input_size=cfg.size))
 
@@ -550,8 +555,10 @@ def get_pretrained_model(cfg, strategy, inference=False):
         x = pretrained_model(x)
 
         # Head(s)
-        if efnv1:
-            if isinstance(cfg.pool, tf.keras.layers.Layer):
+        if efnv1 and not cfg.keep_pretrained_head:
+            if cfg.keep_pretrained_head:
+                embed = x
+            elif isinstance(cfg.pool, tf.keras.layers.Layer):
                 embed = cfg.pool(x, inputs) if hasattr(cfg.pool, 'requires_inputs') else cfg.pool(x)
             elif cfg.pool == 'flatten':
                 embed = Flatten()(x)
@@ -569,7 +576,9 @@ def get_pretrained_model(cfg, strategy, inference=False):
                 embed = GlobalAveragePooling2D()(x)
 
         elif efnv2:
-            if isinstance(cfg.pool, tf.keras.layers.Layer):
+            if cfg.keep_pretrained_head:
+                embed = x
+            elif isinstance(cfg.pool, tf.keras.layers.Layer):
                 embed = cfg.pool(x, inputs) if hasattr(cfg.pool, 'requires_inputs') else cfg.pool(x)
             elif cfg.pool == 'flatten':
                 embed = Flatten()(x)
@@ -613,7 +622,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
                 embed = Normalization(cfg.normalization_head, name="BN_final")(embed)  # does this help?
 
         # Output layer or Margin
-        if cfg.arcface and inference:
+        if cfg.keep_pretrained_head or (cfg.arcface and inference):
             output = embed
         elif cfg.arcface:
             margin = get_margin(cfg)
