@@ -24,7 +24,16 @@ def get_package_version(name):
     Uses pip to get package version without import so it can be updated if required.
     Requires linux/unix."""
     res = run(f'pip freeze | grep {name}==', shell=True, capture_output=True)
-    return res.stdout.decode().split('==')[-1].split('.')
+    if res.stdout:
+        substrings = res.stdout.decode().split('==')[-1].split('.')
+    else:
+        res = run(f'pip freeze | grep "{name} @ .*\.whl$"', shell=True, capture_output=True)
+        substrings = res.stdout.decode().split('/')[-1].split('-')[1].split('.')
+    if len(substrings) < 2:
+        print("No (sub)version info from pip freeze for {name}:")
+        res = run(f'pip freeze | grep {name}', shell=True, capture_output=True)
+        print(res.stdout.decode())
+    return substrings
 
 
 def listify(o):
