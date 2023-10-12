@@ -1,3 +1,4 @@
+from pathlib import Path
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import BatchNormalization
@@ -151,6 +152,10 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
                     #print("restored axis:", l.axis[0])
         else:
             raise
+    try:
+        Path('tmp.h5').unlink()
+    except FileNotFoundError:
+        pass  # kwarg "missing_ok" introduced in python 3.8
 
     if n_replacements:
         print(f"Replaced {n_replacements} instances of BatchNormalization with"

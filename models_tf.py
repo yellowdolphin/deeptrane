@@ -494,6 +494,19 @@ def get_bottleneck_params(cfg):
     return lin_ftrs, dropout_ps, final_dropout
 
 
+def peek_layer_weights(model, level=0):
+    if level == 0:
+        print(f"\nShowing first element of each weight in {model.name}")
+    for layer in model.layers:
+        if not isinstance(layer, tf.keras.layers.Layer):
+            peek_layer_weights(layer, level + 1)
+            continue
+        
+        print("    " * level + layer.name)
+        for w in layer.weights:
+            print("    " * (level + 1) + f"{w.name}: {tf.reshape(w, [-1])[0]:.6f}")
+
+
 def get_pretrained_model(cfg, strategy, inference=False):
 
     # Imports
@@ -723,6 +736,8 @@ def get_pretrained_model(cfg, strategy, inference=False):
         set_bn_parameters(model, momentum=cfg.bn_momentum, eps=cfg.bn_eps, debug=cfg.DEBUG)
 
         # The following can probably be moved out of the strategy.scope...
+
+        #peek_layer_weights(model)  # debug loaded rst weights
 
         if cfg.use_custom_training_loop: return model
 
