@@ -37,7 +37,15 @@ from albumentations.augmentations.geometric.resize import LongestMaxSize
 
 
 import tensorflow as tf
-import tensorflow_probability as tfp
+try:
+    import tensorflow_probability as tfp
+except ImportError as e:
+    print(e)
+    print("Reverting to tensorflow-probability<0.21 ...")
+    from utils.general import quietly_run
+    quietly_run('pip install tensorflow-probability<0.21')
+    import tensorflow_probability as tfp
+print("[ √ ] tfp:", tfp.__version__)
 tfd = tfp.distributions
 from augmentation import adjust_sharpness_tf
 
@@ -176,7 +184,8 @@ def init(cfg):
                                         add_channels=add_channels)
         else:
             cfg.pool = QuantilePooling(input_shape, stat_channels=bins * 3, activation=cfg.act_head,
-                                       add_channels=add_channels)
+                                       add_channels=add_channels,
+                                       name='transform_tf')  # increments body_index by 1
 
 
 class GammaTransformTF(tf.keras.layers.Layer):
@@ -345,7 +354,7 @@ def get_pool_baseline_model(cfg, strategy):
     import tensorflow as tf
     from tensorflow.keras.layers import Input, Dense, Dropout
     from normalization import Normalization
-    from models_tf import get_bottleneck_params
+    from models_tf import get_bottleneck_params, set_trainable, peek_layer_weights
 
     with strategy.scope():
 
@@ -373,8 +382,29 @@ def get_pool_baseline_model(cfg, strategy):
 
         # Build model
         model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+        #peek_layer_weights(model)
 
-        assert not (cfg.rst_path and cfg.rst_name)
+        # Load restart weights
+        if cfg.rst_path and cfg.rst_name:
+            # avoid ValueError "axes don't match array":
+            # https://stackoverflow.com/questions/51944836/keras-load-model-valueerror-axes-dont-match-array
+            set_trainable(model, cfg.freeze_for_loading)
+
+            try:
+                model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
+            except ValueError:
+                print(f"{cfg.rst_name} mismatches model with body: {model.layers[1].name}")
+                print("Trying to load matching layers only...")
+                model.load_weights(Path(cfg.rst_path) / cfg.rst_name, 
+                                   by_name=True, skip_mismatch=True)
+            print(f"Weights loaded from {cfg.rst_name}")
+
+        #peek_layer_weights(model)
+        #for w in model.layers[1].weights:
+        #    print("    " + f"{w.name}: {w.shape}")
+
+        # Freeze/unfreeze, set BN parameters
+        set_trainable(model, cfg.freeze)
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.lr, beta_1=cfg.betas[0], beta_2=cfg.betas[1])
         metrics_classes = {'curve_rmse': TFCurveRMSE(curve=cfg.curve)}
@@ -1203,6 +1233,7 @@ class QuantilePooling(StatPooling):
 
 
 class HistogramPooling(StatPooling):
+    "Dysfunct: tfp.stats.histogram does not compile with XLA (issue #1758)"
     def stat(self, img):
         h, w, = 12, 12 #self.fields
         c = 32 * 3 #self.stat_channels
