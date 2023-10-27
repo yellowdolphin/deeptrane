@@ -176,15 +176,17 @@ def init(cfg):
                     1280 if cfg.arch_name in [f'efnv2{x}' for x in 's m l xl'.split()] else
                     0 if cfg.arch_name == 'pool_baseline' else None)
         input_shape = [12, 12, emb_size]  # efnv2s, size=384
-        bins = cfg.stat_pooling_bins or 32  # image statistic bins per color channel
+        bins = cfg.stat_pooling_bins or 64  # image statistic bins per color channel
         add_channels = 1280 if (cfg.arch_name == 'pool_baseline') else 0
+        mul_channels = 8 if (cfg.arch_name == 'pool_baseline') else 1
 
         if cfg.pool == 'histogram':
             cfg.pool = HistogramPooling(input_shape, stat_channels=bins * 3, activation=cfg.act_head,
                                         add_channels=add_channels)
         else:
             cfg.pool = QuantilePooling(input_shape, stat_channels=bins * 3, activation=cfg.act_head,
-                                       add_channels=add_channels,
+                                       #add_channels=add_channels,
+                                       mul_channels=mul_channels,
                                        name='transform_tf')  # increments body_index by 1
 
 
@@ -1179,7 +1181,7 @@ class AugInvCurveDataset3(Dataset):
 
 class StatPooling(tf.keras.layers.Layer):
     requires_inputs = True  # if this class attribute exists: call(embed, inputs) 
-    def __init__(self, input_shape, stat_channels, add_channels=0, squeeze=False, activation=None, **kwargs):
+    def __init__(self, input_shape, stat_channels, mul_channels=1, add_channels=0, squeeze=False, activation=None, **kwargs):
         """
         input_shape: embed shape, e.g., (12, 12, 1280)
         channels:  channels of the image statistics, max: 256 * 3
@@ -1192,7 +1194,7 @@ class StatPooling(tf.keras.layers.Layer):
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.bn2 = tf.keras.layers.BatchNormalization()
         c0 = emb_ch + stat_channels  # concatenated channels
-        c1 = c0 + add_channels       # excite
+        c1 = c0 * mul_channels + add_channels       # excite
         c2 = c0 if squeeze else c1   # squeeze
         self.conv1 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
         self.conv2 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
@@ -1211,6 +1213,8 @@ class StatPooling(tf.keras.layers.Layer):
         # x: [N, h, w, C]
         # img: [N, H, W, 3] -> stat: [N, h, w, stat_channels]
         img = inputs[0]  # shape [N, H, W, 3]
+        assert img.shape[-1] == 3, f'{img.shape}'
+        assert x is None
         stat = self.stat(img)
         x = tf.concat([x, stat], axis=-1, name="hist_concat") if x is not None else stat
         x = self.bn1(x)
