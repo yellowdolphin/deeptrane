@@ -1193,34 +1193,96 @@ class StatPooling(tf.keras.layers.Layer):
         self.pool = tf.keras.layers.GlobalAveragePooling2D()
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.bn2 = tf.keras.layers.BatchNormalization()
-        c0 = emb_ch + stat_channels  # concatenated channels
-        c1 = c0 * mul_channels + add_channels       # excite
-        c2 = c0 if squeeze else c1   # squeeze
+        self.bn3 = tf.keras.layers.BatchNormalization()
+        self.bn4 = tf.keras.layers.BatchNormalization()
+        self.bn5 = tf.keras.layers.BatchNormalization()
+        self.bn6 = tf.keras.layers.BatchNormalization()
+        self.bn7 = tf.keras.layers.BatchNormalization()
+        self.bn8 = tf.keras.layers.BatchNormalization()
+        #self.bn9 = tf.keras.layers.BatchNormalization()
+        #self.bn10 = tf.keras.layers.BatchNormalization()
+        #self.bn11 = tf.keras.layers.BatchNormalization()
+        #self.bn12 = tf.keras.layers.BatchNormalization()
+        c1 = stat_channels * 8
+        c2 = (stat_channels + emb_ch) * mul_channels + add_channels
+        #c1 = c2  # merge-4-skipmerge-4
         self.conv1 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
-        self.conv2 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        self.conv2 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv3 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv4 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv5 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv6 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv7 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        self.conv8 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv9 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv10 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv11 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv12 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
         print(f"{self.__class__.__name__}:")
         print("fields:", self.fields)
         print("embed channels:", emb_ch)
         print("bins:", self.stat_channels // 3)
-        print("c0, c1, c2:", c0, c1, c2)
+        print("c1, c2:", c1, c2)
 
     def stat(self, img):
         # Implement a statistics of img that outputs a tensor of shape [N, h, w, stat_channels]
         return None
 
-    def call(self, x, inputs):
+    def call(self, x0, inputs):
         # devide input image into same receptive fields as x
         # x: [N, h, w, C]
         # img: [N, H, W, 3] -> stat: [N, h, w, stat_channels]
-        img = inputs[0]  # shape [N, H, W, 3]
-        assert img.shape[-1] == 3, f'{img.shape}'
-        assert x is None
-        stat = self.stat(img)
-        x = tf.concat([x, stat], axis=-1, name="hist_concat") if x is not None else stat
+        stat = self.stat(img=inputs[0])
+
+        #x = tf.concat([x0, stat], axis=-1, name="statpool_merge") if x0 is not None else stat  # merge-4-skipmerge-4
+        x = stat  # all others
+
         x = self.bn1(x)
         x = self.conv1(x)
         x = self.bn2(x)
         x = self.conv2(x)
+        x = self.bn3(x)
+        x = self.conv3(x)
+        x = self.bn4(x)
+
+        # 6-skipmerge
+        x = self.conv4(x)
+
+        # 4-skipmerge-4
+        #x = self.conv4(x)
+        #x = tf.concat([x, x0, stat], axis=-1, name="statpool_skipmerge")  # merge-4-skipmerge-4
+        #x = tf.concat([x, stat, x0], axis=-1, name="statpool_skipmerge")  # all others
+
+
+        # 4-skip-4-(skip)merge
+        #x4 = self.conv4(x)
+        #x = tf.concat([x4, stat], axis=-1, name="statpool_skip")
+
+        x = self.bn5(x)
+        x = self.conv5(x)
+        x = self.bn6(x)
+        x = self.conv6(x)
+
+        # 6-skipmerge
+        x = tf.concat([x, x0, stat], axis=-1, name="statpool_skipmerge") if x0 is not None else x
+
+        x = self.bn7(x)
+        x = self.conv7(x)
+        x = self.bn8(x)
+        x = self.conv8(x)
+
+        # 4-skip-4-(skip)merge
+        #x = tf.concat([x, x0], axis=-1, name="statpool_merge") if x0 is not None else x  # 4-skip-4-merge
+        #x = tf.concat([x, x4, x0], axis=-1, name="statpool_merge") if x0 is not None else x
+        #x = tf.concat([x, x4, stat, x0], axis=-1, name="statpool_merge") if x0 is not None else x
+        #x = self.bn9(x)
+        #x = self.conv9(x)
+        #x = self.bn10(x)
+        #x = self.conv10(x)
+        #x = self.bn11(x)
+        #x = self.conv11(x)
+        #x = self.bn12(x)
+        #x = self.conv12(x)
         return self.pool(x)
 
 
@@ -1231,7 +1293,7 @@ class QuantilePooling(StatPooling):
         _, W, H, C = img.shape
         agg_h, agg_w = H // h, W // w
         agg_numel = agg_h * agg_w
-        img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
+        img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 5, 2, 4]), [-1, h, w, C, agg_numel])
         stats = tfp.stats.quantiles(img, num_quantiles=c // C - 1, axis=-1, interpolation='linear')
         return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (-1, h, w, c))
 
@@ -1246,8 +1308,8 @@ class HistogramPooling(StatPooling):
         agg_h, agg_w = H // h, W // w
         agg_numel = agg_h * agg_w
         edges = tf.linspace(-0.5, 255.5, bins + 1) / 255  # first will be replaced by -inf
-        #img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
-        img = tf.reshape(tf.transpose(tf.reshape(img, [64, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [64, h, w, C, agg_numel])
+        #img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 5, 2, 4]), [-1, h, w, C, agg_numel])
+        img = tf.reshape(tf.transpose(tf.reshape(img, [64, h, H // h, w, W // w, C]), [0, 1, 3, 5, 2, 4]), [64, h, w, C, agg_numel])
         stats = tfp.stats.histogram(img, edges=edges, axis=4, extend_lower_interval=True, extend_upper_interval=True)
         return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (64, h, w, c))
 
