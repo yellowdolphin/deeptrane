@@ -1228,7 +1228,7 @@ class QuantilePooling(StatPooling):
         agg_h, agg_w = H // h, W // w
         agg_numel = agg_h * agg_w
         img = tf.reshape(tf.transpose(tf.reshape(img, [-1, h, H // h, w, W // w, C]), [0, 1, 3, 4, 2, 5]), [-1, h, w, C, agg_numel])
-        stats = tfp.stats.quantiles(img, num_quantiles=c // C - 1, axis=-1)
+        stats = tfp.stats.quantiles(img, num_quantiles=c // C - 1, axis=-1, interpolation='linear')
         return tf.reshape(tf.transpose(stats, [1, 2, 3, 4, 0]), (-1, h, w, c))
 
 
