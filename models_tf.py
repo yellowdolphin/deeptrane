@@ -82,6 +82,77 @@ class GeMPoolingLayer(tf.keras.layers.Layer):
         return inputs
 
 
+class SelfAttentionPooling2D(tf.keras.layers.Layer):
+    """Citation: 
+    Fang Chen et al. (2023)
+    Self-Attentive Pooling for Efficient Deep Learning
+    https://doi.org/10.48550/arXiv.2209.07659
+    https://github.com/C-Fun/Self-Attentive-Pooling-for-Efficient-Deep-Learning
+
+    In orig github repo, parameters for self-attention-pooling are defined in
+      - commandline args (--architecture): <arch_name>-<pooling_type>-<strides> (see base/experiments.sh)
+      - base.models.network.name_parse
+    These end up in a config that is passed to base.models.Network(cfg).
+    The last attention pooling has 32 heads in models with 4 blocks, 128 in deeper models.
+    Strides are 1 or 2.
+    win_norm is always True and dim_reduction_ratio is 1.
+    """
+    def __init__(self, in_channels, win_norm=True, stride=1, dim_reduced_ratio=1.0, num_heads=2,
+                 position_embedding='learned'):
+        super().__init__()
+        self.win_norm = win_norm
+        self.in_channels = in_channels
+        reduced_dim = round(dim_reduced_ratio * in_channels / num_heads) or 1
+        embed_dim = reduced_dim * num_heads
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        print(f"\n{self.__class__.__name__}:")
+        print("    in_channels:", in_channels)
+        print("    reduced_ratio:", dim_reduced_ratio)
+        print("    embed_dim:", embed_dim)
+        print("    num_heads:", num_heads)
+        print("    win_norm:", win_norm)
+
+        self.downsample = tf.keras.Sequential(
+            layers=[tf.keras.layers.Conv2D(embed_dim, 1),
+                    tf.keras.layers.BatchNormalization(),
+                    tf.keras.layers.ReLU()],
+            name='self_attn.downsample')
+
+        self.multihead_attn = tf.keras.layers.MultiHeadAttention(num_heads, embed_dim)
+
+        self.map = tf.keras.Sequential(
+            layers=[tf.keras.layers.Conv2D(in_channels, kernel_size=stride, strides=stride),
+					tf.keras.layers.BatchNormalization(),
+                    tf.keras.layers.ReLU()],
+            name='self_attn.map')
+        
+        self.pos_embed = None #build_position_encoding(hidden_dim=embed_dim, position_embedding=position_embedding)
+
+        self.pool = tf.keras.layers.GlobalAveragePooling2D()
+
+
+    def call(self, x: tf.Tensor, **kwargs):
+        _, h, w, c = x.shape
+
+        embed = self.downsample(x)  # c -> embed_dim
+
+        if self.pos_embed is not None:
+            nested_embed = embed #NestedTensor(downsampled, None)
+            pos_embed = self.pos_embed(nested_embed)
+            embed += pos_embed
+
+        embed = tf.reshape(embed, [-1, h * w, self.embed_dim])
+        attn_seq = self.multihead_attn(embed, embed)
+        weight = tf.reshape(attn_seq, [-1, h, w, self.embed_dim])
+
+        weight = self.map(weight)  # embed_dim -> c
+
+        # prevent divide by zero    
+        return self.pool(x * weight) / self.pool(weight + 0.01) if self.win_norm else self.pool(x * weight)
+
+
+
 class CustomTrainStep(tf.keras.Model):
     def __init__(self, n_acc, *args, **kwargs):
         super().__init__(*args, **kwargs)

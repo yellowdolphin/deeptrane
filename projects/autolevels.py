@@ -48,6 +48,7 @@ except ImportError as e:
 print("[ √ ] tfp:", tfp.__version__)
 tfd = tfp.distributions
 from augmentation import adjust_sharpness_tf
+from models_tf import SelfAttentionPooling2D
 
 
 def init(cfg):
@@ -187,6 +188,7 @@ def init(cfg):
             cfg.pool = QuantilePooling(input_shape, stat_channels=bins * 3, activation=cfg.act_head,
                                        #add_channels=add_channels,
                                        mul_channels=mul_channels,
+                                       attention=True,
                                        name='transform_tf')  # increments body_index by 1
 
 
@@ -1181,7 +1183,8 @@ class AugInvCurveDataset3(Dataset):
 
 class StatPooling(tf.keras.layers.Layer):
     requires_inputs = True  # if this class attribute exists: call(embed, inputs) 
-    def __init__(self, input_shape, stat_channels, mul_channels=1, add_channels=0, squeeze=False, activation=None, **kwargs):
+    def __init__(self, input_shape, stat_channels, mul_channels=1, add_channels=0, activation=None,
+                 attention=None, **kwargs):
         """
         input_shape: embed shape, e.g., (12, 12, 1280)
         channels:  channels of the image statistics, max: 256 * 3
@@ -1190,7 +1193,6 @@ class StatPooling(tf.keras.layers.Layer):
         self.fields = input_shape[:2]
         emb_ch = input_shape[2]
         self.stat_channels = stat_channels
-        self.pool = tf.keras.layers.GlobalAveragePooling2D()
         self.bn1 = tf.keras.layers.BatchNormalization()
         self.bn2 = tf.keras.layers.BatchNormalization()
         self.bn3 = tf.keras.layers.BatchNormalization()
@@ -1217,11 +1219,13 @@ class StatPooling(tf.keras.layers.Layer):
         self.conv10 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
         #self.conv11 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
         #self.conv12 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
-        print(f"{self.__class__.__name__}:")
-        print("fields:", self.fields)
-        print("embed channels:", emb_ch)
-        print("bins:", self.stat_channels // 3)
-        print("c1, c2:", c1, c2)
+        self.pool = (SelfAttentionPooling2D(c2, num_heads=24, dim_reduced_ratio=1/24, win_norm=True) if attention else 
+                     tf.keras.layers.GlobalAveragePooling2D())
+        print(f"\n{self.__class__.__name__}:")
+        print("    fields:", self.fields)
+        print("    embed channels:", emb_ch)
+        print("    bins:", self.stat_channels // 3)
+        print("    c1, c2:", c1, c2)
 
     def stat(self, img):
         # Implement a statistics of img that outputs a tensor of shape [N, h, w, stat_channels]
