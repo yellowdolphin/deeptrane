@@ -1,17 +1,17 @@
 # Setup
 project = 'autolevels'
 datasets = ['coco-2017-tfrecords']
-gcs_paths = ['gs://kds-16ca2f3bd610050e7be6f4c8cbdfc87bf140d389cf490e7186ffa5f5']
+gcs_paths = ['gs://kds-c3d40695d181bdcadddb996148c15a3c6fcaf761d07a7c1b73cc4ef3']
 gcs_filter = '*/*/coco*.tfrecord'
 tfrec_filename_pattern = None
-preprocess = {
-    'bp': [0.0084, 0.0102, 0.0091],
-    'gamma': [0.9937, 1.0027, 0.9919],
-    'bp2': [0.0088, 0.0103, 0.0097],
-    'bp_ref': [0.0085, 0.0232, 0.0068],
-    'gamma_ref': [0.9992, 1.0180, 0.9982],
-    'bp2_ref': [0.0095, 0.0031, 0.0111],
-}
+#preprocess = {
+#    'bp': [0.0084, 0.0102, 0.0091],
+#    'gamma': [0.9937, 1.0027, 0.9919],
+#    'bp2': [0.0088, 0.0103, 0.0097],
+#    'bp_ref': [0.0085, 0.0232, 0.0068],
+#    'gamma_ref': [0.9992, 1.0180, 0.9982],
+#    'bp2_ref': [0.0095, 0.0031, 0.0111],
+#}
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
@@ -33,8 +33,8 @@ one_cycle = True
 div_factor = 5                            # default: 25, from Chest14: 1
 pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
 lr_min = 1e-6
-save_best = None #'loss'
-checkpoint_format = 'keras'
+save_best = 'loss'
+#checkpoint_format = 'keras'
 predict_inverse = True
 blackpoint_range = (-30, 30)   # x-offset
 blackpoint2_range = (-30, 30)  # y-offset
@@ -48,7 +48,7 @@ curve4_b_range = (0.4, 1.2)
 mirror_curve4 = True
 p_gamma = 0.4                  # probability for using Gamma curve
 p_beta = 0.33                  # probability for using Beta PDF rather than Curve4
-add_uniform_noise = False       # add uniform noise to mask uint8 discretization [bool|float]
+add_uniform_noise = False      # add uniform noise to mask uint8 discretization [bool|float]
 add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)

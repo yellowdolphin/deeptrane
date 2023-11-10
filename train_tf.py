@@ -77,15 +77,19 @@ if project:
 # TPU detection. No parameters necessary if TPU_NAME environment variable is set.
 # This is always the case on Kaggle.
 try:
-    #tpu = tf.distribute.cluster_resolver.TPUClusterResolver()
-    tpu = tf.distribute.cluster_resolver.TPUClusterResolver.connect()
+    if cfg.cloud in ['kaggle', 'drive']:
+        # TPUClusterResolver.connect() on kaggle raises ValueError
+        # TPUClusterResolver.connect() on colab sometimes does not respond
+        tpu = tf.distribute.cluster_resolver.TPUClusterResolver()
+        tf.config.experimental_connect_to_cluster(tpu)
+        tf.tpu.experimental.initialize_tpu_system(tpu)
+    else:
+        tpu = tf.distribute.cluster_resolver.TPUClusterResolver.connect()
     print('Running on TPU ', tpu.master())
 except ValueError:
     tpu = None
 
 if tpu:
-    #tf.config.experimental_connect_to_cluster(tpu)
-    #tf.tpu.experimental.initialize_tpu_system(tpu)
     strategy = tf.distribute.TPUStrategy(tpu)
     
     # Workaround issue https://github.com/tensorflow/hub/issues/604
