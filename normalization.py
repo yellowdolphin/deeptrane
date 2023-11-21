@@ -126,8 +126,8 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
     # Now all nodes are duplicated.
     # Save and load model to clean up Graph (recommended on StackOverflow)
     try:
-        new_model.save('tmp.h5')
-        new_model = tf.keras.models.load_model('tmp.h5')
+        new_model.save('tmp.keras')
+        new_model = tf.keras.models.load_model('tmp.keras')
     except ValueError as e:
         if 'axis' in str(e):
             # Work around BatchNormalization/VBS bug, axis must be 3 during save, else 4
@@ -139,8 +139,8 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
                     else:
                         l.axis -= 1
 
-            new_model.save('tmp.h5')
-            new_model = tf.keras.models.load_model('tmp.h5')
+            new_model.save('tmp.keras')
+            new_model = tf.keras.models.load_model('tmp.keras')
 
             for l in new_model.layers:
                 if isinstance(l, tf.keras.layers.BatchNormalization) and l.virtual_batch_size is not None:
@@ -153,7 +153,7 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
         else:
             raise
     try:
-        Path('tmp.h5').unlink()
+        Path('tmp.keras').unlink()
     except FileNotFoundError:
         pass  # kwarg "missing_ok" introduced in python 3.8
 
