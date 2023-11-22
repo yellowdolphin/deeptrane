@@ -171,13 +171,21 @@ for use_fold in cfg.use_folds:
 
     clear_session()
 
+    ## TODO: refactor
     if cfg.rst_name and (rst_file.suffix == '.keras'):
-        with strategy.scope():
-            model = tf.keras.models.load_model(rst_file)
-            print(f"Keras model loaded from {rst_file}")
-            if cfg.freeze is not None:
-                from models_tf import set_trainable
-                set_trainable(model, cfg.freeze)
+        try:
+            with strategy.scope():
+                model = tf.keras.models.load_model(rst_file)
+                print(f"Keras model loaded from {rst_file}")
+                if cfg.freeze is not None:
+                    from models_tf import set_trainable
+                    set_trainable(model, cfg.freeze)
+        except ValueError:
+            # no model config, only weights
+            if hasattr(project, 'get_pretrained_model'):
+                model = project.get_pretrained_model(cfg, strategy)
+            else:
+                model = get_pretrained_model(cfg, strategy)
     elif hasattr(project, 'get_pretrained_model'):
         model = project.get_pretrained_model(cfg, strategy)
     else:
