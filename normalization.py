@@ -69,7 +69,7 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
 
     # All but output layers must have outbound nodes
     if not network_dict['input_layers_of']:
-        print("replace_bn_layers: model {model.name} has no layer connectivity, cannot reconstruct.")
+        print(f"replace_bn_layers: model {model.name} has no layer connectivity, cannot reconstruct.")
         print("WARNING: keeping model with original normalization layers.")
         return model
 

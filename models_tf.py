@@ -509,8 +509,21 @@ def peek_layer_weights(model, level=0):
 
 def get_pretrained_model(cfg, strategy, inference=False):
 
-    # Imports
-    import tensorflow as tf
+    # Delayed imports
+    #import tensorflow as tf  ## TODO: confirm this is obsolete!
+
+    rst_file = Path(cfg.rst_path) / cfg.rst_name if cfg.rst_path and cfg.rst_name else None
+
+    # If rst_file contains a complete keras model, load it
+    if rst_file and rst_file.suffix == '.keras':
+        try:
+            with strategy.scope():
+                model = tf.keras.models.load_model(rst_file)
+                if cfg.freeze is not None: set_trainable(model, cfg.freeze)
+            print(f"Keras model loaded from {rst_file}")
+            return model
+        except ValueError:
+            pass
 
     if cfg.arch_name.startswith('efnv1'):
         import efficientnet
@@ -717,19 +730,18 @@ def get_pretrained_model(cfg, strategy, inference=False):
             model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
 
         # Load restart weights
-        if cfg.rst_path and cfg.rst_name:
+        if rst_file:
             # avoid ValueError "axes don't match array":
             # https://stackoverflow.com/questions/51944836/keras-load-model-valueerror-axes-dont-match-array
             set_trainable(model, cfg.freeze_for_loading)
 
             try:
-                model.load_weights(Path(cfg.rst_path) / cfg.rst_name)
+                model.load_weights(rst_file)
             except ValueError:
-                print(f"{cfg.rst_name} mismatches model with body: {model.layers[1].name}")
+                print(f"{rst_file} mismatches model with body: {model.layers[1].name}")
                 print("Trying to load matching layers only...")
-                model.load_weights(Path(cfg.rst_path) / cfg.rst_name, 
-                                   by_name=True, skip_mismatch=True)
-            print(f"Weights loaded from {cfg.rst_name}")
+                model.load_weights(rst_file, by_name=True, skip_mismatch=True)
+            print(f"Weights loaded from {rst_file}")
 
         # Freeze/unfreeze, set BN parameters
         set_trainable(model, cfg.freeze)

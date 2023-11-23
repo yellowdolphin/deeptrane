@@ -30,6 +30,7 @@ cfg = dict(
     lr_min = 0.05,
     metrics = ['acc'],
     save_best = 'acc',
+    checkpoint_format = 'keras',
 
 # Augmentation
     normalize = None,
