@@ -50,6 +50,8 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
     Derived from:
     https://stackoverflow.com/questions/49492255/how-to-replace-or-insert-intermediate-layer-in-keras-model
     """
+    if isinstance(layer_class, str) and (layer_class.lower() == 'bn'):
+        return model
     vbs = kwargs.get('vbs', None)
     if isinstance(layer_class, str) and (layer_class.lower() == 'syncbn') and n_gpu < 2:
         print("Info: SyncBN only affects distributed GPU training!")
