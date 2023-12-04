@@ -1384,7 +1384,8 @@ def interp1d_tf(x, y, inp):
 
 
 def map_index(image, curves, height=None, width=None, channels=3, 
-              add_uniform_noise=False, add_jpeg_artifacts=True, sharpness_augment=True):
+              add_uniform_noise=False, add_jpeg_artifacts=True, sharpness_augment=True,
+              resize_before_jpeg=False):
     """Transform `image` by mapping its pixel values via `curves`
     
     Parameters:
@@ -1422,6 +1423,9 @@ def map_index(image, curves, height=None, width=None, channels=3,
         indices_plus_one = tf.stack([image_plus_one, channel_idx], axis=-1)
 
     image = tf.gather_nd(curves, indices)
+
+    if resize_before_jpeg:
+        image = tf.image.resize(image, resize_before_jpeg)
 
     if sharpness_augment:
         # randomly soften/sharpen the image
@@ -1490,8 +1494,15 @@ def curve_tfm_image(cfg, image, tfm, height, width):
             assert cfg.presize, f'neither image height/width nor cfg.presize is defined'
             height, width = [int(s * cfg.presize) for s in cfg.size]
             image = tf.image.resize(image, [height, width])
+
+        resize_before_jpeg = cfg.size if (cfg.resize_before_jpeg and (max(height, width) > max(cfg.size))) else False
+
         image = map_index(image, curves, height, width, 3,
-                          cfg.add_uniform_noise, cfg.add_jpeg_artifacts, cfg.sharpness_augment)
+                          cfg.add_uniform_noise, cfg.add_jpeg_artifacts, cfg.sharpness_augment,
+                          resize_before_jpeg)
+
+        if cfg.resize_before_jpeg:
+            height, width = cfg.size
 
     if cfg.curve not in ['gamma', 'free']:
         image /= 255.0
