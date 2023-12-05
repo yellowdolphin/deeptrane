@@ -447,19 +447,23 @@ def set_bn_parameters(model, momentum=None, eps=None, debug=False):
 
     normalization_classes = get_normalization_classes()
 
-    n_replaced = 0
+    n_eps, n_mom = 0, 0
     for layer in body.layers:
         if isinstance(layer, normalization_classes):
-            if momentum:
-                if debug and layer.momentum != momentum:
+            if momentum and (layer.momentum != momentum):
+                if debug:
                     print(f"{layer.name}: changing momentum {layer.momentum} -> {momentum}")
                 layer.momentum = momentum
-            if eps:
-                if debug and layer.epsilon != eps:
+                n_mom += 1
+            if eps and (layer.epsilon != eps):
+                if debug:
                     print(f"{layer.name}: changing eps {layer.epsilon} -> {eps}")
                 layer.epsilon = eps
-    if n_replaced:
-        print(f"Set momentum, epsilon in {n_replaced} normalization layers")
+                n_eps += 1
+    if n_mom:
+        print(f"Changed momentum in {n_mom} normalization layers")
+    if n_eps:
+        print(f"Changed epsilon  in {n_eps} normalization layers")
 
 
 def check_model_weights(model):

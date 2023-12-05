@@ -50,7 +50,7 @@ catmix = False                 # compose input of 4 images
 
 # Model
 arch_name = 'efnv2s'
-bn_eps = 1e-5
+#bn_eps = 1e-5
 #rst_path = '/kaggle/input/cassava-deeptrane-rst'
 #rst_name = ''
 optimizer = "Adam"  # Adam AdamW SGD
