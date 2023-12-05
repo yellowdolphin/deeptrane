@@ -52,12 +52,13 @@ add_uniform_noise = False      # add uniform noise to mask uint8 discretization 
 add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)
+resize_before_jpeg = True
 augmentation = 'autolevels_aug_tf'
 catmix = False                 # compose input of 4 images
 
 # Model
 arch_name = 'efnv2s'
-bn_eps = 1e-5
+#bn_eps = 1e-5
 #rst_path = '/kaggle/input/cassava-deeptrane-rst'
 #rst_name = ''
 optimizer = "Adam"  # Adam AdamW SGD

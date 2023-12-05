@@ -41,9 +41,14 @@ try:
     import tensorflow_probability as tfp
 except ImportError as e:
     print(e)
-    print("Reverting to tensorflow-probability<0.21 ...")
+    incompatible_tfp_version = (
+        '0.23' if tf.__version__.startswith('2.14') else
+        '0.22' if tf.__version__.startswith('2.13') else
+        '0.21'
+    )
+    print(f"Reverting to tensorflow-probability<{incompatible_tfp_version} ...")
     from utils.general import quietly_run
-    quietly_run('pip install tensorflow-probability<0.21')
+    quietly_run(f'pip install tensorflow-probability<{incompatible_tfp_version}')
     import tensorflow_probability as tfp
 print("[ √ ] tfp:", tfp.__version__)
 tfd = tfp.distributions
@@ -1425,7 +1430,16 @@ def map_index(image, curves, height=None, width=None, channels=3,
     image = tf.gather_nd(curves, indices)
 
     if resize_before_jpeg:
-        image = tf.image.resize(image, resize_before_jpeg)
+        # resize only images larger than cfg.size
+        max_height, max_width = resize_before_jpeg
+        height = tf.clip_by_value(height, 16, max_height)
+        width = tf.clip_by_value(width, 16, max_width)
+
+        # resize all images (worse)
+        #height, width = resize_before_jpeg
+
+        # resize converts uint8 -> float32
+        image = tf.cast(tf.image.resize(image, (height, width)), tf.uint8)
 
     if sharpness_augment:
         # randomly soften/sharpen the image
@@ -1445,7 +1459,7 @@ def map_index(image, curves, height=None, width=None, channels=3,
         noise = tf.random.uniform((height, width, channels)) * noise_range
         image += noise
 
-    return image
+    return image, height, width
 
 
 def preprocess_image(image, preprocess):
@@ -1485,7 +1499,7 @@ def curve_tfm_image(cfg, image, tfm, height, width):
         if height is None or width is None:
             height, width = [int(s * cfg.presize) for s in cfg.size]
             image = tf.image.resize(image, [height, width])
-        image = map_index(image, curves, cfg.add_uniform_noise, height, width)
+        image, height, width = map_index(image, curves, cfg.add_uniform_noise, height, width)
 
     elif cfg.curve in ['gamma', 'free']:
         curves = tf.transpose(tfm)  # (256, C)
@@ -1495,14 +1509,11 @@ def curve_tfm_image(cfg, image, tfm, height, width):
             height, width = [int(s * cfg.presize) for s in cfg.size]
             image = tf.image.resize(image, [height, width])
 
-        resize_before_jpeg = cfg.size if (cfg.resize_before_jpeg and (max(height, width) > max(cfg.size))) else False
+        assert not (cfg.resize_before_jpeg and cfg.catmix), 'catmix and resize_before_jpeg are mutually exclusive'
 
-        image = map_index(image, curves, height, width, 3,
-                          cfg.add_uniform_noise, cfg.add_jpeg_artifacts, cfg.sharpness_augment,
-                          resize_before_jpeg)
-
-        if cfg.resize_before_jpeg:
-            height, width = cfg.size
+        image, height, width = map_index(image, curves, height, width, 3,
+                                         cfg.add_uniform_noise, cfg.add_jpeg_artifacts, cfg.sharpness_augment,
+                                         resize_before_jpeg=cfg.size if cfg.resize_before_jpeg else False)
 
     if cfg.curve not in ['gamma', 'free']:
         image /= 255.0

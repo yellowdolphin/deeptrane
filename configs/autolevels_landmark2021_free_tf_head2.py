@@ -1,7 +1,7 @@
 # Setup
 project = 'autolevels'
 datasets = [f'google-landmark-tfrecords-512-{i}' for i in range(1, 7)]
-gcs_paths = ['gs://kds-c5e92244c1312679b20254c2fbbca7beaffbf4378485bac35239d03f', 'gs://kds-33111b29843e0fe40a853dfbfa7882c4753dc9522687ac0ac45ff13f', 'gs://kds-8371d951f1a60ca491bcb778c30a14cc3a77b059c01c08406f82b735', 'gs://kds-251f3409ee9d76aa487b0d99dba882408a53907cc37fcbc3d78dcadf', 'gs://kds-33daf92995a1327eb2ccd1eb0362980cd2ad6b9ae2bbf01fc3c86f4d', 'gs://kds-57bde52a482188340ecfa141dc82eb0bced336351a06bc56a058bfab']
+gcs_paths = ['gs://kds-312b8e8d30ec0d08b626be22aa6e33dff085ebcfa0923ba743379431', 'gs://kds-875b41c4d9a800bff52ebb306948b58c12990b98c3d475931693559e', 'gs://kds-d05de08723713ac86b96d902c091c90ea371ed9d8ab6311949965b46', 'gs://kds-ba90cd7fd19316762ed1bd392e281ca5b13e12d9bc6bb376578748a8', 'gs://kds-79c99aafaa6c48e32b8cdea47434559ef64ec356530c1b9cc6f15d60', 'gs://kds-9ea89c976c4ee7d0116bc7b82e063004d2af987da628896c48183840']
 gcs_filter = '*.tfrec'
 tfrec_filename_pattern = None
 BGR = True
@@ -58,12 +58,13 @@ add_uniform_noise = False      # add uniform noise to mask uint8 discretization 
 add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)
+resize_before_jpeg = True
 augmentation = 'autolevels_aug_tf'
 catmix = False                 # compose input of 4 images
 
 # Model
 arch_name = 'efnv2s'
-bn_eps = 1e-5
+#bn_eps = 1e-5
 rst_path = '/kaggle/input/autolevels-modelbox'
 #rst_name = 'free_efnv2s_r608.h5'
 #rst_epoch = 48
