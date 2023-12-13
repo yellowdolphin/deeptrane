@@ -198,7 +198,7 @@ for use_fold in cfg.use_folds:
                         initial_epoch=cfg.rst_epoch,
                         )
     wall = perf_counter() - t0
-    min_per_ep = wall / cfg.epochs / 60
+    min_per_ep = wall / (cfg.epochs - cfg.rst_epoch) / 60
     print(f"Training finished in {wall / 60:.2f} min ({min_per_ep:.2f} min/epoch)")
 
     if hasattr(project, 'on_train_end'):

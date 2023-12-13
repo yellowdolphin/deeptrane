@@ -1,7 +1,7 @@
 # Setup
 project = 'autolevels'
 datasets = ['coco-2017-tfrecords']
-gcs_paths = ['gs://kds-c3d40695d181bdcadddb996148c15a3c6fcaf761d07a7c1b73cc4ef3']
+gcs_paths = ['gs://kds-9420ff75107d44c00cc2db132007873fe3e95d42e24b46a70cff70d4']
 gcs_filter = '*/*/coco*.tfrecord'
 tfrec_filename_pattern = None
 #preprocess = {
