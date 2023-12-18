@@ -73,7 +73,11 @@ def get_crop_resize(size, test=False,
     H, W = size
     AR = W / H
 
-    from torchvision.transforms import RandomResizedCrop, Resize, CenterCrop
+    import torchvision
+    if int(torchvision.__version__.split('.')[1]) >= 15:
+        from torchvision.transforms.v2 import RandomResizedCrop, Resize, CenterCrop
+    else:
+        from torchvision.transforms import RandomResizedCrop, Resize, CenterCrop
 
     if preserve_ar:
         if test or not random_crop:
@@ -125,8 +129,22 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
 
     import math
     import warnings
-
-    import torchvision.transforms as TF
+    import torchvision
+    if int(torchvision.__version__.split('.')[1]) >= 15:
+        torchvision.disable_beta_transforms_warning()
+        from torchvision.transforms.v2 import (
+            Compose, Resize, ToTensor,
+            RandomApply, CenterCrop,
+            RandomHorizontalFlip, RandomVerticalFlip,
+            RandomRotation, Pad, RandomPerspective, RandomEqualize,
+            ColorJitter, Normalize, RandomErasing, Grayscale, GaussianBlur)
+    else:
+        from torchvision.transforms import (
+            Compose, Resize, ToTensor,
+            RandomApply, CenterCrop,
+            RandomHorizontalFlip, RandomVerticalFlip,
+            RandomRotation, Pad, RandomPerspective, RandomEqualize,
+            ColorJitter, Normalize, RandomErasing, Grayscale, GaussianBlur)
 
     flags = flags or Config('configs/aug_defaults')
     if 'augmentation' in cfg:
@@ -136,13 +154,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
     interpolation = flags.interpolation
 
     if (mode != 'train') or cfg.use_batch_tfms:
-        return TF.Compose([TF.Resize(size, interpolation=interpolation), TF.ToTensor()])
-
-    from torchvision.transforms import (
-        RandomApply, CenterCrop,
-        RandomHorizontalFlip, RandomVerticalFlip,
-        RandomRotation, Pad, RandomPerspective, #RandomEqualize,
-        ColorJitter, Normalize, RandomErasing, Grayscale, GaussianBlur)
+        return Compose([Resize(size, interpolation=interpolation), ToTensor()])
 
     tfms = []
 
@@ -184,7 +196,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
         tfms.append(RandomApply([GaussianBlur(kernel_size=5)], p=flags.blur))
 
     # tensorize, normalize
-    tfms.append(TF.ToTensor())
+    tfms.append(ToTensor())
     if flags.normalize:
         tfms.append(Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
 
@@ -192,7 +204,7 @@ def get_torchvision_tfms(cfg, flags=None, mode='train'):
     if flags.p_cutout:
         tfms.append(RandomErasing(p=flags.p_cutout,
                                   scale=(0.05, 0.3), ratio=(0.5, 1.4), value=0.93))
-    return TF.Compose(tfms)
+    return Compose(tfms)
 
 
 def blurred_degenerate_image_tf(img):

@@ -1,3 +1,8 @@
+try:
+    from torchvision.transforms.functional import InterpolationMode
+except ImportError:
+    from configs.torchvision import InterpolationMode
+
 cfg = dict(
     shift_scale_rotate = 0.75,
     max_random_zoom    = 1.30,
@@ -11,6 +16,6 @@ cfg = dict(
     max_height         = 40,
     max_width          = 40,
     max_holes          = 15,
-    interpolation      = 1,
+    interpolation      = InterpolationMode('nearest'),
     normalize          = False,
 )

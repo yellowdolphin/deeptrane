@@ -9,8 +9,13 @@ import torch
 from torch.utils.data import Dataset
 import torchvision
 print("[ √ ] torchvision:", torchvision.__version__)
-import torchvision.transforms as TT
-from torchvision.transforms.functional import InterpolationMode, resize
+if int(torchvision.__version__.split('.')[1]) >= 15:
+    torchvision.disable_beta_transforms_warning()
+    import torchvision.transforms.v2 as TT  # new backward compatible API
+    from torchvision.transforms.v2.functional import InterpolationMode, resize
+else:
+    import torchvision.transforms as TT
+    from torchvision.transforms.functional import InterpolationMode, resize
 from torchvision.io import encode_jpeg, decode_jpeg
 from scipy.interpolate import interp1d
 

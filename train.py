@@ -58,7 +58,7 @@ print("")
 
 # Install torch.xla on TPU supported nodes
 tpu_vars = 'TPU_ACCELERATOR_TYPE TPU_PROCESS_ADDRESSES PYTORCH_LIBTPU PIP_LIBTPU ACCELERATOR_TYPE AGENT_BOOTSTRAP_IMAGE TPU_SKIP_MDS_QUERY TPU_TOPOLOGY_WRAP TPU_HOST_BOUNDS'.split()
-tpu_vars.extend(['COLAB_TPU_ADDR', 'XRT_TPU_CONFIG', 'TPU_ML_PLATFORM'])  # colab
+tpu_vars.extend(['COLAB_TPU_ADDR', 'XRT_TPU_CONFIG'])  # colab
 if any([v in os.environ for v in tpu_vars]):
     cfg.xla = True
     # '1.8.1' works on kaggle and colab, nightly only on kaggle
