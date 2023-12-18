@@ -273,9 +273,11 @@ def adjust_jpeg_quality_alb(img, quality):
                             always_apply=True)(image=img)['image']
 
 
-def adjust_jpeg_quality_tvf(img, quality):
+def adjust_jpeg_quality_tvf(img, quality, resize=None):
     "Returns HWC numpy image or (return_jpeg=True) CHW tensor"
     img = torch.tensor(img).permute(2, 0, 1)
+    if resize is not None:
+        img = resize(img)
     jpeg = encode_jpeg(img, quality)
     return decode_jpeg(jpeg).permute(1, 2, 0).numpy()
 
@@ -1026,13 +1028,14 @@ class AugInvCurveDataset3(Dataset):
         self.labeled = labeled
         self.return_path_attr = return_path_attr
         self.use_batch_tfms = cfg.use_batch_tfms
+        self.resize_before_jpeg = cfg.resize_before_jpeg
         if self.use_batch_tfms:
-            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size], 
+            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size],
                                      interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
         else:
-            #self.resize = TT.Resize(cfg.size, 
+            #self.resize = TT.Resize(cfg.size,
             #                        interpolation=InterpolationMode.BILINEAR, antialias=cfg.antialias)
-            self.resize = TT.Resize(cfg.size, 
+            self.resize = TT.Resize(cfg.size,
                                     interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
         self.rng = np.random.default_rng()
         self.dist_log_gamma = partial(self.rng.uniform, *cfg.log_gamma_range)
@@ -1168,7 +1171,8 @@ class AugInvCurveDataset3(Dataset):
         if self.add_jpeg_artifacts:
             # adjust_jpeg_quality automatically converts image to uint8 and back
             rnd_quality = int(50 * (1 + np.random.rand()))
-            image = adjust_jpeg_quality_tvf(image, rnd_quality)
+            resize = self.resize if self.resize_before_jpeg else None
+            image = adjust_jpeg_quality_tvf(image, rnd_quality, resize)
 
         image = image.astype(np.float32) / 255
 
@@ -1176,10 +1180,11 @@ class AugInvCurveDataset3(Dataset):
         if self.noise_level:
             rnd_factor = torch.rand(1).repeat(3)
             target = torch.cat((target, rnd_factor[:, None]), dim=1)
-            
+
         image = torch.tensor(image).permute(2, 0, 1)
 
-        image = self.resize(image)
+        if not self.resize_before_jpeg:
+            image = self.resize(image)
 
         return image, target
 
