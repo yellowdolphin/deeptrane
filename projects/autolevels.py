@@ -1033,10 +1033,8 @@ class AugInvCurveDataset3(Dataset):
             self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size],
                                      interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
         else:
-            #self.resize = TT.Resize(cfg.size,
-            #                        interpolation=InterpolationMode.BILINEAR, antialias=cfg.antialias)
-            self.resize = TT.Resize(cfg.size,
-                                    interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
+            interpolation = InterpolationMode.BILINEAR if cfg.antialias else InterpolationMode.NEAREST
+            self.resize = TT.Resize(cfg.size, interpolation=interpolation, antialias=cfg.antialias)
         self.rng = np.random.default_rng()
         self.dist_log_gamma = partial(self.rng.uniform, *cfg.log_gamma_range)
         self.dist_curve3_a = partial(self.rng.uniform, *cfg.curve3_a_range)
