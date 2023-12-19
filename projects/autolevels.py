@@ -12,10 +12,10 @@ print("[ √ ] torchvision:", torchvision.__version__)
 if int(torchvision.__version__.split('.')[1]) >= 15:
     torchvision.disable_beta_transforms_warning()
     import torchvision.transforms.v2 as TT  # new backward compatible API
-    from torchvision.transforms.v2.functional import InterpolationMode, resize
+    from torchvision.transforms.v2.functional import InterpolationMode
 else:
     import torchvision.transforms as TT
-    from torchvision.transforms.functional import InterpolationMode, resize
+    from torchvision.transforms.functional import InterpolationMode
 from torchvision.io import encode_jpeg, decode_jpeg
 from scipy.interpolate import interp1d
 
@@ -287,17 +287,45 @@ def adjust_jpeg_quality_tvf(img, quality, resize=None):
     return decode_jpeg(jpeg).permute(1, 2, 0).numpy()
 
 
-def map_index_torch(image, tfm, add_uniform_noise=False):
+def map_index_torch_old(image, tfm, add_uniform_noise=False, resize=None):
     # map image (H, W, C) to tfm (C, 256) using torch.gather (faster than numpy fancy indexing)
     # tfm must be expanded to have same shape as image (except dim=1)
+    # Returns HWC uint8 numpy 
     expanded_curves = torch.tensor(tfm.T)[None, :, :].expand(image.shape[0], -1, -1)
     if not add_uniform_noise:
-        return torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))
-    
+        image = torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))  # HWC float
+        if resize is None:
+            return (image.numpy().clip(0, 1) * 255).astype(np.uint8)  # HWC uint8 numpy
+        else:            
+            image = resize((image.permute(2, 0, 1) * 255).to(torch.uint8))  # CHW uint8
+            return image.permute(1, 2, 0).numpy()  # HWC uint8 numpy
+
     # add uniform noise to mask uint8 quantization (slow)
-    image_plus_one = torch.gather(expanded_curves, dim=1, index=(torch.LongTensor(image) + 1).clamp(max=255))    
+    image_plus_one = torch.gather(expanded_curves, dim=1, index=(torch.LongTensor(image) + 1).clamp(max=255))
     image = torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))
-    return image + torch.rand_like(image) * (image_plus_one - image)
+    image = image + torch.rand_like(image) * (image_plus_one - image)  # HWC float
+    return (image.numpy().clip(0, 1) * 255).astype(np.uint8)  # HWC uint8 numpy
+
+
+def map_index_torch(image, tfm, add_uniform_noise=False, resize=None):
+    # map image (H, W, C) to tfm (C, 256) using torch.gather (faster than numpy fancy indexing)
+    # tfm must be expanded to have same shape as image (except dim=1)
+    # Returns HWC uint8 numpy
+    tfm = (tfm.clip(0, 1) * 255).astype(np.uint8)
+    expanded_curves = torch.tensor(tfm.T)[None, :, :].expand(image.shape[0], -1, -1)
+    if not add_uniform_noise:
+        image = torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))  # HWC float
+        if resize is None:
+            return image.numpy()  # HWC uint8 numpy
+        else:            
+            image = resize(image.permute(2, 0, 1))  # CHW uint8
+            return image.permute(1, 2, 0).numpy()  # HWC uint8 numpy
+
+    # add uniform noise to mask uint8 quantization (slow)
+    image_plus_one = torch.gather(expanded_curves, dim=1, index=(torch.LongTensor(image) + 1).clamp(max=255))
+    image = torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))
+    image = image + torch.rand_like(image) * (image_plus_one - image)  # HWC float
+    return (image.numpy().clip(0, 1) * 255).astype(np.uint8)  # HWC uint8 numpy
 
 
 def get_pretrained_model(cfg, strategy):
@@ -1009,8 +1037,17 @@ class AugInvBetaDataset(Dataset):
         return image, labels if self.labeled else image
 
 
-class AugInvCurveDataset3(Dataset):
-    """Images are mapped on device using the channelwise-randomly generated target_curve"""
+class AugInvCurveDataset3RngIssue(Dataset):
+    """Images are mapped on device using the channelwise-randomly generated target_curve
+    
+    RNG Issue:
+    torchrun instances generate identical random numbers when using
+    - np.random.default_rng with different seeds
+    - dist = partial(self.rng.uniform, *params) in __init__
+    - dist.sample(size) in __getitem__
+
+    Filenames and random numbers from np.random.uniform are different, though.
+    """
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
                  return_path_attr=None):
@@ -1040,6 +1077,13 @@ class AugInvCurveDataset3(Dataset):
         else:
             interpolation = InterpolationMode.BILINEAR if cfg.antialias else InterpolationMode.NEAREST
             self.resize = TT.Resize(cfg.size, interpolation=interpolation, antialias=cfg.antialias)
+
+        # This does not help: 4 different seeds are produces on 2 torchrun instances, but random numbers are 
+        # identical on both devices:
+        #rng_seed = np.random.randint(0, 999999)
+        #print("rng_seed:", rng_seed)
+        #self.rng = np.random.default_rng(np.random.PCG64(np.random.SeedSequence(rng_seed)))
+
         self.rng = np.random.default_rng()
         self.dist_log_gamma = partial(self.rng.uniform, *cfg.log_gamma_range)
         self.dist_curve3_a = partial(self.rng.uniform, *cfg.curve3_a_range)
@@ -1096,6 +1140,9 @@ class AugInvCurveDataset3(Dataset):
         a = np.exp(self.dist_curve4_loga(n_channels).astype(np.float32))
         b = self.dist_curve4_b(n_channels).astype(np.float32)
         curves.append(Curve4(a, b, bp, bp2))
+
+        # RNG DEBUG: dist-sampled random numbers are identical on all torchrun instances!
+        print(f"bp={bp[0]:4.1f} bp2={bp2[2]:4.1f} g={gamma[0]:4.2f} alpha={alpha[2]:4.2f} beta={beta[0]:4.2f} a={a[2]:4.2f} b={b[0]:4.2f}")
 
         if self.curve_selection == 'channel-wise':
             targets, tfms = [], []
@@ -1163,8 +1210,9 @@ class AugInvCurveDataset3(Dataset):
 
             return image, target
 
-        image = map_index_torch(image, tfm, self.add_uniform_noise)
-        image = (image.numpy().clip(0, 1) * 255).astype(np.uint8)
+        resize = self.resize if self.resize_before_jpeg else None
+        image = map_index_torch(image, tfm, self.add_uniform_noise, resize)
+        #print("after map_index:", image.shape, type(image), image.dtype, image.max())
 
         if self.sharpness_augment:
             # randomly soften/sharpen the image
@@ -1174,8 +1222,194 @@ class AugInvCurveDataset3(Dataset):
         if self.add_jpeg_artifacts:
             # adjust_jpeg_quality automatically converts image to uint8 and back
             rnd_quality = int(50 * (1 + np.random.rand()))
-            resize = self.resize if self.resize_before_jpeg else None
-            image = adjust_jpeg_quality_tvf(image, rnd_quality, resize)
+            image = adjust_jpeg_quality_tvf(image, rnd_quality)
+
+        image = image.astype(np.float32) / 255
+
+        # append rnd_factor for noise_level to target -> (C, 257)
+        if self.noise_level:
+            rnd_factor = torch.rand(1).repeat(3)
+            target = torch.cat((target, rnd_factor[:, None]), dim=1)
+
+        image = torch.tensor(image).permute(2, 0, 1)
+
+        if not self.resize_before_jpeg:
+            image = self.resize(image)
+
+        return image, target
+
+
+class AugInvCurveDataset3(Dataset):
+    # Replace self.rng distributions by np.random calls
+    """Images are mapped on device using the channelwise-randomly generated target_curve"""
+
+    def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
+                 return_path_attr=None):
+        """
+        Args:
+            df (pd.DataFrame):                First row must contain the image file paths
+            image_root (string, Path):        Root directory for df.image_path
+            transform (callable, optional):   Optional transform to be applied on the first
+                                              element (image) of a sample.
+            labeled (bool, optional):         if True, return target_curve
+            return_path_attr (str, optional): return Path attribute `return_path_attr`
+
+        """
+        self.df = df.reset_index(drop=True)
+        self.image_root = cfg.image_root
+        self.transform = transform
+        self.tensor_transform = tensor_transform
+        self.albu = transform and transform.__module__.startswith('albumentations')
+        self.floatify = not (self.albu and 'Normalize' in [t.__class__.__name__ for t in transform])
+        self.labeled = labeled
+        self.return_path_attr = return_path_attr
+        self.use_batch_tfms = cfg.use_batch_tfms
+        self.resize_before_jpeg = cfg.resize_before_jpeg
+        if self.use_batch_tfms:
+            self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size],
+                                     interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
+        else:
+            interpolation = InterpolationMode.BILINEAR if cfg.antialias else InterpolationMode.NEAREST
+            self.resize = TT.Resize(cfg.size, interpolation=interpolation, antialias=cfg.antialias)
+
+        self.log_gamma_range = cfg.log_gamma_range
+        self.curve3_a_range = cfg.curve3_a_range
+        self.curve3_beta_range = cfg.curve3_beta_range
+        self.curve4_loga_range = cfg.curve4_loga_range
+        self.curve4_b_range = cfg.curve4_b_range
+        self.bp_range = cfg.blackpoint_range
+        self.bp2_range = cfg.blackpoint2_range
+        self.p_gamma = cfg.p_gamma  # probability to use gamma (Curve0)
+        self.p_beta = cfg.p_beta    # probability for Beta PDF (Curve3) rather than Curve4
+        self.noise_level = cfg.noise_level
+        self.add_uniform_noise = cfg.add_uniform_noise
+        self.add_jpeg_artifacts = cfg.add_jpeg_artifacts
+        self.sharpness_augment = cfg.sharpness_augment
+        self.predict_inverse = cfg.predict_inverse
+        self.mirror_gamma = cfg.mirror_gamma
+        self.mirror_beta = cfg.mirror_beta
+        self.mirror_curve4 = cfg.mirror_curve4
+        self.curve_selection = cfg.curve_selection or 'channel-wise'  # 'channel-wise' or 'image-wise'
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, index):
+
+        fn = os.path.join(self.image_root, self.df.iloc[index, 0])
+        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
+            bytes_data = gcsfs.read(fn)
+            image = PIL.Image.open(io.BytesIO(bytes_data))
+        else:
+            assert os.path.exists(fn), f'{fn} not found'
+            image = cv2.cvtColor(cv2.imread(fn), cv2.COLOR_BGR2RGB)
+
+        n_channels = image.shape[2]
+        assert n_channels in {1, 3}, f'wrong image shape: {image.shape}, expecting channel last'
+
+        # Generate curve (C, 256)
+        support = np.linspace(0, 1, 256, dtype=np.float32)
+        bp = np.random.uniform(*self.bp_range, n_channels).astype(np.float32)
+        bp2 = np.random.uniform(*self.bp2_range, n_channels).astype(np.float32)
+        curves = []
+        
+        # gamma
+        log_gamma = np.random.uniform(*self.log_gamma_range, n_channels).astype(np.float32)
+        gamma = np.exp(log_gamma)
+        curves.append(Curve0(gamma, bp, bp2))
+
+        # beta
+        alpha = np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32))
+        beta = np.random.uniform(*self.curve3_beta_range, n_channels).astype(np.float32)
+        curves.append(Curve3(alpha, beta, bp, bp2))
+
+        # curve4
+        a = np.exp(np.random.uniform(*self.curve4_loga_range, n_channels).astype(np.float32))
+        b = np.random.uniform(*self.curve4_b_range, n_channels).astype(np.float32)
+        curves.append(Curve4(a, b, bp, bp2))
+
+        # RNG DEBUG: checked: different random numbers on each torchrun instance.
+        #print(f"bp={bp[0]:4.1f} bp2={bp2[2]:4.1f} g={gamma[0]:4.2f} alpha={alpha[2]:4.2f} beta={beta[0]:4.2f} a={a[2]:4.2f} b={b[0]:4.2f}")
+
+        if self.curve_selection == 'channel-wise':
+            targets, tfms = [], []
+            for channel in range(n_channels):
+                curve = curves[np.random.randint(0, 3)]
+                tfm = curve.inverse(support[None, :])[channel]
+                target = curve(support[None, :])[channel] if self.predict_inverse else tfm
+
+                # random swap tfm <-> target
+                if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
+                (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
+                (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
+                (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
+                    tfm, target = target, tfm
+
+                targets.append(target)
+                tfms.append(tfm)
+
+            target = np.stack(targets)
+            tfm = np.stack(tfms)
+            del targets, tfms
+
+        else:
+            # image-wise curve selection
+            curve = curves[np.random.randint(0, 3)]
+            tfm = curve.inverse(support[None, :])
+            target = curve(support[None, :]) if self.predict_inverse else tfm
+
+            # random swap tfm <-> target
+            if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
+                (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
+                (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
+                (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
+                mask = np.random.randint(0, 2, (n_channels, 1)).astype(np.float32)
+                target, tfm = mask * target + (1 - mask) * tfm, (1 - mask) * target + mask * tfm
+        
+        target = torch.tensor(target)
+        assert target.shape == (n_channels, 256), f"wrong target shape: {target.shape}"
+        assert target.dtype == torch.float32, f"wrong target dtype: {target.dtype}"
+
+        if self.use_batch_tfms:
+            tfm = torch.tensor(tfm)
+
+            # return both target and tfm curves as "target"
+            if self.predict_inverse and self.noise_level:
+                # append rnd_factor for noise_level to target, independent of use_batch_tfms
+                rnd_factor = torch.rand(1).repeat(3)
+                target = torch.cat((target, rnd_factor[:, None], tfm), dim=1)
+            elif self.predict_inverse:
+                target = torch.cat((target, tfm), dim=1)
+
+            # append rnd JPEG quality -> (C, 258)
+            if self.add_jpeg_artifacts:
+                jpeg_quality = torch.randint(50, 100, (1,)).repeat(3).float()
+                target = torch.cat((target, jpeg_quality[:, None]), dim=1)
+
+            # append rnd sharpness -> (C, 259)
+            if self.sharpness_augment:
+                rnd_sharpness = 2 * torch.rand((1,)).repeat(3)
+                target = torch.cat((target, rnd_sharpness[:, None]), dim=1)
+
+            # resize image to double cfg.size and tensorize for collocation
+            image = torch.tensor(image.transpose(2, 0, 1))  # channel first
+            image = self.presize(image)
+
+            return image, target
+
+        resize = self.resize if self.resize_before_jpeg else None
+        image = map_index_torch(image, tfm, self.add_uniform_noise, resize)
+        #print("after map_index:", image.shape, type(image), image.dtype, image.max())
+
+        if self.sharpness_augment:
+            # randomly soften/sharpen the image
+            rnd_sharpness = 1.8 * np.random.rand() + 0.1
+            image = adjust_sharpness_alb(image, rnd_sharpness)
+
+        if self.add_jpeg_artifacts:
+            # adjust_jpeg_quality automatically converts image to uint8 and back
+            rnd_quality = int(50 * (1 + np.random.rand()))
+            image = adjust_jpeg_quality_tvf(image, rnd_quality)
 
         image = image.astype(np.float32) / 255
 
