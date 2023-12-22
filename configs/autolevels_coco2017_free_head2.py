@@ -29,6 +29,7 @@ add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)
 resize_before_jpeg = True
+resize_after_sharpness = False # if resize_before_jpeg, do it after sharpness_augment
 augmentation = 'tfms_004'      # ignored if use_batch_tfms
 use_batch_tfms = False
 n_replicas = 8
