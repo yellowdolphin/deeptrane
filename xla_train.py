@@ -725,6 +725,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     cfg.metrics = [k.replace(k, aliases[k]) if k in aliases else k for k in cfg.metrics]
     if cfg.save_best and cfg.save_best in aliases:
         cfg.save_best = aliases[cfg.save_best]
+    if cfg.save_best:
+        metrics_and_losses = set(cfg.metrics).union(['train_loss', 'valid_loss'])
+        assert cfg.save_best in metrics_and_losses, f'{cfg.save_best} not in {metrics_and_losses}'
 
     # torchmetrics
     metrics = get_tm_metrics(cfg, xm)
@@ -904,8 +907,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         # Note: xm.save must not be inside an if statement that may validate differently on
         # different TPU cores. Reason: rendezvous inside them will hang if any core
         # does not arrive at the rendezvous.
-        if cfg.save_best:
-            assert cfg.save_best in metrics_dict, f'{cfg.save_best} not in {list(metrics_dict)}'
         model_score = metrics_dict[cfg.save_best] if cfg.save_best else -valid_loss
         if cfg.save_best and 'loss' in cfg.save_best: model_score = -model_score
         if model_score > best_model_score or not cfg.save_best:
