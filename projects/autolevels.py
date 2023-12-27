@@ -1068,7 +1068,7 @@ class AugInvCurveDataset3(Dataset):
             self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size],
                                      interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
         else:
-            interpolation = InterpolationMode.BILINEAR #if cfg.antialias else InterpolationMode.NEAREST
+            interpolation = getattr(InterpolationMode, cfg.interpolation.upper() if cfg.interpolation else 'NEAREST')
             self.resize = TT.Resize(cfg.size, interpolation=interpolation, antialias=cfg.antialias)
 
         self.log_gamma_range = cfg.log_gamma_range

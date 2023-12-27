@@ -11,6 +11,7 @@ train_on_all = False
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
+interpolation = 'NEAREST'
 predict_inverse = True
 blackpoint_range = (-30, 30)   # x-offset
 blackpoint2_range = (-30, 30)  # y-offset
