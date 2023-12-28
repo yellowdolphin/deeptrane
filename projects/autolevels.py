@@ -1197,6 +1197,8 @@ class AugInvCurveDataset3(Dataset):
             return image, target
 
         resize = self.resize if (self.resize_before_jpeg and not self.resize_after_sharpness) else None
+        if max(image.shape) < max(self.resize.size):
+            resize = None  # resize only large images
         image = map_index_torch(image, tfm, self.add_uniform_noise, resize)
         #print("after map_index:", image.shape, type(image), image.dtype, image.max())
 
@@ -1209,6 +1211,8 @@ class AugInvCurveDataset3(Dataset):
             # adjust_jpeg_quality automatically converts image to uint8 and back
             rnd_quality = int(50 * (1 + np.random.rand()))
             resize = self.resize if (self.resize_before_jpeg and self.resize_after_sharpness) else None
+            if max(image.shape) < max(self.resize.size):
+                resize = None  # resize only large images
             image = adjust_jpeg_quality_tvf(image, rnd_quality, resize)
 
         image = image.astype(np.float32) / 255
@@ -1220,7 +1224,7 @@ class AugInvCurveDataset3(Dataset):
 
         image = torch.tensor(image).permute(2, 0, 1)
 
-        if not self.resize_before_jpeg:
+        if not self.resize_before_jpeg or any(a != b for a, b in zip(image.shape[1:], self.resize.size)):
             image = self.resize(image)
 
         return image, target
