@@ -1194,6 +1194,12 @@ class AugInvCurveDataset3(Dataset):
             image = torch.tensor(image.transpose(2, 0, 1))  # channel first
             image = self.presize(image)
 
+            if self.return_path_attr:
+                path_attr = (
+                    Path(fn).relative_to(self.image_root).as_posix() if self.return_path_attr.startswith('relative') else
+                    getattr(Path(fn), self.return_path_attr))
+                return image, target, path_attr
+
             return image, target
 
         resize = self.resize if (self.resize_before_jpeg and not self.resize_after_sharpness) else None
@@ -1226,6 +1232,12 @@ class AugInvCurveDataset3(Dataset):
 
         if not self.resize_before_jpeg or any(a != b for a, b in zip(image.shape[1:], self.resize.size)):
             image = self.resize(image)
+
+        if self.return_path_attr:
+            path_attr = (
+                Path(fn).relative_to(self.image_root).as_posix() if self.return_path_attr.startswith('relative') else
+                getattr(Path(fn), self.return_path_attr))
+            return image, target, path_attr
 
         return image, target
 
