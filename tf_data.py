@@ -385,7 +385,9 @@ def configure_data_pipeline(cfg):
             cfg.tfrec_format.pop(key, None)
         for key in ['target', 'aux_target']:
             cfg.data_format.pop(key, None)
-            cfg.inputs.pop(key, None)
-            cfg.targets.pop(key, None)
+            while key in cfg.inputs:
+                cfg.inputs.remove(key)
+            while key in cfg.targets:
+                cfg.targets.remove(key)
 
     check_data_format(cfg)
