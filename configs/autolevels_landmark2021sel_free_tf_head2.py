@@ -1,18 +1,18 @@
 # Setup
 project = 'autolevels'
-datasets = [f'google-landmark-tfrecords-512-{i}' for i in range(1, 7)]
-gcs_paths = ['gs://kds-312b8e8d30ec0d08b626be22aa6e33dff085ebcfa0923ba743379431', 'gs://kds-875b41c4d9a800bff52ebb306948b58c12990b98c3d475931693559e', 'gs://kds-d05de08723713ac86b96d902c091c90ea371ed9d8ab6311949965b46', 'gs://kds-ba90cd7fd19316762ed1bd392e281ca5b13e12d9bc6bb376578748a8', 'gs://kds-79c99aafaa6c48e32b8cdea47434559ef64ec356530c1b9cc6f15d60', 'gs://kds-9ea89c976c4ee7d0116bc7b82e063004d2af987da628896c48183840']
+datasets = [f'google-landmark-selection-384-{i}' for i in range(1, 7)]
+gcs_paths = ['gs://kds-681498d801cfab62daa3b6cbb4613b4e577ed81337d7c6f725884a3b', 'gs://kds-d7d6f55bf7d7f53c263df1013376110c250ba007277545bb875c33ea', 'gs://kds-23f8ba11e6948498b5877011e295be9282290baf78111db588b5ee11', 'gs://kds-aa606ae270b8b8aaa97553a8a27748718b122b40b541472549483036', 'gs://kds-d65e5664d5b7f9d4afda732b0f160be30b5812fddb1f51a0475dc6f6', 'gs://kds-6ec9e593248a73121222a42799a341bcd1a299800a836f0f043545d8']
 gcs_filter = '*.tfrec'
 tfrec_filename_pattern = None
-BGR = True
-preprocess = {
-    'bp': [0.040800,  0.060259,  0.024672],
-    'gamma': [1.026049,  1.054437,  1.010604],
-    'bp2': [-0.012288, -0.018215, -0.008333],
-    'bp_ref': [0.0085, 0.0232, 0.0068],
-    'gamma_ref': [0.9992, 1.0180, 0.9982],
-    'bp2_ref': [0.0095, 0.0031, 0.0111],
-}
+BGR = False
+#preprocess = {
+#    'bp': [0.040800,  0.060259,  0.024672],
+#    'gamma': [1.026049,  1.054437,  1.010604],
+#    'bp2': [-0.012288, -0.018215, -0.008333],
+#    'bp_ref': [0.0085, 0.0232, 0.0068],
+#    'gamma_ref': [0.9992, 1.0180, 0.9982],
+#    'bp2_ref': [0.0095, 0.0031, 0.0111],
+#}
 #preprocess = {'bp': [-0.111739,  0.033335, -0.000446],
 #              'a': [0.446492,  0.536055,  0.487654],
 #              'b': [0.773841,  0.842389,  0.802490],

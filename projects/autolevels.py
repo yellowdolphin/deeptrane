@@ -124,6 +124,15 @@ def init(cfg):
         cfg.data_format = {'image': 'image'}
         cfg.inputs = ['image']
 
+    elif 'landmark2021sel' in cfg.tags:
+        cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string),
+                            'target': tf.io.FixedLenFeature([], tf.int64),
+                            'species': tf.io.FixedLenFeature([], tf.int64)}
+        cfg.data_format = {'image': 'image',
+                           'height': 'target',
+                           'width': 'species'}
+        cfg.inputs = ['image']
+
     elif 'flickr' in cfg.tags:
         cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string)}
         cfg.data_format = {'image': 'image'}
@@ -1891,7 +1900,8 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
     if all('train_' in fn for fn in filenames) and len(filenames) in [45, 6]:
         # landmark2021: no subfolders or identifiable string in urls
         # if too large, valid raises out-of-range error
-        return 1448943 if len(filenames) == 45 else 193665
+        #return 1448943 if len(filenames) == 45 else 193665  # landmark2021
+        return 574999 if len(filenames) == 45 else 76838  # landmark2021sele
     if all('train_' in fn for fn in filenames) and len(filenames) in [46, 4]:
         # landmark2020: no subfolders or identifiable string in urls
         # if too large, valid raises out-of-range error
