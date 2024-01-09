@@ -246,7 +246,7 @@ def decode_image(cfg, image_data, box=None):
     return image
 
 
-def parse_tfrecord(cfg, example):
+def parse_tfrecord(cfg, serialized_example):
     """This TFRecord parser extracts the features defined in cfg.tfrec_format.
 
     TFRecord feature names are mapped to default names by cfg.data_format.
@@ -258,7 +258,7 @@ def parse_tfrecord(cfg, example):
     Only keys in cfg.tfrec_format will be parsed.
     """
 
-    example = tf.io.parse_single_example(example, cfg.tfrec_format)
+    example = tf.io.parse_single_example(serialized_example, cfg.tfrec_format)
     features = {}
 
     bbox = tf.cast(example[cfg.data_format['bbox']], tf.int32) if 'bbox' in cfg.data_format else None
@@ -278,6 +278,9 @@ def parse_tfrecord(cfg, example):
 
     if 'image_id' in cfg.data_format:
         features['image_id'] = example[cfg.data_format['image_id']]
+
+    if 'all' in cfg.data_format:
+        features['all'] = serialized_example
 
     # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict
@@ -336,12 +339,10 @@ def get_dataset(cfg, project, mode='train'):
 
 def check_data_format(cfg):
     "Consistency checks for data pipeline config"
-    data_format = cfg.data_format
-    tfrec_format = cfg.tfrec_format
-    inputs = cfg.inputs
-    targets = cfg.targets
-    tfrec_features = set(tfrec_format.keys())
-    required_features = set(data_format.values())
+    tfrec_features = set(cfg.tfrec_format.keys())
+    required_features = set(cfg.data_format.values())
+    if 'all' in cfg.data_format:
+        required_features -= {cfg.data_format['all']}
     missing_features = required_features - tfrec_features
     unused_features = tfrec_features - required_features
     if unused_features:
