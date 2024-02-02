@@ -1882,10 +1882,10 @@ def count_examples_in_tfrec(fn):
 def count_data_items(filenames, tfrec_filename_pattern=None):
     if '-of-' in filenames[0]:
         # Imagenet: Got number of items from idx files
-        return sum(391 if 'validation' in fn else 1252 for fn in filenames)
+        #return sum(391 if 'validation' in fn else 1252 for fn in filenames)
 
         # imagenet-selection-*: same filenames as Imagenet but varying items per file
-        #return 365269 if (len(filenames) == 921) else 88658  # for n_folds=5
+        return 365269 if (len(filenames) == 921) else 88658  # for n_folds=5
     if 'FlickrFaces' in filenames[0]:
         # flickr: number of items in filename
         return sum(int(fn[-10:-6]) for fn in filenames)
