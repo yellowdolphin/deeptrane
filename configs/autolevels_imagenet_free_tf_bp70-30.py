@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-84ef4b3d7d4d649d5d74b74127d9161471546611b520314672040df0', 'gs://kds-881a3e32724276a00cd5676d399e86178b7494ad69b6d1a3d522d28e']
+gcs_paths = ['gs://kds-b08407f2c2d95e62261e97e7467dc8ed218f296b7a0cb428704b4273', 'gs://kds-881a3e32724276a00cd5676d399e86178b7494ad69b6d1a3d522d28e']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -30,6 +30,7 @@ save_best = 'loss'
 predict_inverse = True
 blackpoint_range = (-70, 30)   # x-offset
 blackpoint2_range = (-70, 30)  # y-offset
+clip_target_blackpoint = True
 log_gamma_range = [-1.8, 1.8]
 mirror_gamma = False
 curve3_a_range = (0.2, 1.06) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha

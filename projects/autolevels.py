@@ -1707,33 +1707,43 @@ def parse_tfrecord(cfg, example):
         support = tf.linspace(0.0, 1.0, 256)
         bp = tf.random.uniform([3], *cfg.blackpoint_range)[:, None] / 255
         bp2 = tf.random.uniform([3], *cfg.blackpoint2_range)[:, None] / 255
+        bp_clip = max(*cfg.blackpoint_range, *cfg.blackpoint2_range) if cfg.clip_target_blackpoint else None
+        if bp_clip: 
+            bp_clip = max(int(bp_clip), 0)
 
-        #if tf.random.uniform([]) < cfg.p_gamma:
+        # Curve0 component: gamma
         log_gamma = tf.random.uniform([3], *cfg.log_gamma_range)
         gamma = tf.exp(log_gamma)[:, None]
-
-        if cfg.predict_inverse:
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
-            x = tf.pow(x, gamma)
-            x = x * (1 - bp2) + bp2
-            target0 = tf.clip_by_value(x, 0, 1)
 
         x = support[None, :]
         x = (x - bp2) / (1 - bp2)
         x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
         x = tf.pow(x, 1 / gamma)
-        x = (x - bp) / (1 - bp)
+
+        if bp_clip:
+            bp_max = x[:, bp_clip:bp_clip + 1]
+            _bp = tf.math.minimum(bp, bp_max)
+        else:
+            _bp = bp
+
+        x = (x - _bp) / (1 - _bp)
         tfm0 = tf.clip_by_value(x, 0, 1)
 
-        if not cfg.predict_inverse:
-            target0 = tfm0
-        elif cfg.mirror_gamma and (tf.random.uniform([]) < 0.5):
-            # randomly swap tfm/target
-            target0, tfm0 = tfm0, target0
+        if cfg.predict_inverse:
+            x = support[None, :]
+            x = _bp + x * (1 - _bp)
+            x = tf.clip_by_value(x, 1e-6, 1)  # avoid nan
+            x = tf.pow(x, gamma)
+            x = x * (1 - bp2) + bp2
+            target0 = tf.clip_by_value(x, 0, 1)
 
-        #elif tf.random.uniform([]) < cfg.p_beta:
+            if cfg.mirror_gamma and (tf.random.uniform([]) < 0.5):
+                # randomly swap tfm/target
+                target0, tfm0 = tfm0, target0
+        else:
+            target0 = tfm0
+
+        # Curve3 component: Beta-distribution PDF
         a = tf.random.uniform([3], *cfg.curve3_a_range)
         alpha = tf.exp(a)[:, None]
         beta = tf.random.uniform([3], *cfg.curve3_beta_range)[:, None]
@@ -1745,7 +1755,14 @@ def parse_tfrecord(cfg, example):
             x = x * 0.9                              # reduce slope at whitepoint
             x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
             x /= x[:, -1:]                                      # normalize
-            x = x * (1 - bp2) + bp2
+
+            if bp_clip:
+                bp2_max = (bp_clip / 255 - x[:, 0:1]) / (1 - x[:, 0:1])
+                _bp2 = tf.math.minimum(bp2, bp2_max)
+            else:
+                _bp2 = bp2
+
+            x = x * (1 - _bp2) + _bp2
             target1 = tf.clip_by_value(x, 0, 1)
 
         # float64 avoids div-by-zero below
@@ -1753,7 +1770,7 @@ def parse_tfrecord(cfg, example):
         y = tf.linspace(1e-6, 1 - 1e-6, 2000)
         y = tf.cast(y, tf.float64)
         bp_64 = tf.cast(bp, tf.float64)
-        bp2_64 = tf.cast(bp2, tf.float64)
+        bp2_64 = tf.cast(_bp2, tf.float64)
         alpha = tf.cast(alpha, tf.float64)
         beta = tf.cast(beta, tf.float64)
         pdfs = bp_64 + y[None, :] * (1 - bp_64)
@@ -1772,32 +1789,39 @@ def parse_tfrecord(cfg, example):
             # randomly swap tfm/target                
             target1, tfm1 = tfm1, target1
 
-        #else:
+        # Curve4 component
         a = tf.exp(tf.random.uniform([3], *cfg.curve4_loga_range))[:, None]
         b = tf.random.uniform([3], *cfg.curve4_b_range)[:, None]
         π_half = 0.5 * tf.constant(np.pi)
-
-        if cfg.predict_inverse:
-            x = support[None, :]
-            x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-            x = 1 - tf.cos(π_half * x ** a) ** b
-            x = x * (1 - bp2) + bp2
-            target2 = tf.clip_by_value(x, 0, 1)
 
         x = support[None, :]
         x = (x - bp2) / (1 - bp2)
         x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
         x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
-        x = (x - bp) / (1 - bp)
+
+        if bp_clip:
+            bp_max = x[:, bp_clip:bp_clip + 1]
+            _bp = tf.math.minimum(bp, bp_max)
+        else:
+            _bp = bp
+
+        x = (x - _bp) / (1 - _bp)
         tfm2 = tf.clip_by_value(x, 0, 1)
 
-        if not cfg.predict_inverse:
+        if cfg.predict_inverse:
+            x = support[None, :]
+            x = _bp + x * (1 - _bp)
+            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+            x = 1 - tf.cos(π_half * x ** a) ** b
+            x = x * (1 - bp2) + bp2
+            target2 = tf.clip_by_value(x, 0, 1)
+
+            if cfg.mirror_curve4:
+                # randomly swap tfm/target channel-wise
+                mask = tf.cast(tf.random.uniform([3, 1], minval=0, maxval=2, dtype=tf.int32), tf.float32)
+                target2, tfm2 = mask * target2 + (1 - mask) * tfm2, (1 - mask) * target2 + mask * tfm2
+        else:
             target2 = tfm2
-        elif cfg.mirror_curve4:
-            # randomly swap tfm/target channel-wise
-            mask = tf.cast(tf.random.uniform([3, 1], minval=0, maxval=2, dtype=tf.int32), tf.float32)
-            target2, tfm2 = mask * target2 + (1 - mask) * tfm2, (1 - mask) * target2 + mask * tfm2
 
         # Compose target, tfm from gamma, beta, curve4
         p_gamma = cfg.p_gamma
