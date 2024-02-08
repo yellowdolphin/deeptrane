@@ -8,7 +8,6 @@ from multiprocessing import cpu_count
 from config import Config, parser
 from utils.general import quietly_run, sizify, listify, autotype, get_drive_out_dir
 from utils.tf_setup import install_model_libs
-from utils.tensorflow import CSVLogger
 
 # Read config file and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
@@ -59,13 +58,12 @@ import torch  # temporary: import prior to tf to work around 2.0 import issue
 print("[ √ ] torch:", torch.__version__)
 import tensorflow as tf
 print("[ √ ] tf:", tf.__version__)
+from tensorflow.keras.backend import clear_session  # no tensorflow.keras? see install_model_libs!
 if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
     quietly_run(f'pip install keras=={tf.keras.__version__}')
-from tensorflow.keras.backend import clear_session
+from utils.tensorflow import get_lr_callback, CSVLogger
 from models_tf import get_pretrained_model
-import tf_data
 from tf_data import cv_split, split_by_name, count_data_items, get_dataset, configure_data_pipeline
-from utils.tensorflow import get_lr_callback
 
 # Import project (code, constant settings)
 project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None

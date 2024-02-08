@@ -58,7 +58,10 @@ except ImportError as e:
 print("[ √ ] tfp:", tfp.__version__)
 tfd = tfp.distributions
 from augmentation import adjust_sharpness_tf
-
+π = np.pi
+π_half = 0.5 * np.pi
+pi = tf.constant(π)
+pi_half = tf.constant(π_half)
 
 def init(cfg):
     #cfg.competition_path = Path('/kaggle/input/imagenet-object-localization-challenge')
@@ -222,8 +225,6 @@ class GammaTransformTF(tf.keras.layers.Layer):
         return tf.pow(inputs, self.gamma) * (1 - self.bp2) + self.bp2
 
 
-π = np.pi
-π_half = 0.5 * np.pi
 class Curve4TransformTF(tf.keras.layers.Layer):
     "Curve4 transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"
     def __init__(self):
@@ -237,7 +238,7 @@ class Curve4TransformTF(tf.keras.layers.Layer):
 
     def call(self, inputs):
         inputs = tf.clip_by_value(self.bp + inputs * (1 - self.bp), 1e-6, 1 - 1e-6)  # avoid nan
-        return (1 - tf.cos(π_half * inputs ** self.a) ** self.b) * (1 - self.bp2) + self.bp2
+        return (1 - tf.cos(pi_half * inputs ** self.a) ** self.b) * (1 - self.bp2) + self.bp2
 
 
 def find_images(cfg):
@@ -551,7 +552,6 @@ class Curve3():
                                   assume_sorted=True)(x).clip(0, 1).astype(xs.dtype) for x, pdf in zip(xs, pdfs)])
 
 
-π_half = 0.5 * np.pi
 class Curve4():
     def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, unclipped=False):
         """Function y(x) = 1 - cos(π/2 * x^a)^b  with offsets bp, bp2 in x, y
@@ -689,7 +689,6 @@ class ObsoleteCurve():
         return img            
 
 
-π_half = 0.5 * np.pi
 class ObsoleteCurve4():
     def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, inverse=False):
         """Function y(x) = 1 - cos(π/2 * x^a)^b  with offsets bp, bp2 in x, y
@@ -1540,7 +1539,7 @@ def preprocess_image(image, preprocess):
         image = tf.pow(tf.clip_by_value(image, 1e-6, 1), gamma)
     if ('a' in preprocess) and ('b' in preprocess):
         a, b = preprocess['a'], preprocess['b']
-        image = 1 - tf.cos(π_half * tf.clip_by_value(image, 1e-6, 1 - 1e-6) ** a) ** b
+        image = 1 - tf.cos(pi_half * tf.clip_by_value(image, 1e-6, 1 - 1e-6) ** a) ** b
     if 'bp2' in preprocess:
         bp2 = preprocess['bp2']
         image = bp2 + (1 - bp2) * image
@@ -1634,6 +1633,16 @@ def get_mask_categorical(ps, n_channels=3):
     return mask
 
 
+def curve4(x, a, b):
+    x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+    return 1 - tf.cos(pi_half * x ** a) ** b
+
+
+def inverse_curve4(x, a, b):
+    x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+    return pi_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
+
+
 def parse_tfrecord(cfg, example):
     """This TFRecord parser extracts the features defined in cfg.tfrec_format.
 
@@ -1708,7 +1717,7 @@ def parse_tfrecord(cfg, example):
         bp = tf.random.uniform([3], *cfg.blackpoint_range)[:, None] / 255
         bp2 = tf.random.uniform([3], *cfg.blackpoint2_range)[:, None] / 255
         bp_clip = max(*cfg.blackpoint_range, *cfg.blackpoint2_range) if cfg.clip_target_blackpoint else None
-        if bp_clip: 
+        if bp_clip:
             bp_clip = max(int(bp_clip), 0)
 
         # Curve0 component: gamma
@@ -1792,34 +1801,33 @@ def parse_tfrecord(cfg, example):
         # Curve4 component
         a = tf.exp(tf.random.uniform([3], *cfg.curve4_loga_range))[:, None]
         b = tf.random.uniform([3], *cfg.curve4_b_range)[:, None]
-        π_half = 0.5 * tf.constant(np.pi)
+        if cfg.predict_inverse and cfg.mirror_curve4:
+            # randomly and channel-wise mirror curve4 (keep bp/bp2)
+            mask = tf.cast(tf.random.uniform([3, 1], minval=0, maxval=2, dtype=tf.int32), tf.float32)
 
         x = support[None, :]
         x = (x - bp2) / (1 - bp2)
-        x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-        x = π_half**(-1 / a) * tf.math.acos((1 - x)**(1 / b))**(1 / a)
-
+        if cfg.predict_inverse and cfg.mirror_curve4:
+            x = inverse_curve4(x, a, b) * mask + curve4(x, a, b) * (1 - mask)
+        else:
+            x = inverse_curve4(x, a, b)
         if bp_clip:
             bp_max = x[:, bp_clip:bp_clip + 1]
             _bp = tf.math.minimum(bp, bp_max)
         else:
             _bp = bp
-
         x = (x - _bp) / (1 - _bp)
         tfm2 = tf.clip_by_value(x, 0, 1)
 
         if cfg.predict_inverse:
             x = support[None, :]
             x = _bp + x * (1 - _bp)
-            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-            x = 1 - tf.cos(π_half * x ** a) ** b
+            if cfg.predict_inverse and cfg.mirror_curve4:
+                x = curve4(x, a, b) * mask + inverse_curve4(x, a, b) * (1 - mask)
+            else:
+                x = curve4(x, a, b)
             x = x * (1 - bp2) + bp2
             target2 = tf.clip_by_value(x, 0, 1)
-
-            if cfg.mirror_curve4:
-                # randomly swap tfm/target channel-wise
-                mask = tf.cast(tf.random.uniform([3, 1], minval=0, maxval=2, dtype=tf.int32), tf.float32)
-                target2, tfm2 = mask * target2 + (1 - mask) * tfm2, (1 - mask) * target2 + mask * tfm2
         else:
             target2 = tfm2
 

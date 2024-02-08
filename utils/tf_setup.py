@@ -13,7 +13,11 @@ def install_model_libs(cfg):
     if cfg.arch_name.startswith('efnv1'):
         quietly_run('pip install efficientnet', debug=False)
     elif cfg.arch_name.startswith('efnv2'):
-        quietly_run('pip install -Uq keras-efficientnet-v2', debug=False)
+        # efnv2 requires keras<2.16,>=2.15.0 but keras 3 is installed on kaggle TPU instance,
+        # same applies to tf.keras.applications.efficientnet_v2.
+        quietly_run('pip install -U keras-efficientnet-v2', debug=False)
+        # If after keras==2.15.0 install, tensorflow.keras import fails:
+        # check that tensorflow is not imported prior to calling install_model_libs!
     else:
         # Look for model in tfimm.
         # On colab@GPU tf 2.8.2 works with tfa 0.17.1 and tfimm 0.2.7 (newer python, cuDNN)
