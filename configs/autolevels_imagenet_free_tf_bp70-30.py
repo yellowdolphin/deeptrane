@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-b08407f2c2d95e62261e97e7467dc8ed218f296b7a0cb428704b4273', 'gs://kds-881a3e32724276a00cd5676d399e86178b7494ad69b6d1a3d522d28e']
+gcs_paths = ['gs://kds-594c8324c0020ec1c03462f58081f362bbaa6901d67be5429be5b425', 'gs://kds-197ef342956fc0d82aca2f43f429d27e8ae7d37576c7225acc026b1e']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -35,7 +35,7 @@ log_gamma_range = [-1.8, 1.8]
 mirror_gamma = False
 curve3_a_range = (0.2, 1.06) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha
 curve3_beta_range = (0.5, 1)
-mirror_beta = False
+mirror_beta = True
 curve4_loga_range = (-1.8, 0.0)
 curve4_b_range = (0.4, 1.2)
 mirror_curve4 = True
@@ -45,7 +45,7 @@ add_uniform_noise = False      # add uniform noise to mask uint8 discretization 
 add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)
-resize_before_jpeg = False     # resize already in curve_tfm_image
+resize_before_jpeg = True      # resize already in curve_tfm_image
 augmentation = 'autolevels_aug_tf'
 catmix = False                 # compose input of 4 images
 

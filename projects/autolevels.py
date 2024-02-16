@@ -1633,6 +1633,52 @@ def get_mask_categorical(ps, n_channels=3):
     return mask
 
 
+def beta_pdf(x, alpha, beta):
+    x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
+    x = x * 0.9                              # reduce slope at whitepoint
+    x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
+    x /= x[:, -1:]                                      # normalize
+    return x
+
+
+def inverse_beta_pdf(x, alpha, beta):
+    # float64 avoids div-by-zero below
+    y = tf.linspace(1e-6, 1 - 1e-6, 2000)
+    y = tf.cast(y, tf.float64)
+    x = tf.clip_by_value(x, 0, 1)
+    x = tf.cast(x, tf.float64)
+    alpha = tf.cast(alpha, tf.float64)
+    beta = tf.cast(beta, tf.float64)
+    pdfs = beta_pdf(y[None, :], alpha, beta)
+    #pdfs = tf.clip_by_value(pdfs, 0, 1)  # probably not necessary
+
+    assert x.shape == [3, 256], f'unexpected x.shape {x.shape}'
+    # this was assuming x.shape = [256]:
+    #x = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
+
+    # if we get x with channel components x.shape=[3, 256]:
+    x = tf.stack([interp1d_tf(pdfs[i], y, x[i]) for i in range(3)])
+
+    return tf.cast(tf.clip_by_value(x, 0, 1), tf.float32)
+
+
+def check_reversed_tfm(tfm, target):
+    # Does not work with symbolic tensors (inside the data pipeline)
+    image = tf.transpose(tfm)[None, :, :]  # [1, 256, 3]
+    reversed_tfm, _, _ = map_index(image, target, 1, 256, 3, False, False, False, False)  # HWC
+    assert reversed_tfm.shape == [1, 256, 3], f'{reversed_tfm.shape}'
+    reversed_tfm = tf.transpose(reversed_tfm[0, :, :])  # [C, 256]
+    rmse = tf.math.reduce_std(reversed_tfm - tf.linspace(0.0, 1.0, 256)[None, :])
+    if (rmse > 1) and hasattr(tfm, 'numpy'):
+        fn = 'tfm_target.csv'
+        tf.print(f"reversed_tfm has rmse of {rmse}, saving {fn}")
+        #with open(f'../{fn}', 'w') as fp:
+        #    for i in range(256):
+        #        s = ','.join(f'{tfm[c, i].numpy():.4f},{target[c, i].numpy():.4f}' for c in range(3))
+        #        fp.write(s + '\n')
+        #raise ValueError("stopping for debug")
+
+
 def curve4(x, a, b):
     x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
     return 1 - tf.cos(pi_half * x ** a) ** b
@@ -1756,47 +1802,39 @@ def parse_tfrecord(cfg, example):
         a = tf.random.uniform([3], *cfg.curve3_a_range)
         alpha = tf.exp(a)[:, None]
         beta = tf.random.uniform([3], *cfg.curve3_beta_range)[:, None]
+        if cfg.predict_inverse and cfg.mirror_beta:
+            # randomly and channel-wise mirror beta PDF (keep bp/bp2)
+            mask = tf.cast(tf.random.uniform([3, 1], minval=0, maxval=2, dtype=tf.int32), tf.float32)
 
-        if cfg.predict_inverse:
+        # whether clipped or not, _bp2 is needed in any case
+        if cfg.predict_inverse or cfg.bp_clip:
             x = support[None, :]
             x = bp + x * (1 - bp)
-            x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
-            x = x * 0.9                              # reduce slope at whitepoint
-            x = tf.pow(x, alpha - 1) * tf.pow(1 - x, beta - 1)  # unnormalized PDF(x)
-            x /= x[:, -1:]                                      # normalize
-
+            if cfg.predict_inverse and cfg.mirror_beta:
+                x = beta_pdf(x, alpha, beta) * mask + inverse_beta_pdf(x, alpha, beta) * (1 - mask)
+            else:
+                x = beta_pdf(x, alpha, beta)
             if bp_clip:
                 bp2_max = (bp_clip / 255 - x[:, 0:1]) / (1 - x[:, 0:1])
                 _bp2 = tf.math.minimum(bp2, bp2_max)
             else:
                 _bp2 = bp2
-
             x = x * (1 - _bp2) + _bp2
             target1 = tf.clip_by_value(x, 0, 1)
+        else:
+            _bp2 = bp2
 
-        # float64 avoids div-by-zero below
-        x = tf.cast(support, tf.float64)
-        y = tf.linspace(1e-6, 1 - 1e-6, 2000)
-        y = tf.cast(y, tf.float64)
-        bp_64 = tf.cast(bp, tf.float64)
-        bp2_64 = tf.cast(_bp2, tf.float64)
-        alpha = tf.cast(alpha, tf.float64)
-        beta = tf.cast(beta, tf.float64)
-        pdfs = bp_64 + y[None, :] * (1 - bp_64)
-        pdfs = tf.clip_by_value(pdfs, 1e-6, 1 - 1e-6)  # avoid nan
-        pdfs = pdfs * 0.9                              # reduce slope at whitepoint
-        pdfs = tf.pow(pdfs, alpha - 1) * tf.pow(1 - pdfs, beta - 1)  # unnormalized PDF(x)
-        pdfs /= pdfs[:, -1:]                                         # normalize
-        pdfs = pdfs * (1 - bp2_64) + bp2_64
-        pdfs = tf.clip_by_value(pdfs, 0, 1)
-        tfm1 = tf.stack([interp1d_tf(pdfs[i], y, x) for i in range(3)])
-        tfm1 = tf.cast(tf.clip_by_value(tfm1, 0, 1), tf.float32)
+        x = support[None, :]
+        x = (x - _bp2) / (1 - _bp2)
+        if cfg.predict_inverse and cfg.mirror_beta:
+            x = inverse_beta_pdf(x, alpha, beta) * mask + beta_pdf(x, alpha, beta) * (1 - mask)
+        else:
+            x = inverse_beta_pdf(x, alpha, beta)
+        x = (x - bp) / (1 - bp)
+        tfm1 = tf.clip_by_value(x, 0, 1)
 
         if not cfg.predict_inverse:
             target1 = tfm1
-        elif cfg.mirror_beta and (tf.random.uniform([]) < 0.5):
-            # randomly swap tfm/target                
-            target1, tfm1 = tfm1, target1
 
         # Curve4 component
         a = tf.exp(tf.random.uniform([3], *cfg.curve4_loga_range))[:, None]
@@ -1843,10 +1881,12 @@ def parse_tfrecord(cfg, example):
         tfm = tf.einsum('ijk,ki->ij', tfms, mask)
 
         target = tf.reshape(target, [cfg.channel_size])
-        assert target.shape == (3 * 256,), f"wrong target shape: {target.shape}"
-        assert target.dtype == tf.float32, f"wrong target dtype: {target.dtype}"
+        #assert target.shape == (3 * 256,), f"wrong target shape: {target.shape}"
+        #assert target.dtype == tf.float32, f"wrong target dtype: {target.dtype}"
 
         #tf.print("tfm:", tfm.shape, tf.reduce_min(tfm), tf.reduce_mean(tfm), tf.reduce_max(tfm))  # tfm: TensorShape([3, 256]) 0 0.598787069 1
+
+
 
     if 'height' in cfg.data_format:
         height = example[cfg.data_format['height']]

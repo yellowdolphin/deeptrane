@@ -44,7 +44,7 @@ add_uniform_noise = False      # add uniform noise to mask uint8 discretization 
 add_jpeg_artifacts = True
 sharpness_augment = True
 noise_level = 0.01             # random normal noise (augmentation)
-resize_before_jpeg = False     # resize already in curve_tfm_image
+resize_before_jpeg = True      # resize already in curve_tfm_image
 augmentation = 'autolevels_aug_tf'
 catmix = False                 # compose input of 4 images
 
