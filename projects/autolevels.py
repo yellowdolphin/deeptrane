@@ -1633,6 +1633,18 @@ def get_mask_categorical(ps, n_channels=3):
     return mask
 
 
+def get_mask_mix(ps, n_channels=3, n_samples=5):
+    """Returns float32 mask with shape [len(ps), n_channels]
+    
+    Elements are in range 0...1 and sum up to 1 over axis 0.
+    n_samples: number of draws to be averaged for each channel
+    Deprecated, yields kinky unnatural curves."""
+    samples = tf.random.categorical(tf.math.log([ps]), n_channels * n_samples)[0]
+    mask = tf.one_hot(samples, depth=len(ps), axis=0)
+    mask = tf.reduce_mean(tf.reshape(mask, (-1, n_channels, n_samples)), axis=-1)
+    return mask
+
+
 def beta_pdf(x, alpha, beta):
     x = tf.clip_by_value(x, 1e-6, 1 - 1e-6)  # avoid nan
     x = x * 0.9                              # reduce slope at whitepoint
