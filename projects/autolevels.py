@@ -3,7 +3,21 @@ from pathlib import Path
 from functools import partial
 import numpy as np
 import pandas as pd
-import cv2
+
+try:
+    import cv2
+except ImportError as e:
+    if 'cannot open shared object' in str(e):
+        print(e, "\ntrying to install ffmpeg libsm6 libext6...")
+        # cv2 broken on current kaggle TPU environment
+        from utils.general import quietly_run
+        quietly_run('apt-get update', debug=False)
+        quietly_run('apt-get install ffmpeg libsm6 libxext6 -y', debug=False)
+        import cv2
+        print("cv2:", cv2.__version__)
+    else:
+        raise
+
 print("import torch...")
 import torch
 from torch.utils.data import Dataset
@@ -24,7 +38,9 @@ try:
     from torchmetrics import MeanSquaredError
 except ModuleNotFoundError:
     from utils.general import quietly_run
-    quietly_run('pip install torchmetrics')
+    # tm requirements insane:
+    # avoid replacing torch 2.2.1+cu121 by 2.2.1
+    quietly_run('pip install --no-deps torchmetrics==1.3.1 lightning_utilities', debug=False)
     import torchmetrics as tm
     from torchmetrics import MeanSquaredError
 print("[ √ ] torchmetrics:", tm.__version__)
@@ -38,25 +54,29 @@ except ModuleNotFoundError:
 print("[ √ ] albumentations:", alb.__version__)
 from albumentations.augmentations import blur
 from albumentations.augmentations.transforms import ImageCompression
-from albumentations.augmentations.geometric.resize import LongestMaxSize
 
-
-import tensorflow as tf
 try:
     import tensorflow_probability as tfp
 except ImportError as e:
     print(e)
+    from utils.general import get_package_version
+    tf_version = get_package_version('tensorflow')
+    tf_subversion = int(tf_version[1])
     incompatible_tfp_version = (
-        '0.23' if tf.__version__.startswith('2.14') else
-        '0.22' if tf.__version__.startswith('2.13') else
+        '0.99' if (tf_subversion >  16) else
+        '0.25' if (tf_subversion == 16) else
+        '0.24' if (tf_subversion == 15) else
+        '0.23' if (tf_subversion == 14) else
+        '0.22' if (tf_subversion == 13) else
         '0.21'
     )
     print(f"Reverting to tensorflow-probability<{incompatible_tfp_version} ...")
     from utils.general import quietly_run
-    quietly_run(f'pip install tensorflow-probability<{incompatible_tfp_version}')
+    quietly_run(f'pip install tensorflow-probability<{incompatible_tfp_version}', debug=False)
     import tensorflow_probability as tfp
 print("[ √ ] tfp:", tfp.__version__)
 tfd = tfp.distributions
+import tensorflow as tf  # not before tfp import!
 from augmentation import adjust_sharpness_tf
 π = np.pi
 π_half = 0.5 * np.pi
