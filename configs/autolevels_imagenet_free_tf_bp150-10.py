@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-28800b1bd2a72b110d01a15531c8e1df03865015fc9ac3fc86c9f82b', 'gs://kds-75abd1b68c2004cbd0f258adb39e5de78126912f59d2821fe6672e2b']
+gcs_paths = ['gs://kds-f9a8b4044e64481b8148aa0ba9c505be95ae98953cb5c379f1aae340', 'gs://kds-626d29841896d07104a0d26d3997dc14631210dabc607d4ed8b4483c']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -28,8 +28,8 @@ pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pi
 lr_min = 1e-6
 save_best = 'loss'
 predict_inverse = True
-blackpoint_range = (-120, 10)   # x-offset
-blackpoint2_range = (-120, 10)  # y-offset
+blackpoint_range = (-150, 10)   # x-offset
+blackpoint2_range = (-150, 10)  # y-offset
 clip_target_blackpoint = True
 log_gamma_range = [-1.8, 1.8]
 mirror_gamma = False

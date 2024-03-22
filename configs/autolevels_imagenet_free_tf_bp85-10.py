@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-28800b1bd2a72b110d01a15531c8e1df03865015fc9ac3fc86c9f82b', 'gs://kds-75abd1b68c2004cbd0f258adb39e5de78126912f59d2821fe6672e2b']
+gcs_paths = ['gs://kds-e185e1c80ad6ec75d864a4b32dfd082079f895cc4493c6ce8fae7a6b', 'gs://kds-d6c33c9df73d9b75635703139e786b675e4f83519c3027046e3a06b7']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
@@ -28,8 +28,8 @@ pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pi
 lr_min = 1e-6
 save_best = 'loss'
 predict_inverse = True
-blackpoint_range = (-120, 10)   # x-offset
-blackpoint2_range = (-120, 10)  # y-offset
+blackpoint_range = (-85, 10)   # x-offset
+blackpoint2_range = (-85, 10)  # y-offset
 clip_target_blackpoint = True
 log_gamma_range = [-1.8, 1.8]
 mirror_gamma = False
@@ -66,6 +66,11 @@ from pathlib import Path
 
 _accepted_types = (int, float, str, bool, tuple, list, dict)
 cfg = {k: v for k, v in globals().items() if not k.startswith('_') and isinstance(v, _accepted_types)}
+
+# dict still in use?
+for k, v in cfg.items():
+    if isinstance(v, dict):
+        print(f"INFO: {k} is cfg parameter of type dict: {v}")
 
 cfg["name"] = Path(__file__).stem
 cfg["tags"] = cfg["name"].split("_")
