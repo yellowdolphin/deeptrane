@@ -31,7 +31,6 @@ predict_inverse = True
 blackpoint_range = (-70, 70)   # x-offset
 blackpoint2_range = (-70, 70)  # y-offset
 log_gamma_range = [-1.8, 1.8]
-mirror_gamma = False
 curve3_a_range = (0.2, 1.06) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha
 curve3_beta_range = (0.5, 1)
 mirror_beta = False

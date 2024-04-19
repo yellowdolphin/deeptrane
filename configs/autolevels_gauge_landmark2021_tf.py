@@ -34,7 +34,6 @@ predict_inverse = True
 blackpoint_range = (0, 0)   # x-offset
 blackpoint2_range = (0, 0)  # y-offset
 log_gamma_range = [0, 0]
-mirror_gamma = False
 p_gamma = 1.0                  # probability for using Gamma curve
 p_beta = 0.0
 curve3_a_range = (1, 1) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha

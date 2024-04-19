@@ -1113,7 +1113,6 @@ class AugInvCurveDataset3(Dataset):
         self.add_jpeg_artifacts = cfg.add_jpeg_artifacts
         self.sharpness_augment = cfg.sharpness_augment
         self.predict_inverse = cfg.predict_inverse
-        self.mirror_gamma = cfg.mirror_gamma
         self.mirror_beta = cfg.mirror_beta
         self.mirror_curve4 = cfg.mirror_curve4
         self.curve_selection = cfg.curve_selection or 'channel-wise'  # 'channel-wise' or 'image-wise'
@@ -1167,7 +1166,6 @@ class AugInvCurveDataset3(Dataset):
 
                 # random swap tfm <-> target
                 if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
-                (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
                 (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
                 (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
                     tfm, target = target, tfm
@@ -1187,7 +1185,6 @@ class AugInvCurveDataset3(Dataset):
 
             # random swap tfm <-> target
             if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
-                (curve.__class__.__name__ == 'Curve0') and self.mirror_gamma,
                 (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
                 (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
                 mask = np.random.randint(0, 2, (n_channels, 1)).astype(np.float32)
@@ -1823,10 +1820,6 @@ def parse_tfrecord(cfg, example):
             x = tf.pow(x, gamma)
             x = x * (1 - bp2) + bp2
             target0 = tf.clip_by_value(x, 0, 1)
-
-            if cfg.mirror_gamma and (tf.random.uniform([]) < 0.5):
-                # randomly swap tfm/target
-                target0, tfm0 = tfm0, target0
         else:
             target0 = tfm0
 
