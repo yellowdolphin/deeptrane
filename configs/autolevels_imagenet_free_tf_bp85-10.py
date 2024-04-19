@@ -66,7 +66,7 @@ from pathlib import Path
 _accepted_types = (int, float, str, bool, tuple, list, dict)
 cfg = {k: v for k, v in globals().items() if not k.startswith('_') and isinstance(v, _accepted_types)}
 
-# dict still in use?
+# dict only used in cfg.preprocess?
 for k, v in cfg.items():
     if isinstance(v, dict):
         print(f"INFO: {k} is cfg parameter of type dict: {v}")

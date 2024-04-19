@@ -308,11 +308,9 @@ def adjust_jpeg_quality_alb(img, quality):
                             always_apply=True)(image=img)['image']
 
 
-def adjust_jpeg_quality_tvf(img, quality, resize=None):
+def adjust_jpeg_quality_tvf(img, quality):
     "Returns HWC numpy image or (return_jpeg=True) CHW tensor"
     img = torch.tensor(img).permute(2, 0, 1)
-    if resize is not None:
-        img = resize(img)
     jpeg = encode_jpeg(img, quality)
     return decode_jpeg(jpeg).permute(1, 2, 0).numpy()
 
@@ -823,7 +821,6 @@ class FreeCurveDataset(Dataset):
         self.return_path_attr = return_path_attr
         self.use_batch_tfms = cfg.use_batch_tfms
         self.resize_before_jpeg = cfg.resize_before_jpeg
-        self.resize_after_sharpness = cfg.resize_after_sharpness
         if self.use_batch_tfms:
             self.presize = TT.Resize([int(s * cfg.presize) for s in cfg.size],
                                      interpolation=InterpolationMode.NEAREST, antialias=cfg.antialias)
@@ -959,7 +956,7 @@ class FreeCurveDataset(Dataset):
 
             return image, target
 
-        resize = self.resize if (self.resize_before_jpeg and not self.resize_after_sharpness) else None
+        resize = self.resize if self.resize_before_jpeg else None
         if max(image.shape) < max(self.resize.size):
             resize = None  # resize only large images
         image = map_index_torch(image, tfm, self.add_uniform_noise, resize)
@@ -973,10 +970,7 @@ class FreeCurveDataset(Dataset):
         if self.add_jpeg_artifacts:
             # adjust_jpeg_quality automatically converts image to uint8 and back
             rnd_quality = int(50 * (1 + np.random.rand()))
-            resize = self.resize if (self.resize_before_jpeg and self.resize_after_sharpness) else None
-            if max(image.shape) < max(self.resize.size):
-                resize = None  # resize only large images
-            image = adjust_jpeg_quality_tvf(image, rnd_quality, resize)
+            image = adjust_jpeg_quality_tvf(image, rnd_quality)
 
         image = image.astype(np.float32) / 255
 
