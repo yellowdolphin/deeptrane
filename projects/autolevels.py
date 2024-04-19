@@ -74,10 +74,19 @@ except ImportError as e:
     from utils.general import quietly_run
     quietly_run(f'pip install tensorflow-probability<{incompatible_tfp_version}', debug=False)
     import tensorflow_probability as tfp
+
 print("[ √ ] tfp:", tfp.__version__)
 tfd = tfp.distributions
+
 import tensorflow as tf  # not before tfp import!
+print("[ √ ] tf:", tf.__version__)
+
+# prevent TF from allocating all GPU memory
+tf_gpus = tf.config.experimental.list_physical_devices('GPU')
+for tf_gpu in tf_gpus:
+  tf.config.experimental.set_memory_growth(tf_gpu, True)
 from augmentation import adjust_sharpness_tf
+
 π = np.pi
 π_half = 0.5 * np.pi
 pi = tf.constant(π)
@@ -339,8 +348,9 @@ def map_index_torch(image, tfm, add_uniform_noise=False, resize=None):
     # map image (H, W, C) to tfm (C, 256) using torch.gather (faster than numpy fancy indexing)
     # tfm must be expanded to have same shape as image (except dim=1)
     # Returns HWC uint8 numpy
-    tfm = (tfm.clip(0, 1) * 255).astype(np.uint8)
-    expanded_curves = torch.tensor(tfm.T)[None, :, :].expand(image.shape[0], -1, -1)
+    tfm = torch.tensor(tfm) if not isinstance(tfm, torch.Tensor) else tfm
+    tfm = (tfm.clamp(0, 1) * 255).to(torch.uint8)
+    expanded_curves = tfm.T[None, :, :].expand(image.shape[0], -1, -1)
     if not add_uniform_noise:
         image = torch.gather(expanded_curves, dim=1, index=torch.LongTensor(image))  # HWC float
         if resize is None:
@@ -485,7 +495,7 @@ def get_pool_baseline_model(cfg, strategy):
 
 
 class Curve0():
-    def __init__(self, gamma=1.0, bp=0, bp2=0, unclipped=False):
+    def __init__(self, gamma=1.0, bp=0, bp2=0, bp_clip=None, unclipped=False):
         """Function  y(x) = x^a  with offsets bp, bp2 in x, y
 
         Input/Output range: [0, 1]
@@ -501,10 +511,13 @@ class Curve0():
         self.params = [np.array(p, dtype=np.float32) for p in (gamma, bp / 255, bp2 / 255)]
         self.x_min = 1e-6
         self.x_max = None
+        self.bp_clip = max(int(bp_clip), 0) if bp_clip is not None else None
+        self.bp_is_clipped = False
         self.unclipped = bool(unclipped)
 
     def __call__(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
+        if not self.bp_is_clipped: _ = self.inverse(x)
         gamma, bp, bp2 = (p[:, None] for p in self.params)
 
         x = bp + x * (1 - bp)
@@ -520,12 +533,18 @@ class Curve0():
         x = (x - bp2) / (1 - bp2)
         x = np.clip(x, self.x_min, self.x_max)  # avoid nan
         x = np.power(x, 1 / gamma)
+        if self.bp_clip:
+            assert x.shape == (3, 256), f'x has unexpected shape {x.shape}'
+            bp_max = x[:, self.bp_clip:self.bp_clip + 1]
+            bp = np.minimum(bp, bp_max)
+            self.params[1] = bp[:, 0]  # propagate to future calls
+            self.bp_is_clipped = True
         x = (x - bp) / (1 - bp)
         return x if self.unclipped else np.clip(x, 0, 1)
 
 
 class Curve3():
-    def __init__(self, alpha=2.0, beta=0.99, bp=0, bp2=0, unclipped=False):
+    def __init__(self, alpha=2.0, beta=0.99, bp=0, bp2=0, bp2_clip=None, mirror_mask=None, unclipped=False):
         """Function y(x) = Beta(alpha, beta).PDF(x)  with offsets bp, bp2 in x, y
 
         Input/Output range: [0, 1]
@@ -544,6 +563,9 @@ class Curve3():
         self.x_min = 1e-6
         self.x_max = 1.0 - 1e-6
         self.eps = 0.1
+        self.bp2_clip = max(int(bp2_clip), 0) if bp2_clip is not None else None
+        self.bp2_is_clipped = False
+        self.mirror_mask = np.ones((3, 1), dtype=np.float32) if mirror_mask is None else mirror_mask
         self.unclipped = bool(unclipped)
 
     def __call__(self, x):
@@ -551,18 +573,35 @@ class Curve3():
         alpha, beta, bp, bp2 = (p[:, None] for p in self.params)
 
         x = bp + x * (1 - bp)
+        x = self.mirror_mask * self.pdf(x, alpha, beta) + (1 - self.mirror_mask) * self.inverse_pdf(x, alpha, beta)
+        if self.bp2_clip is not None and self.bp2_clip < 255:
+            bp2_max = (self.bp2_clip / 255 - x[:, 0:1]) / (1 - x[:, 0:1])
+            bp2 = np.minimum(bp2, bp2_max)
+            self.params[3] = bp2[:, 0]  # propagate to future calls
+            self.bp2_is_clipped = True
+        x = x * (1 - bp2) + bp2
+        return x if self.unclipped else np.clip(x, 0, 1)
+    
+    def inverse(self, x):
+        assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
+        if self.bp2_clip is not None and self.bp2_is_clipped is False: _ = self(x)
+        alpha, beta, bp, bp2 = (p[:, None] for p in self.params)
+        
+        x = (x - bp2) / (1 - bp2)
+        x = self.mirror_mask * self.inverse_pdf(x, alpha, beta) + (1 - self.mirror_mask) * self.pdf(x, alpha, beta)
+        x = (x - bp) / (1 - bp)
+        return x if self.unclipped else np.clip(x, 0, 1)
+
+    def pdf(self, x, alpha, beta):
         x = np.clip(x, self.x_min, self.x_max)  # avoid nan
         x = x * (1 - self.eps)                  # reduce slope at whitepoint
         x = np.power(x, alpha - 1) * np.power(1 - x, beta - 1)  # unnormalized PDF(x)
         x /= x[:, -1:]                                          # normalize
-        x = x * (1 - bp2) + bp2
-        return x if self.unclipped else np.clip(x, 0, 1)
+        return x
     
-    def inverse(self, xs):
-        assert (xs.shape[0] in {1, 3}) and (xs.ndim > 1), f'x has wrong shape: {xs.shape}, expecting (C, *)'
-
+    def inverse_pdf(self, xs, alpha, beta):
         y = np.linspace(self.x_min, self.x_max, 2000, dtype=np.float64)  # float64 avoids div-by-zero below
-        pdfs = self.__call__(y[None, :])
+        pdfs = self.pdf(y[None, :], alpha, beta)
         assert pdfs.shape[0] == 3, str(pdfs.shape)
         xs = xs.repeat(3, axis=0) if xs.shape[0] == 1 else xs
         # fill_value='extrapolate' produces NaNs
@@ -571,7 +610,7 @@ class Curve3():
 
 
 class Curve4():
-    def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, unclipped=False):
+    def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, bp_clip=None, mirror_mask=None, unclipped=False):
         """Function y(x) = 1 - cos(π/2 * x^a)^b  with offsets bp, bp2 in x, y
 
         Input/Output range: [0, 1]
@@ -588,15 +627,18 @@ class Curve4():
         self.params = [np.array(p, dtype=np.float32) for p in (a, b, bp / 255, bp2 / 255)]
         self.x_min = 1e-6
         self.x_max = 1.0 - 1e-6
+        self.bp_clip = max(int(bp_clip), 0) if bp_clip is not None else None
+        self.bp_is_clipped = False
+        self.mirror_mask = np.ones((3, 1), dtype=np.float32) if mirror_mask is None else mirror_mask
         self.unclipped = bool(unclipped)
 
     def __call__(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
+        if not self.bp_is_clipped: _ = self.inverse(x)
         a, b, bp, bp2 = (p[:, None] for p in self.params)
 
         x = bp + x * (1 - bp)
-        x = np.clip(x, self.x_min, self.x_max)  # avoid nan
-        x = 1 - np.cos(π_half * x ** a) ** b
+        x = self.mirror_mask * self.curve4(x, a, b) + (1 - self.mirror_mask) * self.inv_curve4(x, a, b)
         x = x * (1 - bp2) + bp2
         return x if self.unclipped else np.clip(x, 0, 1)
     
@@ -605,10 +647,23 @@ class Curve4():
         a, b, bp, bp2 = (p[:, None] for p in self.params)
 
         x = (x - bp2) / (1 - bp2)
-        x = np.clip(x, self.x_min, self.x_max)  # avoid nan
-        x = π_half**(-1 / a) * np.arccos((1 - x)**(1 / b))**(1 / a)
+        x = self.mirror_mask * self.inv_curve4(x, a, b) + (1 - self.mirror_mask) * self.curve4(x,  a, b)
+        if self.bp_clip:
+            assert x.shape == (3, 256), f'x has unexpected shape {x.shape}'
+            bp_max = x[:, self.bp_clip:self.bp_clip + 1]
+            bp = np.minimum(bp, bp_max)
+            self.params[2] = bp[:, 0]  # propagate to future calls
+            self.bp_is_clipped = True
         x = (x - bp) / (1 - bp)
         return x if self.unclipped else np.clip(x, 0, 1)
+
+    def curve4(self, x, a, b):
+        x = np.clip(x, self.x_min, self.x_max)  # avoid nan
+        return 1 - np.cos(π_half * x ** a) ** b
+
+    def inv_curve4(self, x, a, b):
+        x = np.clip(x, self.x_min, self.x_max)  # avoid nan
+        return π_half**(-1 / a) * np.arccos((1 - x)**(1 / b))**(1 / a)
 
 
 class AugInvGammaDataset(Dataset):
@@ -795,8 +850,16 @@ class AugInvBetaDataset(Dataset):
         return image, labels if self.labeled else image
 
 
+def get_mask(ps, n_channels=3, n_samples=10):
+    """Returns float32 mask with shape [n_channels, len(ps)]
+    
+    Elements are in range 0...1 and sum up to 1 over axis 1.
+    n_samples: number of draws to be averaged for each channel"""
+    sample = np.random.multinomial(1, ps, size=(n_channels, n_samples))
+    return np.mean(sample, axis=1, dtype=np.float32)
+
+
 class FreeCurveDataset(Dataset):
-    # Replace self.rng distributions by np.random calls
     """Images are mapped on device using the channelwise-randomly generated target_curve"""
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
@@ -835,6 +898,7 @@ class FreeCurveDataset(Dataset):
         self.curve4_b_range = cfg.curve4_b_range
         self.bp_range = cfg.blackpoint_range
         self.bp2_range = cfg.blackpoint2_range
+        self.bp_clip = max(*cfg.blackpoint_range, *cfg.blackpoint2_range) if cfg.clip_target_blackpoint else None
         self.p_gamma = cfg.p_gamma  # probability to use gamma (Curve0)
         self.p_beta = cfg.p_beta    # probability for Beta PDF (Curve3) rather than Curve4
         self.noise_level = cfg.noise_level
@@ -871,41 +935,40 @@ class FreeCurveDataset(Dataset):
         # gamma
         log_gamma = np.random.uniform(*self.log_gamma_range, n_channels).astype(np.float32)
         gamma = np.exp(log_gamma)
-        curves.append(Curve0(gamma, bp, bp2))
+        curves.append(Curve0(gamma, bp, bp2, self.bp_clip))
 
         # beta
         alpha = np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32))
         beta = np.random.uniform(*self.curve3_beta_range, n_channels).astype(np.float32)
-        curves.append(Curve3(alpha, beta, bp, bp2))
+        mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_beta else None
+        curves.append(Curve3(alpha, beta, bp, bp2, self.bp_clip, mirror_mask))
 
         # curve4
         a = np.exp(np.random.uniform(*self.curve4_loga_range, n_channels).astype(np.float32))
         b = np.random.uniform(*self.curve4_b_range, n_channels).astype(np.float32)
-        curves.append(Curve4(a, b, bp, bp2))
+        mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_curve4 else None
+        curves.append(Curve4(a, b, bp, bp2, self.bp_clip, mirror_mask))
 
         # RNG DEBUG: checked: different random numbers on each torchrun instance.
         #print(f"bp={bp[0]:4.1f} bp2={bp2[2]:4.1f} g={gamma[0]:4.2f} alpha={alpha[2]:4.2f} beta={beta[0]:4.2f} a={a[2]:4.2f} b={b[0]:4.2f}")
 
         if self.curve_selection == 'channel-wise':
             targets, tfms = [], []
-            for channel in range(n_channels):
-                curve = curves[np.random.randint(0, 3)]
-                tfm = curve.inverse(support[None, :])[channel]
-                target = curve(support[None, :])[channel] if self.predict_inverse else tfm
-
-                # random swap tfm <-> target
-                if (self.predict_inverse and (np.random.random_sample() < 0.5) and any([
-                (curve.__class__.__name__ == 'Curve3') and self.mirror_beta,
-                (curve.__class__.__name__ == 'Curve4') and self.mirror_curve4])):
-                    tfm, target = target, tfm
-
+            for curve in curves:
+                tfm = curve.inverse(support[None, :])  # shape (n_channels, 256)
+                target = curve(support[None, :]) if self.predict_inverse else tfm
                 targets.append(target)
                 tfms.append(tfm)
-
-            target = np.stack(targets)
-            tfm = np.stack(tfms)
+            targets = np.stack(targets)  # shape (n_curves, n_channels, 256)
+            tfms = np.stack(tfms)
+            
+            p_gamma = self.p_gamma
+            p_beta = (1 - self.p_gamma) * self.p_beta
+            p_curve4 = (1 - p_gamma - p_beta)
+            mask = get_mask([p_gamma, p_beta, p_curve4], n_samples=1)
+            target = np.einsum('ji,ijk->jk', mask, targets)
+            tfm = np.einsum('ji,ijk->jk', mask, tfms)
             del targets, tfms
-
         else:
             # image-wise curve selection
             curve = curves[np.random.randint(0, 3)]
@@ -920,12 +983,11 @@ class FreeCurveDataset(Dataset):
                 target, tfm = mask * target + (1 - mask) * tfm, (1 - mask) * target + mask * tfm
         
         target = torch.tensor(target)
+        tfm = torch.tensor(tfm)
         assert target.shape == (n_channels, 256), f"wrong target shape: {target.shape}"
         assert target.dtype == torch.float32, f"wrong target dtype: {target.dtype}"
 
         if self.use_batch_tfms:
-            tfm = torch.tensor(tfm)
-
             # return both target and tfm curves as "target"
             if self.predict_inverse and self.noise_level:
                 # append rnd_factor for noise_level to target, independent of use_batch_tfms
@@ -959,8 +1021,10 @@ class FreeCurveDataset(Dataset):
         resize = self.resize if self.resize_before_jpeg else None
         if max(image.shape) < max(self.resize.size):
             resize = None  # resize only large images
+        #print("image before map_index:", image.shape, type(image), image.dtype, image.max())
+        #print("tfm before map_index:", tfm.shape, type(tfm), tfm.dtype, tfm.max())
         image = map_index_torch(image, tfm, self.add_uniform_noise, resize)
-        #print("after map_index:", image.shape, type(image), image.dtype, image.max())
+        #print("image after map_index:", image.shape, type(image), image.dtype, image.max())
 
         if self.sharpness_augment:
             # randomly soften/sharpen the image
@@ -970,6 +1034,7 @@ class FreeCurveDataset(Dataset):
         if self.add_jpeg_artifacts:
             # adjust_jpeg_quality automatically converts image to uint8 and back
             rnd_quality = int(50 * (1 + np.random.rand()))
+            resize = None
             image = adjust_jpeg_quality_tvf(image, rnd_quality)
 
         image = image.astype(np.float32) / 255

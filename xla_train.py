@@ -826,6 +826,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     for epoch in range(rst_epoch, cfg.epochs):
 
         # Data for verbose info
+        assert 'tf' not in globals(), 'TF has been imported!'
         xm.master_print(f"Epoch {epoch + 1} / {cfg.epochs}, starting at {time.strftime('%a, %d %b %Y %H:%M:%S +0000')}")
         epoch_start = time.perf_counter()
         current_lr = optimizer.param_groups[-1]["lr"]
