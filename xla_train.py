@@ -18,9 +18,6 @@ from torch import FloatTensor, LongTensor
 from torchvision.io import encode_jpeg, decode_jpeg
 
 
-torch.set_default_tensor_type('torch.FloatTensor')
-
-
 def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, scheduler, device):
 
     # initialize

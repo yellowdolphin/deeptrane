@@ -347,8 +347,6 @@ for use_fold in cfg.use_folds:
 
     # Start distributed training on TPU cores
     if cfg.xla:
-        torch.set_default_tensor_type('torch.FloatTensor')
-
         # MpModelWrapper wraps a model to minimize host memory usage (fork only)
         pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
 
