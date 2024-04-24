@@ -2,7 +2,7 @@
 project = 'autolevels'
 datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
             'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-e185e1c80ad6ec75d864a4b32dfd082079f895cc4493c6ce8fae7a6b', 'gs://kds-d6c33c9df73d9b75635703139e786b675e4f83519c3027046e3a06b7']
+gcs_paths = ['gs://kds-4af4311d6007cac2f08e1aa72d03434c31a66290d3cc29b659a394c9', 'gs://kds-6fcb29a2b1d580985ece5e250098a67f05cf216153255ccee38fb0c9']
 gcs_filters = ['*/*-of-*', '*-of-*']
 tfrec_filename_pattern = r"-of-([0-9]*)$"
 out_dir = '/kaggle/working'
