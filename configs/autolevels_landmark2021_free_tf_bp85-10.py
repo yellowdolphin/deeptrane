@@ -1,16 +1,16 @@
 # Setup
 project = 'autolevels'
-datasets = ['imagenet-1k-tfrecords-ilsvrc2012-part-0', 
-            'imagenet-1k-tfrecords-ilsvrc2012-part-1']
-gcs_paths = ['gs://kds-4af4311d6007cac2f08e1aa72d03434c31a66290d3cc29b659a394c9', 'gs://kds-6fcb29a2b1d580985ece5e250098a67f05cf216153255ccee38fb0c9']
-gcs_filters = ['*/*-of-*', '*-of-*']
-tfrec_filename_pattern = r"-of-([0-9]*)$"
+datasets = ['google-landmark-recognition-2021-tfrecords-res-384']
+gcs_paths = ['/kaggle/input/google-landmark-recognition-2021-tfrecords-res-384']  # no gs path
+gcs_filter = '*.tfrecords'
+tfrec_filename_pattern = None
+BGR = True
 out_dir = '/kaggle/working'
 use_custom_training_loop = False
 
 # Training
 seed = 42
-num_folds = 5
+num_folds = 10
 use_folds = [0]
 train_on_all = False
 size = (384, 384)
@@ -28,8 +28,8 @@ pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pi
 lr_min = 1e-6
 save_best = 'loss'
 predict_inverse = True
-blackpoint_range = (-120, 10)   # x-offset
-blackpoint2_range = (-120, 10)  # y-offset
+blackpoint_range = (-85, 10)   # x-offset
+blackpoint2_range = (-85, 10)  # y-offset
 clip_target_blackpoint = True
 log_gamma_range = [-1.8, 1.8]
 curve3_a_range = (0.2, 1.06) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha
@@ -51,14 +51,13 @@ catmix = False                 # compose input of 4 images
 # Model
 arch_name = 'efnv2s'
 #bn_eps = 1e-5
-#rst_path = '/kaggle/input/cassava-deeptrane-rst'
-#rst_name = ''
+rst_path = '/kaggle/input/autolevels-modelbox'
+#rst_name = 'free_efnv2s_r608.h5'
+#rst_epoch = 48
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [9, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'silu'
-freeze_for_loading = ['all_but_bn']
-freeze = ['none']
 
 
 from pathlib import Path

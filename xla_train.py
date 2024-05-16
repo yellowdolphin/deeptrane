@@ -688,6 +688,11 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         xm.master_print("Dataloader sampler:", train_loader.sampler.__class__.__name__)
     if hasattr(train_loader, 'num_workers'):
         xm.master_print("num_workers:", train_loader.num_workers)
+        if train_loader.num_workers and not cfg.DEBUG:
+            # JAX warning about os.fork() call clutters the output
+            import warnings
+            warnings.filterwarnings("ignore")
+            print("INFO: suppressing Warning about os.fork() and JAX potential deadlock.")
     #batch = next(iter(valid_loader))  # OK
     #xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
 
