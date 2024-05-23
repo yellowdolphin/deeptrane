@@ -152,8 +152,12 @@ def init(cfg):
         cfg.inputs = ['image']
 
     elif 'landmark2021' in cfg.tags:
-        cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string)}
-        cfg.data_format = {'image': 'image'}
+        cfg.tfrec_format = {'image': tf.io.FixedLenFeature([], tf.string),
+                            'height': tf.io.FixedLenFeature([], tf.int64),
+                            'width': tf.io.FixedLenFeature([], tf.int64)}
+        cfg.data_format = {'image': 'image',
+                           'height': 'height',
+                           'width': 'width'}
         cfg.inputs = ['image']
 
     elif 'landmark2021sel' in cfg.tags:
@@ -1781,6 +1785,8 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
         return sum(159 if 'train/coco184' in fn else 499 if 'val/coco7' in fn else 
                    642 if '/train/' in fn else 643 
                    for fn in filenames)
+    if '1A_PART_1_train_batch' in filenames[0]:
+        return 3000 * len(filenames)
     if 'landmark-2021-gld2' in filenames[0]:
         return sum(
             203368 if 'gld2-0' in fn else 203303 if 'gld2-1' in fn else 
