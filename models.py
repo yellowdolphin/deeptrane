@@ -807,7 +807,10 @@ def get_pretrained_timm2(cfg):
         body = timm.create_model(cfg.arch_name, pretrained=pretrained, features_only=True,
                                  out_indices=last_n_feature_indices(cfg.arch_name, n_features))
         add_head = True
-        in_features = sum(body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1))
+        #in_features = sum(body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1))
+        in_features = [body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1)]
+        print("Body features:", in_features)
+        in_features = sum(in_features)
     except (RuntimeError, AttributeError):
         print(f"Warning: {cfg.arch_name} does not support the features_only kwarg.")
         if cfg.lin_ftrs:
