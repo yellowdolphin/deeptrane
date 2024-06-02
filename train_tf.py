@@ -153,7 +153,7 @@ for use_fold in cfg.use_folds:
     csv_logger = CSVLogger(logfile)
     cfg.checkpoint_format = cfg.checkpoint_format or 'hdf5'
     chk_ep = '_best' if cfg.save_best else '_ep{epoch:03d}'
-    chk_suffix = '.keras' if (cfg.checkpoint_format == 'keras') else '.h5'
+    chk_suffix = '.keras' if (cfg.checkpoint_format == 'keras') else '.h5' if cfg.save_full_model else '.weights.h5'
     chk_filepath = f'{cfg.out_dir}/{cfg.arch_name}{chk_ep}{chk_suffix}'
     
     save_chk = (
