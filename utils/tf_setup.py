@@ -61,5 +61,6 @@ def install_model_libs(cfg):
     if 'deit' in cfg.arch_name:
         vers, subvers = get_package_version('tensorflow')[:2]
         tf_version = '.'.join([vers, subvers])
-        print(f"requiring keras version compatible with TF {tf_version} for deit models...")
-        quietly_run(f'pip install keras<={tf_version}', debug=True)
+        if int(subvers) < 16:
+            print(f"requiring keras version compatible with TF {tf_version} for deit models...")
+            quietly_run(f'pip install keras<={tf_version}', debug=True)
