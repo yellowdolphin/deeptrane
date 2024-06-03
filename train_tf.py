@@ -153,7 +153,10 @@ for use_fold in cfg.use_folds:
     csv_logger = CSVLogger(logfile)
     cfg.checkpoint_format = cfg.checkpoint_format or 'hdf5'
     chk_ep = '_best' if cfg.save_best else '_ep{epoch:03d}'
-    chk_suffix = '.keras' if (cfg.checkpoint_format == 'keras') else '.h5' if cfg.save_full_model else '.weights.h5'
+    chk_suffix = '.keras' if (cfg.checkpoint_format == 'keras') else '.h5'
+    # TF < 2.16 bug: saves entire model if suffix is ".weights.h5" but TF 2.16 asserts suffix is ".weights.h5"
+    if int(tf.__version__.split('.')[1]) >= 16 and not cfg.save_full_model:
+        chk_suffix = '.weights.h5'
     chk_filepath = f'{cfg.out_dir}/{cfg.arch_name}{chk_ep}{chk_suffix}'
     
     save_chk = (
@@ -167,6 +170,7 @@ for use_fold in cfg.use_folds:
             chk_filepath, save_best_only=False,
             save_weights_only=(not cfg.save_full_model),
             save_freq='epoch', verbose=1))
+    print(f"save_weights_only: {save_chk.save_weights_only}")
     lr_callback = get_lr_callback(cfg)
 
     clear_session()

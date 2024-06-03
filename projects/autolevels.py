@@ -1778,6 +1778,9 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
 
         # imagenet-selection-*: same filenames as Imagenet but varying items per file
         return 365269 if (len(filenames) == 921) else 88658  # for n_folds=5
+    
+        # debug training
+        #return 64 if (len(filenames) == 921) else 64  # for n_folds=5
     if 'FlickrFaces' in filenames[0]:
         # flickr: number of items in filename
         return sum(int(fn[-10:-6]) for fn in filenames)
