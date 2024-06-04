@@ -71,29 +71,42 @@ if project:
     print("[ √ ] Project:", cfg.project)
     project.init(cfg)
 
+# TPU detection
+print("tf.config.list_physical_devices():", tf.config.list_physical_devices())
+print("tf.config.list_physical_devices('TPU'):", tf.config.list_physical_devices('TPU'))
+print("TPU_NAME:", os.environ.get('TPU_NAME', None))
+if tf.config.list_physical_devices('TPU') or ('TPU_NAME' in os.environ):
+    print("TPUs detected, trying to use them...")
+    try:
+        if cfg.cloud in ['kaggle', 'drive']:
+            # TPUClusterResolver.connect() on kaggle raises ValueError: temporary google issue
+            # initialize_tpu_system(tpu) on kaggle raises "No matching devices found":
+             #    -> make sure, tensorflow is not imported in the notebook before running deeptrane!
+            # TPUClusterResolver.connect() on colab sometimes does not respond
+            if 'TPU_NAME' in os.environ:
+                # No parameters necessary if TPU_NAME environment variable is set.
+                # This is always the case on Kaggle.
+                tpu = tf.distribute.cluster_resolver.TPUClusterResolver()
+            else:
+                print("trying TPUClusterResolver(tpu='local')...")
+                tpu = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='local')
+            tf.config.experimental_connect_to_cluster(tpu)
+            tf.tpu.experimental.initialize_tpu_system(tpu)
+        else:
+            print("trying TPUClusterResolver.connect()...")
+            tpu = tf.distribute.cluster_resolver.TPUClusterResolver.connect()
 
-# TPU detection. No parameters necessary if TPU_NAME environment variable is set.
-# This is always the case on Kaggle.
-try:
-    if cfg.cloud in ['kaggle', 'drive']:
-        # TPUClusterResolver.connect() on kaggle raises ValueError: temporary google issue
-        # initialize_tpu_system(tpu) on kaggle raises "No matching devices found":
-        #    -> make sure, tensorflow is not imported in the notebook before running deeptrane!
-        # TPUClusterResolver.connect() on colab sometimes does not respond
-        tpu = tf.distribute.cluster_resolver.TPUClusterResolver()
-        tf.config.experimental_connect_to_cluster(tpu)
-        tf.tpu.experimental.initialize_tpu_system(tpu)
-    else:
-        tpu = tf.distribute.cluster_resolver.TPUClusterResolver.connect()
-    print('Running on TPU ', tpu.master())
-except ValueError:
-    tpu = None
+        print('TPU master:', tpu.master())
+        strategy = tf.distribute.TPUStrategy(tpu)
 
-if tpu:
-    strategy = tf.distribute.TPUStrategy(tpu)
-    
-    # Workaround issue https://github.com/tensorflow/hub/issues/604
-    os.environ["TFHUB_MODEL_LOAD_FORMAT"] = "UNCOMPRESSED"
+        # Workaround issue https://github.com/tensorflow/hub/issues/604
+        os.environ["TFHUB_MODEL_LOAD_FORMAT"] = "UNCOMPRESSED"
+    except Exception as e:
+        print(e)
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
+        print("Fallback to CPU/GPU strategy")
+        strategy = tf.distribute.get_strategy()  # default for cpu, gpu
 else:
     strategy = tf.distribute.get_strategy()  # default for cpu, gpu
 

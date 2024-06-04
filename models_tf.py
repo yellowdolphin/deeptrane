@@ -62,6 +62,14 @@ TFHUB = {
     #'vit_b8': "https://tfhub.dev/sayakpaul/vit_b8_classification/1",
     #'convnext_base_21k_1k_384_fe': "https://tfhub.dev/sayakpaul/convnext_base_21k_1k_384_fe/1",
     #'convnext_base_21k_1k_224_fe': "https://tfhub.dev/sayakpaul/convnext_base_21k_1k_224_fe/1",
+    "deit_tiny_patch16_224": "https://tfhub.dev/sayakpaul/deit_tiny_patch16_224/1",
+    "deit_tiny_distilled_patch16_224": "https://tfhub.dev/sayakpaul/deit_tiny_distilled_patch16_224/1",
+    #"deit_small_patch16_224": "https://tfhub.dev/sayakpaul/deit_small_patch16_224/1",
+    "deit_small_distilled_patch16_224": "https://tfhub.dev/sayakpaul/deit_small_distilled_patch16_224/1",
+    "deit_base_patch16_224": "https://tfhub.dev/sayakpaul/deit_base_patch16_224/1",
+    "deit_base_distilled_patch16_224": "https://tfhub.dev/sayakpaul/deit_base_distilled_patch16_224/1",
+    "deit_base_patch16_384": "https://tfhub.dev/sayakpaul/deit_base_patch16_384/1",
+    "deit_base_distilled_patch16_384": "https://tfhub.dev/sayakpaul/deit_base_distilled_patch16_384/1",
 }
 
 
@@ -582,7 +590,10 @@ def get_pretrained_model(cfg, strategy, inference=False):
                                                  vbs=cfg.virtual_batch_size,
                                                  n_gpu=cfg.gpu)
 
-        x = pretrained_model(x)
+        if tfhub and ('deit' in cfg.arch_name):
+            x, _ = pretrained_model(x)
+        else:
+            x = pretrained_model(x)
 
         # Head(s)
         if efnv1 and not cfg.keep_pretrained_head:
