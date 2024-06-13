@@ -59,7 +59,7 @@ def install_model_libs(cfg):
 
                 # pajotarthur made a pull request that replaces tf.keras with tf_keras and is supposedly compatible with TF 2.16
                 # This PR was never pulled, so let's clone his branch "update_python_3.11"...
-                quietly_run('pip install git+https://github.com/pajotarthur/tensorflow-image-models.git@update_python_3.11', debug=True)
+                quietly_run('pip install -q git+https://github.com/pajotarthur/tensorflow-image-models.git@update_python_3.11', debug=False)
                 print("installed tfimm branch from pajotarthur")
 
             assert os.environ.get('NV_CUDNN_VERSION') != '8.0.5.39', 'cuDNN broken: use image2021-02-23 for tfimm GPU training!'

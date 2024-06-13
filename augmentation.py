@@ -255,6 +255,7 @@ def adjust_sharpness_tf(img, sharpness_factor: float):
 def get_tf_tfms(cfg, mode='train'):
     "Return tfms based on flags from file `cfg.augmentation`."
     import tensorflow as tf
+    import tf_keras
 
     flags = Config(f'configs/{cfg.augmentation}')
     # inputs is dict or tuple. index/keys must accord to data_format!
@@ -274,13 +275,13 @@ def get_tf_tfms(cfg, mode='train'):
             return tf.image.resize(image, size)
 
 
-        rotate = tf.keras.layers.RandomRotation(
+        rotate = tf_keras.layers.RandomRotation(
             factor=(flags.rotate or 0) * 3.1415 / 180,
             fill_mode='reflect',
             #fill_mode='constant', fill_value=1.0,
             interpolation='bilinear'
-            ) if hasattr(tf.keras.layers, 'RandomRotation') else tf.keras.layers.Lambda(lambda x: x)
-            # tf.keras 2.4 has neither RandomRotation nor Identity
+            ) if hasattr(tf_keras.layers, 'RandomRotation') else tf_keras.layers.Lambda(lambda x: x)
+            # tf_keras 2.4 has neither RandomRotation nor Identity
 
 
         def tfms(inputs, targets, sample_weights=None):

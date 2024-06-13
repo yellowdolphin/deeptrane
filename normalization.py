@@ -1,29 +1,30 @@
 from pathlib import Path
 import tensorflow as tf
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import BatchNormalization
+import tf_keras
+from tf_keras.models import Model
+from tf_keras.layers import BatchNormalization
 
 
 def get_normalization_classes():
     "Return a tuple of all supported normalization classes"
     normalization_classes = [
         BatchNormalization,
-        tf.keras.layers.LayerNormalization]
-    if hasattr(tf.keras.layers.experimental, 'SyncBatchNormalization'):
-        normalization_classes.append(tf.keras.layers.experimental.SyncBatchNormalization)
-    if hasattr(tf.keras.layers, 'GroupNormalization'):
-        normalization_classes.append(tf.keras.layers.GroupNormalization)
+        tf_keras.layers.LayerNormalization]
+    if hasattr(tf_keras.layers.experimental, 'SyncBatchNormalization'):
+        normalization_classes.append(tf_keras.layers.experimental.SyncBatchNormalization)
+    if hasattr(tf_keras.layers, 'GroupNormalization'):
+        normalization_classes.append(tf_keras.layers.GroupNormalization)
     return tuple(normalization_classes)
 
 
 def Normalization(layer_class, name=None, gn_groups=None, vbs=None):
     """Return an instance of a keras normalization layer
 
-    `layer_class [str | tf.keras.layers.Layer]: keyword, layer class name, or layer class
+    `layer_class [str | tf_keras.layers.Layer]: keyword, layer class name, or layer class
     Default: BatchNormalization
     Keywords: 'BN', 'GN', 'SyncBN', 'layer_norm', 'inctance_norm'
     """
-    if isinstance(layer_class, tf.keras.layers.Layer):
+    if isinstance(layer_class, tf_keras.layers.Layer):
         return layer_class(name=name)
     if layer_class is True:
         return BatchNormalization(name=name)  # default
@@ -34,13 +35,13 @@ def Normalization(layer_class, name=None, gn_groups=None, vbs=None):
     if layer_class.lower() in {'syncbn', 'sync_bn'}:
         return BatchNormalization(name=name, synchronized=True)
     if layer_class.lower() == 'gn':
-        return tf.keras.layers.GroupNormalization(name=name, groups=gn_groups or 1)
+        return tf_keras.layers.GroupNormalization(name=name, groups=gn_groups or 1)
     if layer_class == 'layer_norm':
-        return tf.keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
+        return tf_keras.layers.LayerNormalization(name=name)  # bad valid, nan loss
     if layer_class == 'instance_norm':
         return BatchNormalization(virtual_batch_size=vbs, name=name)
-    if hasattr(tf.keras.layers, layer_class):
-        return getattr(tf.keras.layers, layer_class)(name=name)
+    if hasattr(tf_keras.layers, layer_class):
+        return getattr(tf_keras.layers, layer_class)(name=name)
     raise ValueError(f'{layer_class} is not a recognized normalization class')
 
 
@@ -78,7 +79,7 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
     # Set the output tensor of the input layer
     input = (model.input if hasattr(model, 'input') else 
              model.inputs[0] if model.inputs else 
-             tf.keras.layers.Input(shape=(64, 64, 3), name='image'))
+             tf_keras.layers.Input(shape=(64, 64, 3), name='image'))
     if hasattr(model, 'inputs') and hasattr(model.inputs, 'len') and len(model.inputs) > 1:
         print("WARNING: model has several inputs, replace_bn_layers untested for this case")
     network_dict['new_output_tensor_of'].update(
@@ -129,12 +130,12 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
     # Save and load model to clean up Graph (recommended on StackOverflow)
     try:
         new_model.save('tmp.keras')  # compiles/warns till tf < 2.13
-        new_model = tf.keras.models.load_model('tmp.keras', compile=False)
+        new_model = tf_keras.models.load_model('tmp.keras', compile=False)
     except ValueError as e:
         if 'axis' in str(e):
             # Work around BatchNormalization/VBS bug, axis must be 3 during save, else 4
             for l in new_model.layers:
-                if isinstance(l, tf.keras.layers.BatchNormalization) and l.virtual_batch_size is not None:
+                if isinstance(l, tf_keras.layers.BatchNormalization) and l.virtual_batch_size is not None:
                     #print("axis before save:", l.axis[0])  # 4
                     if hasattr(l.axis, '__len__'):
                         l.axis[0] -= 1
@@ -142,10 +143,10 @@ def replace_bn_layers(model, layer_class, keep_weights=False, n_gpu=1, **kwargs)
                         l.axis -= 1
 
             new_model.save('tmp.keras')
-            new_model = tf.keras.models.load_model('tmp.keras', compile=False)
+            new_model = tf_keras.models.load_model('tmp.keras', compile=False)
 
             for l in new_model.layers:
-                if isinstance(l, tf.keras.layers.BatchNormalization) and l.virtual_batch_size is not None:
+                if isinstance(l, tf_keras.layers.BatchNormalization) and l.virtual_batch_size is not None:
                     #print("axis after load:", l.axis[0])  # 4 (!)
                     if hasattr(l.axis, '__len__') and l.axis[0] == 3:
                         l.axis[0] += 1

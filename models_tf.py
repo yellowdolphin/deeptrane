@@ -31,8 +31,9 @@ import math
 from pathlib import Path
 
 import tensorflow as tf
-from tensorflow.keras.layers import (Input, Flatten, Dense, Dropout, Softmax,
-                                     GlobalAveragePooling2D, GlobalMaxPooling2D, concatenate)
+import tf_keras
+from tf_keras.layers import (Input, Flatten, Dense, Dropout, Softmax,
+                             GlobalAveragePooling2D, GlobalMaxPooling2D, concatenate)
 from normalization import Normalization, get_normalization_classes
 
 # if cfg.arch_name.startswith('efnv1'):
@@ -73,7 +74,7 @@ TFHUB = {
 }
 
 
-class GeMPoolingLayer(tf.keras.layers.Layer):
+class GeMPoolingLayer(tf_keras.layers.Layer):
     def __init__(self, p=1., train_p=False):
         super().__init__()
         if train_p:
@@ -90,7 +91,7 @@ class GeMPoolingLayer(tf.keras.layers.Layer):
         return inputs
 
 
-class CustomTrainStep(tf.keras.Model):
+class CustomTrainStep(tf_keras.Model):
     def __init__(self, n_acc, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.n_acc = tf.constant(n_acc, dtype=tf.int32)
@@ -147,7 +148,7 @@ class CustomTrainStep(tf.keras.Model):
         return return_metrics
 
 
-class SequentialWithGrad(tf.keras.Sequential):
+class SequentialWithGrad(tf_keras.Sequential):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         #for w in self.weights:            # safer, but needs more memory
@@ -167,7 +168,7 @@ class SequentialWithGrad(tf.keras.Sequential):
             x.assign_add(y)
 
 
-class ModelWithGrad(tf.keras.Model):
+class ModelWithGrad(tf_keras.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         #for w in self.weights:            # safer, but needs more memory
@@ -187,7 +188,7 @@ class ModelWithGrad(tf.keras.Model):
             x.assign_add(y)
 
 
-class ArcMarginProductSubCenter(tf.keras.layers.Layer):
+class ArcMarginProductSubCenter(tf_keras.layers.Layer):
     '''
     Implements large margin arc distance.
 
@@ -269,7 +270,7 @@ class ArcMarginProductSubCenter(tf.keras.layers.Layer):
         return output
 
 
-class AddMarginProductSubCenter(tf.keras.layers.Layer):
+class AddMarginProductSubCenter(tf_keras.layers.Layer):
     """
     Add the subcenter DOF but keep all other properties of AddMarginProduct (my idea)
     https://github.com/lyakaap/Landmark2019-1st-and-3rd-Place-Solution/blob/master/src/modeling/metric_learning.py
@@ -326,7 +327,7 @@ class AddMarginProductSubCenter(tf.keras.layers.Layer):
         return output
 
 
-class GammaCurve(tf.keras.layers.Layer):
+class GammaCurve(tf_keras.layers.Layer):
     def __init__(self, predict_inverse=True, **kwargs):
         super().__init__(**kwargs)
         self.predict_inverse = predict_inverse
@@ -510,7 +511,7 @@ def peek_layer_weights(model, level=0):
     if level == 0:
         print(f"\nShowing first element of each weight in {model.name}")
     for layer in model.layers:
-        if not isinstance(layer, tf.keras.layers.Layer):
+        if not isinstance(layer, tf_keras.layers.Layer):
             peek_layer_weights(layer, level + 1)
             continue
         
@@ -530,7 +531,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
     if rst_file and rst_file.suffix == '.keras':
         try:
             with strategy.scope():
-                model = tf.keras.models.load_model(rst_file)
+                model = tf_keras.models.load_model(rst_file)
                 if cfg.freeze is not None: set_trainable(model, cfg.freeze)
             print(f"Keras model loaded from {rst_file}")
             return model
@@ -599,7 +600,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if efnv1 and not cfg.keep_pretrained_head:
             if cfg.keep_pretrained_head:
                 embed = x
-            elif isinstance(cfg.pool, tf.keras.layers.Layer):
+            elif isinstance(cfg.pool, tf_keras.layers.Layer):
                 embed = cfg.pool(x, inputs) if hasattr(cfg.pool, 'requires_inputs') else cfg.pool(x)
             elif cfg.pool == 'flatten':
                 embed = Flatten()(x)
@@ -619,7 +620,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         elif efnv2:
             if cfg.keep_pretrained_head:
                 embed = x
-            elif isinstance(cfg.pool, tf.keras.layers.Layer):
+            elif isinstance(cfg.pool, tf_keras.layers.Layer):
                 embed = cfg.pool(x, inputs) if hasattr(cfg.pool, 'requires_inputs') else cfg.pool(x)
             elif cfg.pool == 'flatten':
                 embed = Flatten()(x)
@@ -742,7 +743,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
         elif cfg.n_acc > 1:
             model = CustomTrainStep(cfg.n_acc, inputs=inputs, outputs=outputs)
         else:
-            model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+            model = tf_keras.models.Model(inputs=inputs, outputs=outputs)
 
         # Load restart weights
         if rst_file:
@@ -752,9 +753,10 @@ def get_pretrained_model(cfg, strategy, inference=False):
 
             try:
                 model.load_weights(rst_file)
-            except ValueError:
+            except ValueError as e:
+                print(e)
                 print(f"{rst_file} mismatches model with body: {model.layers[1].name}")
-                print("Trying to load matching layers only...")
+                print("Trying to load matching layers by name...")
                 model.load_weights(rst_file, by_name=True, skip_mismatch=True)
             print(f"Weights loaded from {rst_file}")
 
@@ -769,30 +771,30 @@ def get_pretrained_model(cfg, strategy, inference=False):
         if cfg.use_custom_training_loop: return model
 
         optimizer = (
-            tf.keras.optimizers.AdamW(learning_rate=cfg.lr, weight_decay=cfg.wd,
+            tf_keras.optimizers.AdamW(learning_rate=cfg.lr, weight_decay=cfg.wd,
                                       beta_1=cfg.betas[0],
                                       beta_2=cfg.betas[1]) if cfg.optimizer == 'AdamW' else
-            tf.keras.optimizers.Adam(learning_rate=cfg.lr,
+            tf_keras.optimizers.Adam(learning_rate=cfg.lr,
                                      beta_1=cfg.betas[0],
                                      beta_2=cfg.betas[1]) if cfg.optimizer == 'Adam' else
-            tf.keras.optimizers.SGD(learning_rate=cfg.lr, momentum=cfg.betas[0]))
+            tf_keras.optimizers.SGD(learning_rate=cfg.lr, momentum=cfg.betas[0]))
 
         cfg.metrics = cfg.metrics or []
 
         metrics_classes = {}
         if 'acc' in cfg.metrics:
-            metrics_classes['acc'] = tf.keras.metrics.SparseCategoricalAccuracy(name='acc')
+            metrics_classes['acc'] = tf_keras.metrics.SparseCategoricalAccuracy(name='acc')
         if 'top5' in cfg.metrics:
-            metrics_classes['top5'] = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5')
+            metrics_classes['top5'] = tf_keras.metrics.SparseTopKCategoricalAccuracy(k=5, name='top5')
         if 'f1' in cfg.metrics:
             #metrics_classes['f1'] = tfa.metrics.F1Score(num_classes=cfg.n_classes, average='micro', name='F1')
-            metrics_classes['f1'] = tf.keras.metrics.F1Score(average='micro', name='F1')
+            metrics_classes['f1'] = tf_keras.metrics.F1Score(average='micro', name='F1')
         if 'f2' in cfg.metrics:
             #metrics_classes['f2'] = tfa.metrics.FBetaScore(num_classes=cfg.n_classes, beta=2.0, average='micro', name='F2')
-            metrics_classes['f2'] = tf.keras.metrics.FBetaScore(beta=2, average='micro', name='F2')
+            metrics_classes['f2'] = tf_keras.metrics.FBetaScore(beta=2, average='micro', name='F2')
         if 'macro_f1' in cfg.metrics:
             #metrics_classes['macro_f1'] = tfa.metrics.F1Score(num_classes=cfg.n_classes, average='macro', name='macro_F1')
-            metrics_classes['macro_f1'] = tf.keras.metrics.F1Score(average='macro', name='macro_F1')
+            metrics_classes['macro_f1'] = tf_keras.metrics.F1Score(average='macro', name='macro_F1')
         if 'curve_rmse' in cfg.metrics:
             from projects.autolevels import TFCurveRMSE
             metrics_classes['curve_rmse'] = TFCurveRMSE(curve=cfg.curve)

@@ -81,6 +81,11 @@ tfd = tfp.distributions
 import tensorflow as tf  # not before tfp import!
 print("[ √ ] tf:", tf.__version__)
 
+try:
+    import tf_keras
+except ModuleNotFoundError:
+    from tensorflow import keras as tf_keras
+
 # prevent TF from allocating all GPU memory
 tf_gpus = tf.config.experimental.list_physical_devices('GPU')
 for tf_gpu in tf_gpus:
@@ -245,7 +250,7 @@ def init(cfg):
                                        name='transform_tf')  # increments body_index by 1
 
 
-class GammaTransformTF(tf.keras.layers.Layer):
+class GammaTransformTF(tf_keras.layers.Layer):
     "Gamma transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"
     def __init__(self):
         super().__init__()
@@ -258,15 +263,15 @@ class GammaTransformTF(tf.keras.layers.Layer):
         return tf.pow(inputs, self.gamma) * (1 - self.bp2) + self.bp2
 
 
-class Curve4TransformTF(tf.keras.layers.Layer):
+class Curve4TransformTF(tf_keras.layers.Layer):
     "Curve4 transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"
     def __init__(self):
         super().__init__()
         self.bp = self.add_weight(shape=(3,), name='preprocess/bp', initializer="zeros", trainable=True)
         self.a = self.add_weight(shape=(3,), name='preprocess/a', trainable=True,
-                                 initializer=tf.keras.initializers.Constant([0.5, 0.5, 0.5]))
+                                 initializer=tf_keras.initializers.Constant([0.5, 0.5, 0.5]))
         self.b = self.add_weight(shape=(3,), name='preprocess/b', trainable=True,
-                                 initializer=tf.keras.initializers.Constant([8/(π**2), 8/(π**2), 8/(π**2)]))
+                                 initializer=tf_keras.initializers.Constant([8/(π**2), 8/(π**2), 8/(π**2)]))
         self.bp2 = self.add_weight(shape=(3,), name='preprocess/bp2', initializer="zeros", trainable=True)
 
     def call(self, inputs):
@@ -382,7 +387,7 @@ def get_pretrained_model(cfg, strategy):
 
 def get_stat_augmented_efnv2_model(cfg, strategy):
     import tensorflow as tf
-    from tensorflow.keras.layers import Input, Dense, Dropout
+    from tf_keras.layers import Input, Dense, Dropout
     from normalization import Normalization
     from models_tf import get_bottleneck_params
     import keras_efficientnet_v2 as efn
@@ -400,7 +405,7 @@ def get_stat_augmented_efnv2_model(cfg, strategy):
         features = pretrained_model(inputs[0])
         if not isinstance(features, list):
             # Currently, there is no feature extraction option for neither
-            # keras_efficientnet_v2 nor tf.keras.applications.EfficientNetV2* classes
+            # keras_efficientnet_v2 nor tf_keras.applications.EfficientNetV2* classes
             raise NotImplementedError('implement feature extractor: body(x) --> features')
         pooled_features = [cfg.pool(x, inputs[0]) for x in features]
         embed = tf.concat(pooled_features, axis=-1)
@@ -422,11 +427,11 @@ def get_stat_augmented_efnv2_model(cfg, strategy):
         outputs = [output]
 
         # Build model
-        model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+        model = tf_keras.models.Model(inputs=inputs, outputs=outputs)
 
         assert not (cfg.rst_path and cfg.rst_name)
 
-        optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.lr, beta_1=cfg.betas[0], beta_2=cfg.betas[1])
+        optimizer = tf_keras.optimizers.Adam(learning_rate=cfg.lr, beta_1=cfg.betas[0], beta_2=cfg.betas[1])
         metrics_classes = {'curve_rmse': TFCurveRMSE(curve=cfg.curve)}
         metrics = [metrics_classes[m] for m in cfg.metrics]
         model.compile(optimizer=optimizer, loss='mean_squared_error', metrics=metrics)
@@ -436,7 +441,7 @@ def get_stat_augmented_efnv2_model(cfg, strategy):
 
 def get_pool_baseline_model(cfg, strategy):
     import tensorflow as tf
-    from tensorflow.keras.layers import Input, Dense, Dropout
+    from tf_keras.layers import Input, Dense, Dropout
     from normalization import Normalization
     from models_tf import get_bottleneck_params, set_trainable, peek_layer_weights
 
@@ -465,7 +470,7 @@ def get_pool_baseline_model(cfg, strategy):
         outputs = [output]
 
         # Build model
-        model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+        model = tf_keras.models.Model(inputs=inputs, outputs=outputs)
         #peek_layer_weights(model)
 
         # Load restart weights
@@ -490,7 +495,7 @@ def get_pool_baseline_model(cfg, strategy):
         # Freeze/unfreeze, set BN parameters
         set_trainable(model, cfg.freeze)
 
-        optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.lr, beta_1=cfg.betas[0], beta_2=cfg.betas[1])
+        optimizer = tf_keras.optimizers.Adam(learning_rate=cfg.lr, beta_1=cfg.betas[0], beta_2=cfg.betas[1])
         metrics_classes = {'curve_rmse': TFCurveRMSE(curve=cfg.curve)}
         metrics = [metrics_classes[m] for m in cfg.metrics]
         model.compile(optimizer=optimizer, loss='mean_squared_error', metrics=metrics)
@@ -1062,7 +1067,7 @@ class FreeCurveDataset(Dataset):
         return image, target
 
 
-class StatPooling(tf.keras.layers.Layer):
+class StatPooling(tf_keras.layers.Layer):
     requires_inputs = True  # if this class attribute exists: call(embed, inputs) 
     def __init__(self, input_shape, stat_channels, mul_channels=1, add_channels=0, squeeze=False, activation=None, **kwargs):
         """
@@ -1073,34 +1078,34 @@ class StatPooling(tf.keras.layers.Layer):
         self.fields = input_shape[:2]
         emb_ch = input_shape[2]
         self.stat_channels = stat_channels
-        self.pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.bn1 = tf.keras.layers.BatchNormalization()
-        self.bn2 = tf.keras.layers.BatchNormalization()
-        self.bn3 = tf.keras.layers.BatchNormalization()
-        self.bn4 = tf.keras.layers.BatchNormalization()
-        self.bn5 = tf.keras.layers.BatchNormalization()
-        self.bn6 = tf.keras.layers.BatchNormalization()
-        self.bn7 = tf.keras.layers.BatchNormalization()
-        self.bn8 = tf.keras.layers.BatchNormalization()
-        #self.bn9 = tf.keras.layers.BatchNormalization()
-        #self.bn10 = tf.keras.layers.BatchNormalization()
-        #self.bn11 = tf.keras.layers.BatchNormalization()
-        #self.bn12 = tf.keras.layers.BatchNormalization()
+        self.pool = tf_keras.layers.GlobalAveragePooling2D()
+        self.bn1 = tf_keras.layers.BatchNormalization()
+        self.bn2 = tf_keras.layers.BatchNormalization()
+        self.bn3 = tf_keras.layers.BatchNormalization()
+        self.bn4 = tf_keras.layers.BatchNormalization()
+        self.bn5 = tf_keras.layers.BatchNormalization()
+        self.bn6 = tf_keras.layers.BatchNormalization()
+        self.bn7 = tf_keras.layers.BatchNormalization()
+        self.bn8 = tf_keras.layers.BatchNormalization()
+        #self.bn9 = tf_keras.layers.BatchNormalization()
+        #self.bn10 = tf_keras.layers.BatchNormalization()
+        #self.bn11 = tf_keras.layers.BatchNormalization()
+        #self.bn12 = tf_keras.layers.BatchNormalization()
         c1 = stat_channels * 8
         c2 = (stat_channels + emb_ch) * mul_channels + add_channels
         #c1 = c2  # merge-4-skipmerge-4
-        self.conv1 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
-        self.conv2 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
-        self.conv3 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
-        self.conv4 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
-        self.conv5 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
-        self.conv6 = tf.keras.layers.Conv2D(c1, 1, activation=activation)
-        self.conv7 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
-        self.conv8 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
-        #self.conv9 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
-        #self.conv10 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
-        #self.conv11 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
-        #self.conv12 = tf.keras.layers.Conv2D(c2, 1, activation=activation)
+        self.conv1 = tf_keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv2 = tf_keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv3 = tf_keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv4 = tf_keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv5 = tf_keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv6 = tf_keras.layers.Conv2D(c1, 1, activation=activation)
+        self.conv7 = tf_keras.layers.Conv2D(c2, 1, activation=activation)
+        self.conv8 = tf_keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv9 = tf_keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv10 = tf_keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv11 = tf_keras.layers.Conv2D(c2, 1, activation=activation)
+        #self.conv12 = tf_keras.layers.Conv2D(c2, 1, activation=activation)
         print(f"{self.__class__.__name__}:")
         print("fields:", self.fields)
         print("embed channels:", emb_ch)
@@ -1746,7 +1751,7 @@ def parse_tfrecord(cfg, example):
         features['height'] = height
         features['width'] = width
 
-    # tf.keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
+    # tf_keras.model.fit() wants dataset to yield a tuple (inputs, targets, [sample_weights])
     # inputs can be a dict
     inputs = tuple(features[key] for key in cfg.inputs)
     targets = tuple(features[key] for key in cfg.targets)
@@ -1835,8 +1840,8 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
             raise NotImplementedError(f'autolevels.count_data_items: filename not recognized: {filenames[0]}')
 
 
-@tf.keras.utils.register_keras_serializable()
-class TFCurveRMSE(tf.keras.metrics.MeanSquaredError):
+@tf_keras.utils.register_keras_serializable()
+class TFCurveRMSE(tf_keras.metrics.MeanSquaredError):
     def __init__(self, name='curve_rmse', curve='gamma', **kwargs):
         if curve == 'gamma': name = 'rmse'
         super().__init__(name=name, **kwargs)

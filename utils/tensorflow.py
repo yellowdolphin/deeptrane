@@ -1,7 +1,7 @@
 """
 The Issue with learning-rate schedulers in TF
 
-tf.keras.model.fit() allows two ways to schedule the lr, (1) pass a 
+tf_keras.model.fit() allows two ways to schedule the lr, (1) pass a 
 LearningRateSchedule as learning_rate to optimizer, or (2) pass a
 LearningRateScheduler as callback to fit().
 
@@ -16,6 +16,7 @@ import math
 from time import sleep
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import tf_keras
 
 
 def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
@@ -86,23 +87,23 @@ def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
         plt.plot(epochs.numpy(), learning_rates)
         plt.show()
 
-    lr_callback = tf.keras.callbacks.LearningRateScheduler(lrfn, verbose=cfg.DEBUG)
+    lr_callback = tf_keras.callbacks.LearningRateScheduler(lrfn, verbose=cfg.DEBUG)
     # verbose prints lr at epoch start
 
     return lr_callback
 
 
-class LRSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+class LRSchedule(tf_keras.optimizers.schedules.LearningRateSchedule):
     def __init__(self, sched, **kwargs):
         super().__init__()
-        is_callback = isinstance(sched, tf.keras.callbacks.LearningRateScheduler)
+        is_callback = isinstance(sched, tf_keras.callbacks.LearningRateScheduler)
         self.lrfn = sched.schedule if is_callback else sched
 
     def __call__(self, step):
         return self.lrfn(step)
 
 
-class CSVLogger(tf.keras.callbacks.CSVLogger):
+class CSVLogger(tf_keras.callbacks.CSVLogger):
     """
     Closes self.csv_file after each epoch.
     Otherwise, on google drive, csv_file is not created when training is interrupted.

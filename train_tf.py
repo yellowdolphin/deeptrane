@@ -58,9 +58,11 @@ import torch  # temporary: import prior to tf to work around 2.0 import issue
 print("[ √ ] torch:", torch.__version__)
 import tensorflow as tf
 print("[ √ ] tf:", tf.__version__)
-from tensorflow.keras.backend import clear_session  # no tensorflow.keras? see install_model_libs!
+import tf_keras
+print("[ √ ] tf_keras:", tf_keras.__version__)
+from tf_keras.backend import clear_session  # no tf_keras? see install_model_libs!
 if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
-    quietly_run(f'pip install keras=={tf.keras.__version__}')
+    quietly_run(f'pip install keras=={tf_keras.__version__}')
 from utils.tensorflow import get_lr_callback, CSVLogger
 from models_tf import get_pretrained_model
 from tf_data import cv_split, split_by_name, count_data_items, get_dataset, configure_data_pipeline
@@ -168,18 +170,19 @@ for use_fold in cfg.use_folds:
     chk_ep = '_best' if cfg.save_best else '_ep{epoch:03d}'
     chk_suffix = '.keras' if (cfg.checkpoint_format == 'keras') else '.h5'
     # TF < 2.16 bug: saves entire model if suffix is ".weights.h5" but TF 2.16 asserts suffix is ".weights.h5"
-    if int(tf.__version__.split('.')[1]) >= 16 and not cfg.save_full_model:
+    # tf_keras < 2.16.0 bug: saves entire model if suffix is ".weights.h5", will tf_keras 2.16.1 fix it?
+    if int(tf_keras.__version__.split('.')[1]) > 16 and not cfg.save_full_model:
         chk_suffix = '.weights.h5'
     chk_filepath = f'{cfg.out_dir}/{cfg.arch_name}{chk_ep}{chk_suffix}'
     
     save_chk = (
-        tf.keras.callbacks.ModelCheckpoint(
+        tf_keras.callbacks.ModelCheckpoint(
             chk_filepath, save_best_only=True,
             monitor=f'val_{"arc_" if (cfg.arcface and cfg.aux_loss) else ""}{cfg.save_best}', 
             mode='min' if 'loss' in cfg.save_best else 'max',
             save_weights_only=(not cfg.save_full_model),
             save_freq='epoch', verbose=1) if cfg.save_best else
-        tf.keras.callbacks.ModelCheckpoint(
+        tf_keras.callbacks.ModelCheckpoint(
             chk_filepath, save_best_only=False,
             save_weights_only=(not cfg.save_full_model),
             save_freq='epoch', verbose=1))
