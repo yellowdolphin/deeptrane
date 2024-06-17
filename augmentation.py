@@ -274,6 +274,52 @@ def get_tf_tfms(cfg, mode='train'):
             return tf.image.resize(image, size)
 
 
+        def random_cutout(image, size, max_coverage, color):
+            # OperatorNotAllowedInGraphError: Iterating over a symbolic `tf.Tensor` is not allowed:
+            #img_height, img_width, _ = tf.shape(image)
+            img_height, img_width = size
+            if isinstance(color, str):
+                if color == 'black':
+                    color = 0.0
+                elif color == 'white':
+                    color = 1.0
+                elif color == 'black_or_white':
+                    color = 0.0 if tf.random.uniform([]) > 0.5 else 1.0
+                elif color == 'random':
+                    color = tf.random.uniform([])
+                elif color == 'noise':
+                    color = -1  # random noise
+                else:
+                    raise ValueError(f'cutout_color {color} not supported, use float or one of "black|white|black_or_white|random|noise"')
+
+            # Randomly determine the size of the cutout area
+            max_cutout_height = tf.cast(img_height * max_coverage, tf.int32)
+            max_cutout_width = tf.cast(img_width * max_coverage, tf.int32)
+            cutout_height = tf.random.uniform([], minval=0, maxval=max_cutout_height, dtype=tf.int32)
+            cutout_width = tf.random.uniform([], minval=0, maxval=max_cutout_width, dtype=tf.int32)
+            
+            # Randomly determine the position of the cutout area
+            cutout_y = tf.random.uniform([], minval=0, maxval=img_height - cutout_height, dtype=tf.int32)
+            cutout_x = tf.random.uniform([], minval=0, maxval=img_width - cutout_width, dtype=tf.int32)
+            
+            # Create the cutout mask
+            if color < 0:
+                cutout_mask = tf.random.uniform([cutout_height, cutout_width, 3], dtype=image.dtype)
+            else:
+                cutout_mask = tf.ones([cutout_height, cutout_width, 3], dtype=image.dtype) * color
+            
+            # Pad the cutout mask to match the image dimensions
+            paddings = [[cutout_y, img_height - cutout_y - cutout_height],
+                        [cutout_x, img_width - cutout_x - cutout_width],
+                        [0, 0]]
+            cutout_mask = tf.pad(cutout_mask, paddings, constant_values=-1)
+            
+            # Apply the cutout mask to the image
+            image_with_cutout = tf.where(cutout_mask != -1, cutout_mask, image)
+            
+            return image_with_cutout
+
+
         rotate = tf.keras.layers.RandomRotation(
             factor=(flags.rotate or 0) * 3.1415 / 180,
             fill_mode='reflect',
@@ -313,6 +359,9 @@ def get_tf_tfms(cfg, mode='train'):
                 rnd_factor = tf.random.uniform(())
                 image += cfg.noise_level * rnd_factor * tf.random.normal((*size, 3))
                 image = tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0)
+
+            if flags.cutout_max and (flags.cutout_color is not None):
+                image = random_cutout(image, size, flags.cutout_max, flags.cutout_color)
 
             if isinstance(inputs, tuple):
                 inputs = (image, *inputs[1:])
