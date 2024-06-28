@@ -177,8 +177,14 @@ def split_by_name(cfg):
 def cv_split(cfg, use_fold):
     "Split shards into train/valid according to cfg.num_folds and `use_fold`."
 
-    assert cfg.num_folds, 'need num_folds in config for shard splitting'
+    assert cfg.num_folds or cfg.train_on_all, 'need num_folds in config for shard splitting'
     all_files, n_files = get_shards(cfg)
+
+    if cfg.train_on_all:
+        cfg.train_files = all_files
+        cfg.valid_files = []
+        return
+
     assert n_files > 1 + use_fold, f'{n_files} shard(s) not enough with use_fold={use_fold}'
     if n_files % cfg.num_folds:
         print(f"Warning: number of shards ({n_files}) not divisible by num_folds ({cfg.num_folds})")

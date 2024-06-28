@@ -133,7 +133,7 @@ for use_fold in cfg.use_folds:
         split_by_name(cfg)
     else:
         cv_split(cfg, use_fold)
-    assert cfg.train_files and cfg.valid_files
+    assert (cfg.train_files is not None) and (cfg.valid_files is not None)
 
     if hasattr(project, 'count_data_items'):
         cfg.num_train_images = project.count_data_items(cfg.train_files)
@@ -204,7 +204,7 @@ for use_fold in cfg.use_folds:
     cfg.rst_epoch = cfg.rst_epoch or 0
 
     history = model.fit(train_dataset,
-                        validation_data=valid_dataset,
+                        validation_data=valid_dataset if cfg.validation_steps else None,
                         steps_per_epoch=batches_per_epoch,
                         validation_steps=cfg.validation_steps,
                         epochs=cfg.epochs,
