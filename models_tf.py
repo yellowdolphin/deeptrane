@@ -756,6 +756,7 @@ def get_pretrained_model(cfg, strategy, inference=False):
             except ValueError as e:
                 print(e)
                 print(f"{rst_file} mismatches model with body: {model.layers[1].name}")
+                print(f"cfg.freeze_for_loading: {cfg.free_for_loading}")
                 print("Trying to load matching layers by name...")
                 model.load_weights(rst_file, by_name=True, skip_mismatch=True)
             print(f"Weights loaded from {rst_file}")

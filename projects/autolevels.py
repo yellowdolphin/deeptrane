@@ -1777,6 +1777,8 @@ def count_examples_in_tfrec(fn):
 
 
 def count_data_items(filenames, tfrec_filename_pattern=None):
+    if len(filenames) == 0:
+        return 0
     if '-of-' in filenames[0]:
         # Imagenet: Got number of items from idx files
         #return sum(391 if 'validation' in fn else 1252 for fn in filenames)
