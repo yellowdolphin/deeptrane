@@ -107,9 +107,11 @@ class CSVLogger(tf_keras.callbacks.CSVLogger):
     """
     Closes self.csv_file after each epoch.
     Otherwise, on google drive, csv_file is not created when training is interrupted.
+
+    Increments epoch in csv file to match keras.model.fit output and checkpoint names.
     """
     def on_epoch_end(self, epoch, logs=None):
-        super().on_epoch_end(epoch, logs=logs)
+        super().on_epoch_end(epoch + 1, logs=logs)
         #self.csv_file.close()
         self.on_train_end(logs=logs)
         self.append = True
