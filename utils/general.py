@@ -23,7 +23,7 @@ def get_package_version(name):
     
     Uses pip to get package version without import so it can be updated if required.
     Requires linux/unix."""
-    res = run(f'pip freeze | grep {name}==', shell=True, capture_output=True)
+    res = run(f'pip freeze | grep "^{name}=="', shell=True, capture_output=True)
     if res.stdout:
         substrings = res.stdout.decode().split('==')[-1].split('.')
     else:
