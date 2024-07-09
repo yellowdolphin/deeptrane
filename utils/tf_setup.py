@@ -65,9 +65,15 @@ def install_model_libs(cfg):
             assert os.environ.get('NV_CUDNN_VERSION') != '8.0.5.39', 'cuDNN broken: use image2021-02-23 for tfimm GPU training!'
         else:
             quietly_run('pip install -q -r tfimm_requirements.txt')
-    if 'deit' in cfg.arch_name:
-        vers, subvers = get_package_version('tensorflow')[:2]
-        tf_version = '.'.join([vers, subvers])
-        if int(subvers) < 16:
-            print(f"requiring keras version compatible with TF {tf_version} for deit models...")
-            quietly_run(f'pip install keras<={tf_version}', debug=True)
+
+        # Most tfimm models needs keras 2 (keras 3 forbids layer names with '/')
+        keras_version = get_package_version('keras')
+        print("keras version:", keras_version)
+        keras_version = keras_version[0]
+        tf_version, tf_subversion = get_package_version('tensorflow')[:2]
+        print(f"keras: {keras_version}, tf: {tf_version}.{tf_subversion}")
+        if int(keras_version) > 2:
+            if int(tf_subversion) > 15:
+                raise NotImplementedError(f"tfimm requires keras 2 and TF <= 2.15, use tf_keras branch for TF {tf_version}.{tf_subversion}")
+            print("installing keras 2 required by tfimm...")
+            quietly_run(f'pip install keras<3', debug=True)

@@ -65,7 +65,6 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
     # Tensorflow metrics
     for csv in tf_metrics_files:
         df = pd.read_csv(csv, index_col='epoch')
-        df.index += 1
 
         losses = [c for c in df.columns if 'loss' in c]
         # CSVLogger does not write columns in order of metrics (maybe inverse order?)
