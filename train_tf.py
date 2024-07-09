@@ -167,9 +167,9 @@ for use_fold in cfg.use_folds:
     cfg.checkpoint_format = cfg.checkpoint_format or 'hdf5'
     chk_ep = '_best' if cfg.save_best else '_ep{epoch:03d}'
     chk_suffix = '.keras' if (cfg.checkpoint_format == 'keras') else '.h5'
-    # TF < 2.16 bug: saves entire model if suffix is ".weights.h5" but TF 2.16 asserts suffix is ".weights.h5"
-    if int(tf.__version__.split('.')[1]) >= 16 and not cfg.save_full_model:
-        chk_suffix = '.weights.h5'
+    # keras 2 (TF < 2.16) saves entire model if suffix is ".weights.h5" but keras 3 (TF 2.16) asserts suffix ".weights.h5"
+    if hasattr(tf.keras, '__version__') and int(tf.keras.__version__[0]) >= 3 and not cfg.save_full_model:
+        chk_suffix = '.weights.h5'  # required by keras 3 if save_weights_only is True
     chk_filepath = f'{cfg.out_dir}/{cfg.arch_name}{chk_ep}{chk_suffix}'
     
     save_chk = (
