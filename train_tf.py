@@ -207,10 +207,10 @@ for use_fold in cfg.use_folds:
                         validation_data=valid_dataset if cfg.validation_steps else None,
                         steps_per_epoch=batches_per_epoch,
                         validation_steps=cfg.validation_steps,
-                        epochs=cfg.epochs + 1,
+                        epochs=cfg.epochs,
                         callbacks=[lr_callback, save_chk, csv_logger],
                         verbose=cfg.batch_verbose,
-                        initial_epoch=cfg.rst_epoch + 1,
+                        initial_epoch=cfg.rst_epoch,
                         )
     wall = perf_counter() - t0
     min_per_ep = wall / (cfg.epochs - cfg.rst_epoch) / 60
