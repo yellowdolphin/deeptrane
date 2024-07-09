@@ -322,7 +322,7 @@ def get_tf_tfms(cfg, mode='train'):
 
 
         rotate = tf_keras.layers.RandomRotation(
-            factor=(flags.rotate or 0) * 3.1415 / 180,
+            factor=(flags.rotate or 0) / 360,
             fill_mode='reflect',
             #fill_mode='constant', fill_value=1.0,
             interpolation='bilinear'
