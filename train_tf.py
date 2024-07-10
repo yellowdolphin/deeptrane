@@ -221,3 +221,6 @@ for use_fold in cfg.use_folds:
 
     if hasattr(project, 'on_train_end'):
         project.on_train_end(cfg, model, history)
+
+    # avoid Exception in function AtomicFunction.__del__ (TF bug since 2.13.0)
+    del train_dataset, valid_dataset
