@@ -73,13 +73,13 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
             # this is actually a pytorch metrics csv file
             metrics = [c for c in df.columns if c not in ['lr', 'Wall'] + losses]
 
-        best_metric = metrics[-1]
-        df[losses].plot()
-        df[metrics].plot()
+        epoch_range = df.index.min(), df.index.max()
+        df[losses].plot(xlim=epoch_range)
+        df[metrics].plot(xlim=epoch_range)
         plt.show()
-        df.lr.plot(title='lr')
 
         # Print metrics for spreadsheet copy&paste (tab-separated)
+        best_metric = metrics[-1]
         best_idx = df[best_metric].argmax()
         best_ep = df.index[best_idx]
         fields = losses + metrics
@@ -88,3 +88,5 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
         values = [str(best_ep)] + [f'{m:.5f}' for m in best_metrics]
         print('\t'.join(keys))
         print('\t'.join(values))
+
+        df.lr.plot(title='lr', xlim=epoch_range)
