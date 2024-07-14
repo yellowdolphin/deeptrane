@@ -5,7 +5,7 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import Dataset, DataLoader, RandomSampler, WeightedRandomSampler
 from torchvision import transforms, utils
 import PIL.Image
 # Alternatives to PIL (no speed gain):
@@ -254,6 +254,16 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     is_shared = (metadata.fold == cfg.shared_fold) if cfg.shared_fold is not None else False
     meta_train = metadata.loc[~ is_valid]
     meta_valid = metadata.loc[is_valid | is_shared]
+    frac_train, frac_valid = (cfg.frac, cfg.frac) if isinstance(cfg.frac, (int, float)) else cfg.frac
+    if frac_valid != 1:
+        # keep order, use first examples from meta_valid
+        n_examples = len(meta_valid)
+        num_samples = int(n_examples * frac_valid)
+        meta_valid = meta_valid.iloc[:num_samples]
+        if frac_valid > 1:
+            xm.master_print(f"Ignoring cfg.frac > 1 for valid")
+        else:
+            xm.master_print(f"Using first {num_samples} out of {n_examples} valid examples")
 
     # Create datasets
     train_tfms = get_tfms(cfg, mode='train')
@@ -264,7 +274,7 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
 
     ds_train = dataset_class(meta_train, cfg, labeled=True,
                              transform=train_tfms if augment else test_tfms, tensor_transform=tensor_tfms)
-    
+
     ds_valid = dataset_class(meta_valid, cfg, labeled=True,
                              transform=test_tfms, tensor_transform=tensor_tfms)
 
@@ -281,31 +291,38 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
         from catalyst.data import DistributedSamplerWrapper
         from torch.utils.data.distributed import DistributedSampler
 
-    if cfg.do_class_sampling:
-        # Data samplers, class-weighted metrics
-        train_labels = meta_train[cfg.class_column]
+    # train_sampler
+    if (frac_train != 1) or cfg.do_class_sampling:
+        n_examples = len(ds_train)
+        num_samples = int(n_examples * frac_train)
+        xm.master_print(f"Sampling {num_samples} out of {n_examples} train examples")
 
-        # Use torch's WeightedRandomSampler with custom class weights
-        class_counts = train_labels.value_counts().sort_index().values
-        n_examples = len(train_labels)
-        assert class_counts.sum() == n_examples, f"{class_counts.sum()} != {n_examples}"
-        class_weights_full = n_examples / (cfg.n_classes * class_counts)
-        class_weights_sqrt = np.sqrt(class_weights_full)
-        sample_weights = class_weights_sqrt[train_labels.values]
-        assert len(sample_weights) == n_examples
-        #xm.master_print("Class counts:           ", class_counts)
-        #xm.master_print("Class weights:          ", class_weights_full)
-        #xm.master_print("Weighted class counts:  ", class_weights_full * class_counts)
-        xm.master_print(f"Sampling {int(n_examples * cfg.frac)} out of {n_examples} examples")
+        if cfg.do_class_sampling:
+            # Use torch's WeightedRandomSampler with custom class weights
+            train_labels = meta_train[cfg.class_column]
+            class_counts = train_labels.value_counts().sort_index().values
+            assert class_counts.sum() == n_examples, f"{class_counts.sum()} != {n_examples}"
+            class_weights_full = n_examples / (cfg.n_classes * class_counts)
+            class_weights_sqrt = np.sqrt(class_weights_full)
+            sample_weights = class_weights_sqrt[train_labels.values]
+            assert len(sample_weights) == n_examples
+            if cfg.DEBUG:
+                xm.master_print("Class counts:           ", class_counts)
+                xm.master_print("Class weights:          ", class_weights_full)
+                xm.master_print("Weighted class counts:  ", class_weights_full * class_counts)
+            train_sampler = WeightedRandomSampler(
+                sample_weights, num_samples, replacement=True)
+        else:
+            # Use torch's RandomSampler
+            train_sampler = RandomSampler(
+                ds_train, replacement=True if (frac_train > 1) else False, num_samples=num_samples)
 
-        train_sampler = WeightedRandomSampler(
-            sample_weights, int(n_examples * cfg.frac), replacement=True)
-
-        train_sampler = DistributedSamplerWrapper(
-            train_sampler,
-            num_replicas = cfg.n_replicas,
-            rank         = xm.get_ordinal(),
-            shuffle      = False) if (cfg.n_replicas > 1) else train_sampler
+        if cfg.n_replicas > 1:
+            train_sampler = DistributedSamplerWrapper(
+                train_sampler,
+                num_replicas = cfg.n_replicas,
+                rank         = xm.get_ordinal(),
+                shuffle      = False)
 
     elif cfg.n_replicas > 1:
         train_sampler = DistributedSampler(
@@ -317,11 +334,12 @@ def get_dataloaders(cfg, use_fold, metadata, xm, augment=True):
     else:
         train_sampler = None
 
-    valid_sampler = DistributedSampler(ds_valid,
-                                       num_replicas = cfg.n_replicas,
-                                       rank         = xm.get_ordinal(),
-                                       shuffle      = False,
-                                       ) if cfg.n_replicas > 1 else None
+    # valid_sampler
+    valid_sampler = None if (cfg.n_replicas == 1) else DistributedSampler(
+        ds_valid,
+        num_replicas = cfg.n_replicas,
+        rank         = xm.get_ordinal(),
+        shuffle      = False)
 
     # Create dataloaders
     train_loader = DataLoader(ds_train,

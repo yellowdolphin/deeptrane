@@ -949,9 +949,13 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
                 keys = list(metrics_dict.keys())
                 with open(csv_file, 'w') as fp:
                     fp.write(','.join(keys) + '\n')
-            line_str = ','.join(str(metrics_dict[key]) for key in keys)
-            with open(csv_file, 'a') as fp:
-                fp.write(line_str + '\n')
+            try:
+                line_str = ','.join(str(metrics_dict[key]) for key in keys)
+                with open(csv_file, 'a') as fp:
+                    fp.write(line_str + '\n')
+            except KeyError as e:
+                xm.master_print(key, 'missing in metrics_dict, which has keys', list(metrics_dict.keys()))
+                xm.master_print(f"Probably, {csv_file} is not a PyTorch metrics.csv file!")
 
     if cfg.use_ddp:
         torch.distributed.destroy_process_group()
