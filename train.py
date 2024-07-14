@@ -46,7 +46,6 @@ print("[ √ ] Architecture:", cfg.arch_name)
 cfg.save_yaml()
 
 # Config consistency checks
-if cfg.frac != 1: assert cfg.do_class_sampling or (cfg.filetype == 'wds'), 'frac w/o class_sampling not implemented'
 if cfg.rst_name is not None:
     rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
     assert rst_file.exists(), f'{rst_file} not found'  # fail early

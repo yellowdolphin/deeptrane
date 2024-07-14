@@ -18,7 +18,6 @@ def get_one_cycle_scheduler(optimizer, max_lr, cfg, xm, rst_epoch=0, dataloader=
 
     # Get total_steps and last_steps
     frac_train = cfg.frac if isinstance(cfg.frac, (int, float)) else cfg.frac[0]
-    frac_train = frac_train if (cfg.do_class_sampling or cfg.filetype == 'tfrec') else 1
     num_cores = cfg.n_replicas if cfg.xla else 1
     n_examples = cfg.NUM_TRAINING_IMAGES
     steps_per_epoch = int(n_examples * frac_train) // (cfg.bs * num_cores * cfg.n_acc)
@@ -46,6 +45,9 @@ def get_one_cycle_scheduler(optimizer, max_lr, cfg, xm, rst_epoch=0, dataloader=
     if rst_epoch != 0:
         xm.master_print(f"Restart epoch: {rst_epoch}")
         xm.master_print(f"Last step: {last_step}")
+
+    if total_steps == 0:
+        return None
 
     scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr, total_steps=total_steps,
                                         last_epoch=last_step,
