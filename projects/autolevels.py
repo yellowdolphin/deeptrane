@@ -1772,6 +1772,16 @@ def count_examples_in_tfrec(fn):
 
 
 def count_data_items(filenames, tfrec_filename_pattern=None):
+    """
+    Count the total number of items in TFRecord files.
+
+    Args:
+        filenames (list): List of TFRecord filenames.
+        tfrec_filename_pattern (str, optional): Regex pattern to extract item count from filenames.
+
+    Returns:
+        int: Total number of items across all files.
+    """
     if len(filenames) == 0:
         return 0
     if '-of-' in filenames[0]:
@@ -1818,7 +1828,7 @@ def count_data_items(filenames, tfrec_filename_pattern=None):
         pattern = re.compile(tfrec_filename_pattern)
         n = [int(pattern.search(fn).group(1)) for fn in filenames if pattern.search(fn)]
         if len(n) < len(filenames):
-            print(f"WARNING: only {len(n)} / {len(filenames)} urls follow the convention:")
+            print(f"WARNING: only {len(n)} / {len(filenames)} urls follow the tfrec_filename_pattern:")
             for fn in filenames:
                 print(fn)
         return sum(n)

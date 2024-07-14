@@ -135,12 +135,17 @@ for use_fold in cfg.use_folds:
         cv_split(cfg, use_fold)
     assert (cfg.train_files is not None) and (cfg.valid_files is not None)
 
+    # configure number of examples for training and validation
     if hasattr(project, 'count_data_items'):
-        cfg.num_train_images = project.count_data_items(cfg.train_files)
-        cfg.num_valid_images = project.count_data_items(cfg.valid_files)
+        cfg.num_train_images = project.count_data_items(cfg.train_files, cfg.tfrec_filename_pattern)
+        cfg.num_valid_images = project.count_data_items(cfg.valid_files, cfg.tfrec_filename_pattern)
     else:
-        cfg.num_train_images = count_data_items(cfg.train_files)
-        cfg.num_valid_images = count_data_items(cfg.valid_files)
+        cfg.num_train_images = count_data_items(cfg.train_files, cfg.tfrec_filename_pattern)
+        cfg.num_valid_images = count_data_items(cfg.valid_files, cfg.tfrec_filename_pattern)
+    if cfg.frac is not None:
+        frac_train, frac_valid = (cfg.frac, cfg.frac) if isinstance(cfg.frac, (int, float)) else cfg.frac
+        cfg.num_train_images = int(frac_train * cfg.num_train_images)
+        cfg.num_valid_images = int(frac_valid * cfg.num_valid_images)
     print(f"         urls    examples")
     print(f"train: {len(cfg.train_files):>6}  {cfg.num_train_images:>10}")
     print(f"valid: {len(cfg.valid_files):>6}  {cfg.num_valid_images:>10}")

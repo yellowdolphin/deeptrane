@@ -17,14 +17,15 @@ def maybe_step(scheduler, xm):
 def get_one_cycle_scheduler(optimizer, max_lr, cfg, xm, rst_epoch=0, dataloader=None):
 
     # Get total_steps and last_steps
-    frac = cfg.frac if (cfg.do_class_sampling or cfg.filetype == 'tfrec') else 1
+    frac_train = cfg.frac if isinstance(cfg.frac, (int, float)) else cfg.frac[0]
+    frac_train = frac_train if (cfg.do_class_sampling or cfg.filetype == 'tfrec') else 1
     num_cores = cfg.n_replicas if cfg.xla else 1
     n_examples = cfg.NUM_TRAINING_IMAGES
-    steps_per_epoch = int(n_examples * frac) // (cfg.bs * num_cores * cfg.n_acc)
+    steps_per_epoch = int(n_examples * frac_train) // (cfg.bs * num_cores * cfg.n_acc)
     # steps_per_epoch can be short by 1 even if drop_last==True: happywhale_classifier_deeptrane2 v62
     if cfg.DEBUG:
         xm.master_print("DEBUG: in schedulers.get_one_cycle_scheduler")
-        xm.master_print("n_examples:", n_examples, "frac:", frac)
+        xm.master_print("n_examples:", n_examples, "frac:", frac_train)
         xm.master_print("cfg.bs:", cfg.bs, "num_cores:", num_cores, "n_acc:", cfg.n_acc)
         xm.master_print("denominator:", (cfg.bs * num_cores * cfg.n_acc))
     total_steps = (rst_epoch + cfg.epochs) * steps_per_epoch
