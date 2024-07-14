@@ -1,15 +1,15 @@
 """
 The Issue with learning-rate schedulers in TF
 
-tf_keras.model.fit() allows two ways to schedule the lr, (1) pass a 
-LearningRateSchedule as learning_rate to optimizer, or (2) pass a
-LearningRateScheduler as callback to fit().
+tf.keras.model.fit() allows two ways to schedule the lr:
+    (1) pass a LearningRateSchedule as learning_rate to optimizer
+    (2) pass a LearningRateScheduler as callback to fit()
 
-(1) May update the lr at each optimizer step (good) but CSVLogger does not
-log the lr (bad). Could not confirm correct lr on TPUs.
+(1) May update the lr at each optimizer step (good) but CSVLogger does not log the lr (bad). 
+Could not confirm correct lr on TPUs.
 
 (2) Updates the lr once per epoch (bad), CSVLogger logs the lr (good), tracing may occur (bad).
-    => Do not pass `steps_per_epoch`!
+Do not pass `steps_per_epoch` when choosing this option!
 """
 
 import math
@@ -19,11 +19,12 @@ import tensorflow as tf
 import tf_keras
 
 
-def get_lr_callback(cfg, decay='cos', steps_per_epoch=1, plot=False):
+def get_lr_callback(cfg, steps_per_epoch=1, plot=False):
     assert cfg.lr is not None, 'config lacks lr'
     assert cfg.lr_min is not None, 'config lacks lr_min'
     assert cfg.pct_start is not None, 'config lacks pct_start'
     assert cfg.epochs is not None, 'config lacks epochs'
+    decay = cfg.lr_decay or 'cos'
     steps_per_epoch = tf.constant(steps_per_epoch, dtype=tf.float32)
     lr_max     = tf.constant(cfg.lr, dtype=tf.float32)
     lr_start   = tf.constant(0.2 * lr_max, dtype=tf.float32)

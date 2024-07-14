@@ -27,16 +27,25 @@ default_targets = ['target']
 
 
 def count_data_items(filenames, tfrec_filename_pattern=None):
-    "Infer number of items from tfrecord file names."
+    """
+    Count the total number of items in TFRecord files.
+
+    Args:
+        filenames (list): List of TFRecord filenames.
+        tfrec_filename_pattern (str, optional): Regex pattern to extract item count from filenames.
+
+    Returns:
+        int: Total number of items across all files.
+    """
     tfrec_filename_pattern = tfrec_filename_pattern or r"-([0-9]*)\."
     pattern = re.compile(tfrec_filename_pattern)
     n = [int(pattern.search(fn).group(1)) for fn in filenames if pattern.search(fn)]
     if len(n) < len(filenames):
-        print(f"WARNING: only {len(n)} / {len(filenames)} urls follow the convention:")
+        print(f"WARNING: only {len(n)} / {len(filenames)} urls follow the tfrec_filename_pattern:")
         for fn in filenames:
             print(fn)
 
-    return np.sum(n)
+    return int(np.sum(n))
 
 
 def enable_private_datasets(cfg):
