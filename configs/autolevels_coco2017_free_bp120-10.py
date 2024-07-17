@@ -1,21 +1,20 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'
-filetype = 'JPEG'
-meta_csv = '/content/meta.csv'  # for colab only
+filetype = 'jpg'
+meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
 
 # Training
-num_folds = 15
+num_folds = 5
 use_folds = [0]
 train_on_all = False
-frac = [0.3, 1.0]
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
 interpolation = 'NEAREST'
 predict_inverse = True
-blackpoint_range = (-85, 10)   # x-offset
-blackpoint2_range = (-85, 10)  # y-offset
+blackpoint_range = (-120, 10)   # x-offset
+blackpoint2_range = (-120, 10)  # y-offset
 clip_target_blackpoint = True
 log_gamma_range = [-1.8, 1.8]
 curve3_a_range = (0.2, 1.06) #(0.2, 1.06)(0.3, 0.693) #(0.34, 1.06)  # log_alpha
