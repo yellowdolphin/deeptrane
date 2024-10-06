@@ -36,7 +36,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     amp_context = (
         nullcontext() if cfg.dtype == 'float32' else
         torch.amp.autocast('cuda' if cfg.gpu else 'cpu', dtype=getattr(torch, cfg.dtype)))
-    scaler = torch.cuda.amp.GradScaler(enabled=cfg.gpu and cfg.dtype.endswith('float16'))
+    scaler = torch.amp.GradScaler(enabled=cfg.gpu and cfg.dtype.endswith('float16'))
 
     # prepare batch_tfms (on device)
     if cfg.use_batch_tfms:
