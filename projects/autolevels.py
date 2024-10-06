@@ -307,13 +307,19 @@ def read_csv(cfg):
     return df.sample(frac=0.01) if cfg.DEBUG else df
 
 
-def adjust_sharpness_alb(img, sharpness):
-    """Equivalent to torchvision.transforms.functional.adjust_sharpness
+def adjust_sharpness_alb(image, sharpness):
+    """Albumentation equivalent to torchvision.transforms.functional.adjust_sharpness.
     
-    kernel differs from torchvision: sharpness=1.7 corresponds to torchvision sharpness=2.0
+    Parameters:
+        image (np.array): Input image.
+        sharpness (float): As the blur kernel differs in albumentation/torchvision, 
+            a sharpness of 1.7 corresponds to a sharpness of 2.0 in torchvision.
+
+    Returns:
+        np.array: Output image (uint8).
     """
-    img = img.astype(np.float32) * sharpness + blur(img, ksize=3).astype(np.float32) * (1 - sharpness)
-    return img.clip(0, 255).astype(np.uint8)
+    image = image.astype(np.float32) * sharpness + blur(image, ksize=3).astype(np.float32) * (1 - sharpness)
+    return image.clip(0, 255).astype(np.uint8)
 
 
 def adjust_jpeg_quality_alb(img, quality):
@@ -321,11 +327,10 @@ def adjust_jpeg_quality_alb(img, quality):
                             always_apply=True)(image=img)['image']
 
 
-def adjust_jpeg_quality_tvf(img, quality):
-    "Returns HWC numpy image or (return_jpeg=True) CHW tensor"
-    img = torch.tensor(img).permute(2, 0, 1)
-    jpeg = encode_jpeg(img, quality)
-    return decode_jpeg(jpeg).permute(1, 2, 0).numpy()
+def adjust_jpeg_quality_tvf(image, quality):
+    image = torch.tensor(image).permute(2, 0, 1)  # convert to CHW tensor
+    image = decode_jpeg(encode_jpeg(image, quality))
+    return image.permute(1, 2, 0).numpy()  # return HWC numpy array
 
 
 def map_index_torch_old(image, tfm, add_uniform_noise=False, resize=None):
@@ -1269,10 +1274,11 @@ def interp1d_tf(x, y, inp):
 def map_index(image, curves, height=None, width=None, channels=3, 
               add_uniform_noise=False, add_jpeg_artifacts=True, sharpness_augment=True,
               resize_before_jpeg=False):
-    """Transform `image` by mapping its pixel values via `curves`
+    """
+    Transform `image` by mapping its pixel values via `curves`.
     
     Parameters:
-        image (tf.Tensor) Input image with uint8 pixel values, shape (H, W, C)
+        image (tf.Tensor): Input image with uint8 pixel values, shape (H, W, C)
         curves (tf.Tensor): Transformation curves for each channel of the image
         add_uniform_noise (bool, optional): Erase uint8 quantization steps with uniform noise,
         height (int): Height of the input image. Required if add_uniform_noise.
@@ -1514,15 +1520,26 @@ def inverse_curve4(x, a, b):
 
 
 def parse_tfrecord(cfg, example):
-    """This TFRecord parser extracts the features defined in cfg.tfrec_format.
+    """Extracts the features defined in `cfg.tfrec_format` from `example`.
 
-    TFRecord feature names are mapped to default names by cfg.data_format.
-    Default names are understood by the data pipeline, model, and loss function. 
-    Returns: (inputs, targets, [sample_weights])
+    TFRecord feature names are mapped to default names, which are recognized by
+    the data pipeline, model, and loss function.
 
-    Default names (keys): 'image', 'mask', 'bbox', 'target', 'aux_target', 'image_id'
+    Currently used default names include:
+    'image', 'mask', 'bbox', 'target', 'aux_target', 'image_id', 'height', 'width'.
 
-    Only keys in cfg.tfrec_format will be parsed.
+    Args:
+        cfg (Config): Parameters required to configure input and target generation:
+            cfg.tfrec_format (dict): Defines tf.io types for each TFRecord feature to be extracted.
+            cfg.data_format (dict): Maps default names to TFRecord feature names.
+            cfg.inputs (list): Features (default names) used as model input.
+            cfg.targets (list): Features required for the target in the loss function.
+        example (tf.Tensor): A single serialized Example from a TFRecord.
+
+    Returns:
+        tuple: Tuple of inputs and targets containing:
+            - tuple of input image(s) (tf.Tensor)
+            - tuple of target curves or curve parameters (tf.Tensor)
     """
 
     example = tf.io.parse_single_example(example, cfg.tfrec_format)
