@@ -93,10 +93,6 @@ pi = tf.constant(π)
 pi_half = tf.constant(π_half)
 
 def init(cfg):
-    #cfg.competition_path = Path('/kaggle/input/imagenet-object-localization-challenge')
-    #if cfg.cloud == 'drive':
-    #    cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
-
     if cfg.filetype:
         cfg.image_root = (
             cfg.image_root if (cfg.cloud == 'drive') else
@@ -185,15 +181,6 @@ def init(cfg):
         Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/ImageSets/CLS-LOC/train_cls.txt') if 'imagenet' in cfg.tags else
         Path('/kaggle/input/autolevels-modelbox/coco2017.csv') if 'coco2017' in cfg.tags else
         Path('define cfg.meta_csv in project module!'))
-
-    #elif cfg.filetype == 'tfrec':
-    #    cfg.image_root = cfg.competition_path / 'train_tfrecords'
-
-    #cfg.meta_csv = cfg.competition_path / 'train.csv'  # label
-    #cfg.gcs_filter = 'train_tfrecords/*.tfrec'
-    #if 'tf' in cfg.tags:
-    #    cfg.n_classes = 5  # pytorch: set by metadata
-    #cfg.gcs_paths = gcs_paths
 
     if cfg.curve == 'gamma':
         cfg.dataset_class = AugInvGammaDataset

@@ -49,14 +49,12 @@ As minimal example, let's train an image classifier for the [Cassava Leaf Diseas
 from pathlib import Path
 
 def init(cfg):
-    cfg.competition_path = Path('/kaggle/input/cassava-leaf-disease-classification')
-
     if cfg.filetype == 'jpg':
         assert cfg.size[0] == cfg.size[1]
         size = cfg.size[0]
         cfg.image_root = Path(f'/kaggle/input/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
 
-    cfg.meta_csv = cfg.competition_path / 'train.csv'
+    cfg.meta_csv = Path('/kaggle/input/cassava-leaf-disease-classification/train.csv')
 ```
 
 Scaled input images are read as JPEGs from `cfg.image_root`. This path to a kaggle dataset will depend on the image size specified in the config file. 

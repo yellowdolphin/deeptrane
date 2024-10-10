@@ -35,7 +35,6 @@ def init(cfg):
         # Train on bboxes from several datasets.
         # Metadata for the current competition is specified here, external data in `add_bboxes`.
         # BG images from external datasets are added in `filter_bg_images`.
-        cfg.competition_path = Path('/kaggle/input/happy-whale-and-dolphin')
         cfg.image_root = Path('/kaggle/input')
         scaled_size = 128 if max(cfg.size) <= 128 else 256 if max(cfg.size) <= 256 else 384
         cfg.subdirs = [(f'jpeg-happywhale-{scaled_size}x{scaled_size}/'
@@ -44,12 +43,9 @@ def init(cfg):
         if max(cfg.size) > 384:
             cfg.subdirs = ['happy-whale-and-dolphin/train_images']
         cfg.filetype = cfg.filetype or 'jpg'
-        cfg.meta_csv = cfg.competition_path / 'train.csv'
+        cfg.meta_csv = Path('/kaggle/input/happy-whale-and-dolphin/train.csv')
         #cfg.dims_csv = None
     else:
-        cfg.competition_path = Path('/kaggle/input/happy-whale-and-dolphin')
-        if 'colab' in cfg.tags:
-            cfg.competition_path = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection')
         if cfg.image_root:
             cfg.filetype = cfg.filetype or 'png'  # use png for all cropped+scaled images
         elif cfg.filetype in ['wds', 'tfds']:
@@ -62,7 +58,9 @@ def init(cfg):
             if max(cfg.size) > 384:
                 cfg.image_root = Path('/kaggle/input/happy-whale-and-dolphin/train_images')
             cfg.filetype = 'jpg'
-        cfg.meta_csv = cfg.competition_path / 'train.csv'
+        cfg.meta_csv = Path('/kaggle/input/happy-whale-and-dolphin/train.csv')
+        if 'colab' in cfg.tags:
+            cfg.meta_csv = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection/train.csv')
         cfg.dims_csv = Path('/kaggle/input/happywhale-2022-image-dims/dims.csv')
         if cfg.adaptive_margin: cfg.adaptive_margin = get_adaptive_margin(cfg)
         #cfg.gcs_paths = [gcs_paths[ds] for ds in cfg.datasets]  # specify in cfg file

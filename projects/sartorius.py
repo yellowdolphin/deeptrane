@@ -2,11 +2,11 @@ from pathlib import Path
 
 
 def init(cfg):
-    cfg.competition_path = Path('/kaggle/input/sartorius-cell-instance-segmentation')
+    cfg.image_root = Path('/kaggle/input/sartorius-cell-instance-segmentation/train')
+    cfg.meta_csv = Path('/kaggle/input/sartorius-cell-instance-segmentation/train.csv')
     if 'colab' in cfg.tags:
-        cfg.competition_path = Path('/content/gdrive/MyDrive/sartorius/sartorius-cell-instance-segmentation')
-    cfg.image_root = cfg.competition_path / 'train'
-    cfg.meta_csv = cfg.competition_path / 'train.csv'
+        cfg.image_root = Path('/content/gdrive/MyDrive/sartorius/sartorius-cell-instance-segmentation/train')
+        cfg.meta_csv = Path('/content/gdrive/MyDrive/sartorius/sartorius-cell-instance-segmentation/train.csv')
 
 
 def add_image_id(df, cfg):

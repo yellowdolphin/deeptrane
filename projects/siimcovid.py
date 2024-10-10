@@ -14,20 +14,18 @@ def init(cfg):
     "Update cfg with project- or context-specific logic."
     if 'pretrain' in cfg.tags:
         # plain classifier, no aux loss
-        cfg.competition_path = Path('/kaggle/input/data')
         cfg.image_root = Path('/kaggle/input/data')
         cfg.subdirs = [f'images_{i:03d}/images' for i in range(1, 13)]
-        cfg.meta_csv = cfg.competition_path / 'Data_Entry_2017.csv'
+        cfg.meta_csv = Path('/kaggle/input/data/Data_Entry_2017.csv')
         cfg.dims_csv = None
     else:
         # support 2-class image, 4-class study classifier, aux_loss, yolov5
-        cfg.competition_path = Path('/kaggle/input/siim-covid19-detection')
-        if 'colab' in cfg.tags:
-            cfg.competition_path = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection')
         filetype = 'jpg' if cfg.size[0] > 512 else 'png'
         scaled_size = 224 if cfg.size[0] <= 224 else 512 if cfg.size[0] <= 512 else 1024
         cfg.image_root = Path(f'/kaggle/input/siim-covid19-resized-to-{scaled_size}px-{filetype}/train')
-        cfg.meta_csv = cfg.competition_path / 'train_image_level.csv'
+        cfg.meta_csv = Path('/kaggle/input/siim-covid19-detection/train_image_level.csv')
+        if 'colab' in cfg.tags:
+            cfg.meta_csv = Path('/content/gdrive/MyDrive/siimcovid/siim-covid19-detection/train_image_level.csv')
         cfg.dims_csv = cfg.image_root.parent / 'meta.csv'
         cfg.dims_height = 'dim0'
         cfg.dims_width = 'dim1'
@@ -73,8 +71,8 @@ def add_multilabel_cols(df, cfg):
     if 'image' in cfg.tags: return df
     if 'pretrain' in cfg.tags: return add_chest14_labels(df, cfg)
 
-    meta_csv = 'train_study_level.csv'
-    study_metadata = pd.read_csv(cfg.competition_path / meta_csv)
+    meta_csv = cfg.meta_csv.parent / 'train_study_level.csv'
+    study_metadata = pd.read_csv(meta_csv)
     study_metadata['StudyInstanceUID'] = study_metadata.id.str.split('_').str[0]
 
     cfg.classes = ['Negative for Pneumonia', 'Typical Appearance',

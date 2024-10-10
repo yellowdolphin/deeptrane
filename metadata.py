@@ -15,9 +15,6 @@ def get_metadata(cfg, project):
     "Return a DataFrame with labels, image paths, dims, splits required by the datasets."
     detection = any(s in cfg.tags for s in 'yolov5 mmdet'.split())
 
-    if cfg.competition_path:
-        print("cfg.competition_path is deprecated. Use cfg.meta_csv and cfg.image_root instead.")
-
     if 'colab' in cfg.tags:
         cfg.image_root = cfg.image_root.replace('/kaggle/input', '/content')
     cfg.image_root = Path(cfg.image_root)

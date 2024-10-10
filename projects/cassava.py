@@ -2,10 +2,6 @@ from pathlib import Path
 
 
 def init(cfg):
-    cfg.competition_path = Path('/kaggle/input/cassava-leaf-disease-classification')
-    if cfg.cloud == 'drive':
-        cfg.competition_path = Path(f'/content/gdrive/MyDrive/{cfg.project}')
-
     if cfg.filetype == 'jpg':
         assert cfg.size[0] == cfg.size[1]
         size = 128 if (cfg.size[0] <= 128) else 256 if (cfg.size[0] <= 256) else 512
@@ -14,10 +10,9 @@ def init(cfg):
             #cfg.image_root = Path(f'/content/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
             cfg.image_root = Path(f'/tmp/cassava-jpeg-{size}x{size}/kaggle/train_images_jpeg')
 
-    #elif cfg.filetype == 'tfrec':
-    #    cfg.image_root = cfg.competition_path / 'train_tfrecords'
-
-    cfg.meta_csv = cfg.competition_path / 'train.csv'  # label
+    cfg.meta_csv = Path('/kaggle/input/cassava-leaf-disease-classification/train.csv')  # label
+    if cfg.cloud == 'drive':
+        cfg.meta_csv = Path(f'/content/gdrive/MyDrive/{cfg.project}/train.csv')
     cfg.gcs_filter = 'train_tfrecords/*.tfrec'
     if 'tf' in cfg.tags:
         cfg.n_classes = 5  # pytorch: set by metadata

@@ -5,7 +5,6 @@ from models_tf import set_trainable, set_bn_parameters
 
 def init(cfg):
 
-    #cfg.meta_csv = cfg.competition_path / 'train.csv'  # label
     cfg.gcs_filter = 'train_tfrecords/*.tfrec'
     if 'tf' in cfg.tags:
         cfg.classes = True    # its bool must validate True to get the right loss function
