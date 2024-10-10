@@ -997,13 +997,14 @@ class FreeCurveDataset(Dataset):
         assert target.dtype == torch.float32, f"wrong target dtype: {target.dtype}"
 
         if self.use_batch_tfms:
-            # return both target and tfm curves as "target"
-            if self.predict_inverse and self.noise_level:
-                # append rnd_factor for noise_level to target, independent of use_batch_tfms
+            # return both curves as "target"
+            if self.predict_inverse:
+                target = torch.cat((target, tfm), dim=1)
+
+            # append rnd_factor for noise_level -> (C, 257)
+            if self.noise_level:
                 rnd_factor = torch.rand(1).repeat(3)
                 target = torch.cat((target, rnd_factor[:, None], tfm), dim=1)
-            elif self.predict_inverse:
-                target = torch.cat((target, tfm), dim=1)
 
             # append rnd JPEG quality -> (C, 258)
             if self.add_jpeg_artifacts:

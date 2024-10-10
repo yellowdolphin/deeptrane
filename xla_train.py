@@ -178,10 +178,10 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 if cfg.add_jpeg_artifacts:
                     # use same jpeg_quality on all channels
                     labels, jpeg_quality = labels[:, :, :-1], labels[:, 0, -1]
-                if cfg.predict_inverse and cfg.noise_level:
-                    # split labels into (labels+rnd_noise, tfms)
-                    labels, tfms = labels[:, :, :257], labels[:, :, 257:]
-                elif cfg.predict_inverse:
+                if cfg.noise_level:
+                    # use same noise_level on all channels
+                    labels, rnd_factor = labels[:, :, :-1], labels[:, 0, -1]
+                if cfg.predict_inverse:
                     # split labels into (target, tfms)
                     labels, tfms = labels[:, :, :256], labels[:, :, 256:]
                 else:
