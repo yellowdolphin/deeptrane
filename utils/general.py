@@ -27,7 +27,7 @@ def get_package_version(name):
     if res.stdout:
         substrings = res.stdout.decode().split('==')[-1].split('.')
     else:
-        res = run(f'pip freeze | grep "{name} @ .*\.whl"', shell=True, capture_output=True)
+        res = run(fr'pip freeze | grep "{name} @ .*\.whl"', shell=True, capture_output=True)
         substrings = res.stdout.decode().split('/')[-1].split('-')[1].split('.')
     if len(substrings) < 2:
         print("No (sub)version info from pip freeze for {name}:")
