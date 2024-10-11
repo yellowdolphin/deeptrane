@@ -1,3 +1,4 @@
+# tfimm requires Python >=3.8, <3.11
 # With timm version 0.9, architecture names have changed.
 # Current tfimm 0.2.14 has not been adopted.
 # Until tfimm is compatible with the new names, require timm<0.9

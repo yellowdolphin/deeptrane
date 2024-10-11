@@ -51,11 +51,11 @@ def install_model_libs(cfg):
                 #print("client healthy")
                 quietly_run(f'pip install tensorflow-gcs-config=={tf_version}')
                 print("Updated TF, TPU client, and GCS config to version", tf_version)
-                quietly_run('pip install -r tfimm_requirements.txt')
+                quietly_run('pip install -r env/tfimm_requirements.txt')
                 print("installed tfimm")
             elif get_package_version('tensorflow')[1] != '16':
                 # This fails with TF 1.16 (kaggle TPU notebooks), tf.keras rejects layer names with '/':
-                quietly_run('pip install --no-deps -r tfimm_requirements.txt')
+                quietly_run('pip install --no-deps -r env/tfimm_requirements.txt')
             else:
                 # pajotarthur made a pull request that replaces tf.keras with tf_keras and is supposedly compatible with TF 2.16
                 # This PR was never pulled, so let's clone his branch "update_python_3.11"...
@@ -64,7 +64,7 @@ def install_model_libs(cfg):
 
             assert os.environ.get('NV_CUDNN_VERSION') != '8.0.5.39', 'cuDNN broken: use image2021-02-23 for tfimm GPU training!'
         else:
-            quietly_run('pip install -q -r tfimm_requirements.txt')
+            quietly_run('pip install -q -r env/tfimm_requirements.txt')
 
         # Most tfimm models needs keras 2 (keras 3 forbids layer names with '/')
         keras_version = get_package_version('keras')
