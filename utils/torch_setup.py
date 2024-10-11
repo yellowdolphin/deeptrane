@@ -1,5 +1,10 @@
+import os
 import sys
 from pathlib import Path
+
+
+# silence albumentations propaganda
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = "1"
 
 
 def torchmetrics_version():
