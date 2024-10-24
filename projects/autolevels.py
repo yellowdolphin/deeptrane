@@ -98,6 +98,7 @@ def init(cfg):
             cfg.image_root if (cfg.cloud == 'drive') else
             Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/Data/CLS-LOC/train') if 'imagenet' in cfg.tags else
             Path('/kaggle/input/coco-2017-dataset/coco2017') if 'coco2017' in cfg.tags else
+            Path('/kaggle/input/landmark-recognition-2021') if 'landmark2021' in cfg.tags else
             Path('define image_root in project module!'))
     elif 'imagenet' in cfg.tags or 'imagenetsel' in cfg.tags:
         # Customize data pipeline (see tf_data for definition and defaults)
@@ -180,6 +181,7 @@ def init(cfg):
         cfg.meta_csv if (cfg.cloud == 'drive') else
         Path('/kaggle/input/imagenet-object-localization-challenge/ILSVRC/ImageSets/CLS-LOC/train_cls.txt') if 'imagenet' in cfg.tags else
         Path('/kaggle/input/autolevels-modelbox/coco2017.csv') if 'coco2017' in cfg.tags else
+        Path('/kaggle/input/autolevels-modelbox/landmark2021.csv') if 'landmark2021' in cfg.tags else
         Path('define cfg.meta_csv in project module!'))
 
     if cfg.curve == 'gamma':
