@@ -232,6 +232,34 @@ def init(cfg):
                                        #add_channels=add_channels,
                                        mul_channels=mul_channels,
                                        name='transform_tf')  # increments body_index by 1
+            
+    # LayerNorm between global_pool and first FC layer
+    if 'tiny_vit' in cfg.arch_name:
+        # At least for this arch, it is better to remove it.
+        cfg.replace_body_layers = {'head.norm': 'Identity'}
+
+
+    if False:
+        # rename layers to convert "features_only" model to "num_classes" model
+        def translate(name, replacements):
+            for old, new in replacements.items():
+                name = name.replace(old, new)
+            return name
+        
+        replacements = {
+            'stages_': 'stages.',
+            'head.2': 'body.head.fc',
+            'head.4': 'head.2',
+            'head.6': 'head.4',
+            'head.8': 'head.6',
+            'head.10': 'head.8'}
+        
+        def modify_state_dict(state_dict, pretrained_model_state_dict):
+            if 'head.10.weight' in  pretrained_model_state_dict:
+                return OrderedDict((translate(k, replacements), v) for k, v in state_dict.items())
+            return state_dict
+        
+        cfg.modify_state_dict = modify_state_dict
 
 
 class GammaTransformTF(tf.keras.layers.Layer):

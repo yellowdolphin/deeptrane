@@ -96,3 +96,46 @@ def get_drive_out_dir(cfg):
     os.makedirs(save_dir, exist_ok=True)
 
     return save_dir
+
+
+def get_nested_attr(obj, attr_path):
+    """
+    Get a nested attribute from an object using a dot-separated string path.
+    
+    Args:
+        obj: The object to get the attribute from
+        attr_path (str): Dot-separated path to the attribute (e.g., "a.b.c")
+        
+    Returns:
+        The value of the nested attribute
+        
+    Raises:
+        AttributeError: If any part of the path doesn't exist
+    """
+    current = obj
+    for attr in attr_path.split('.'):
+        current = getattr(current, attr)
+    return current
+
+
+def set_nested_attr(obj, attr_path, value):
+    """
+    Set a nested attribute on an object using a dot-separated string path.
+    
+    Args:
+        obj: The object to set the attribute on
+        attr_path (str): Dot-separated path to the attribute (e.g., "a.b.c")
+        value: The value to set
+        
+    Raises:
+        AttributeError: If any part of the path except the last doesn't exist
+    """
+    *path_parts, final_attr = attr_path.split('.')
+    current = obj
+    
+    # Navigate to the parent object
+    for attr in path_parts:
+        current = getattr(current, attr)
+    
+    # Set the final attribute
+    setattr(current, final_attr, value)

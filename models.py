@@ -10,6 +10,7 @@ from torch import nn
 from torch.nn.parameter import Parameter
 import torch.nn.functional as F
 from future import removesuffix
+from utils.general import get_nested_attr, set_nested_attr
 
 DEBUG = False
 
@@ -739,6 +740,14 @@ class PoolCat(nn.Module):
         return torch.cat(pooled, dim=1)
 
 
+def get_out_features(model, size):
+    """Return number of output channels or output.shape[1]"""
+    if hasattr(model, 'feature_info'):
+        return model.feature_info[-1]['num_chs']
+    h, w = (size, size) if isinstance(size, int) else size
+    return model(torch.randn(2, 3, h, w)).shape[1]
+
+
 def last_n_feature_indices(arch_name, n_features):
     """Return (hopefully) valid list `out_indices` for timm.create_model().
     
@@ -790,6 +799,28 @@ def set_bn_parameters(model, momentum=None, eps=None, debug=False):
         print(f"Setting eps, momentum in {n_replaced} normalization layers")
 
 
+def get_global_pool(m):
+    """Returns layer instance, str, or None"""
+    if hasattr(m, 'head') and hasattr(m.head, 'global_pool'):
+        return m.head.global_pool
+    if hasattr(m, 'global_pool'):
+        return m.global_pool
+    return None
+
+def has_regular_global_pooling(m):
+    """Tests if m.[head.]global_pool is AdaptiveAvgPool2d
+    
+    Only if True is returned, custom pooling can be applied safely."""
+    global_pool = get_global_pool(m)
+    if not hasattr(global_pool, 'pool'):
+        return False
+    return isinstance(global_pool.pool, torch.nn.modules.pooling.AdaptiveAvgPool2d)
+
+def use_custom_pooling(cfg):
+    if cfg.get_pooling is not None:
+        return True
+    return cfg.pool and not (isinstance(cfg.pool, str) and cfg.pool.lower() == 'avg')
+
 def get_pretrained_timm2(cfg):
     """Initialize pretrained_model for a new fold based on cfg
 
@@ -803,46 +834,75 @@ def get_pretrained_timm2(cfg):
     pretrained = (cfg.rst_name is None or removesuffix(cfg.rst_name, ".pth").endswith('_head')) and 'defaults' not in cfg.tags
     n_features = cfg.n_features or 1  # last n features to pool and concat from body
     act_head = getattr(nn, cfg.act_head) if isinstance(cfg.act_head, str) else cfg.act_head
-    try:
-        body = timm.create_model(cfg.arch_name, pretrained=pretrained, features_only=True,
-                                 out_indices=last_n_feature_indices(cfg.arch_name, n_features))
-        add_head = True
-        #in_features = sum(body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1))
-        in_features = [body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1)]
-        print("Body features:", in_features)
-        in_features = sum(in_features)
-    except (RuntimeError, AttributeError):
-        print(f"Warning: {cfg.arch_name} does not support the features_only kwarg.")
-        if cfg.lin_ftrs:
-            if cfg.feature_size:
-                print("    feature_size ({cfg.feature_size}) will be ignored.")
-                cfg.feature_size = None
+    body = None
+
+    if use_custom_pooling(cfg):
+        # Check out original pooling first
+        body = timm.create_model(cfg.arch_name, pretrained=False)
+        if not has_regular_global_pooling(body):
+            print(f"Warning: trying custom {cfg.pool} on {cfg.arch_name},")
+            print(f"    which has no regular global pooling. Make sure this makes sense!")
+
+        # Many models require feature map for custom pooling (features_only=True)
+        try:
+            body = timm.create_model(cfg.arch_name, pretrained=pretrained, features_only=True,
+                                     out_indices=last_n_feature_indices(cfg.arch_name, n_features))
+            add_head = True
+            in_features = [body.feature_info[-i]['num_chs'] for i in range(1, n_features + 1)]
+            print("Body features:", in_features)
+            in_features = sum(in_features)
+        except (RuntimeError, AttributeError):
+            print(f"Warning: {cfg.arch_name} does not support the features_only kwarg,")
+            print(f"    custom pooling not possible, keeping original pooling.")
+            body = None
+
+    # Custom head, but keep original pooling (and other head layers) in body
+    if cfg.lin_ftrs and (body is None):
+        if cfg.feature_size:
+            print("    feature_size ({cfg.feature_size}) will be ignored.")
+            cfg.feature_size = None
+        if cfg.keep_classifier:
             in_features, head_dropout_p = cfg.lin_ftrs.pop(0), cfg.dropout_ps.pop(0)
+            print(f"No custom pooling, adjusting body FC to out_features={in_features}")
             body = timm.create_model(cfg.arch_name, pretrained=pretrained, num_classes=in_features)
             adjust_head_drop(body, head_dropout_p)
-            print("    Adjusting original head:")
-            print(body.get_classifier())
-            add_head = 'skip_pooling'
+            if 'body' in cfg.freeze and not cfg.rst_name:
+                print("Warning: Frozen body contains adjusted body FC (original classifier)!")
         else:
-            print("    Only the classifier will be adapted.")
-            #assert not cfg.lin_ftrs, f"cfg.lin_ftrs not supported by {cfg.arch_name}"
-            add_head = False
-            in_features = None
+            print("No custom pooling, replacing original classifier by Identity")
+            body = timm.create_model(cfg.arch_name, pretrained=pretrained, num_classes=0)
+            in_features = get_out_features(body, cfg.size)
+        for k, v in cfg.replace_body_layers.items():
+            old_instance = get_nested_attr(body, k)
+            new_instance = getattr(torch.nn, v)()
+            print(f"Replacing body.{k}({old_instance}) -> {new_instance}")
+            set_nested_attr(body, k, new_instance)
+        print(body.get_classifier())
+        add_head = 'skip_pooling'
 
-    # Pooling
+    # No custom head
+    if body is None:
+        print("No custom head, only the classifier will be adapted.")
+        #assert not cfg.lin_ftrs, f"cfg.lin_ftrs not supported by {cfg.arch_name}"
+        add_head = False
+        in_features = None
+
+    # Construct pooling_layer
     if cfg.get_pooling is not None:
         pooling_layer = cfg.get_pooling(cfg, in_features)
     elif add_head == 'skip_pooling':
-        # pack optional head layers after first FC into "pooling_layer"
+        # No actual pooling, just optional head layers between first and second FC
         pooling_layer = (
+            nn.Sequential() if not cfg.keep_classifier and not cfg.normalization_head else
             act_head() if (act_head and not cfg.normalization_head) else
             nn.BatchNorm1d(in_features) if (cfg.normalization_head and not act_head) else
             nn.Sequential() if (not act_head and not cfg.normalization_head) else
             nn.Sequential(act_head(), nn.BatchNorm1d(in_features)))
     elif add_head:
+        # Body output is a feature map, pool with a PoolCat layer
         if cfg.pool is None:
-            # try to get pooling from original model head
-            pool_layers = [k for k, v in timm.create_model(cfg.arch_name).named_modules() if 'pool' in k]
+            # Try to infer original pooling class name
+            pool_layers = [k for k, v in timm.create_model(cfg.arch_name, pretrained=False).named_modules() if 'pool' in k]
             if pool_layers:
                 cfg.pool = pool_layers[-1]
         pooling_layer = PoolCat(cfg.pool)
@@ -874,6 +934,15 @@ def get_pretrained_timm2(cfg):
             *bottleneck,
             output_layer)
 
+        # Nicer but not backwards compatible:
+        #head = nn.Sequential()
+        #if pooling_layer:
+        #    head.append(pooling_layer)
+        #head.append(torch.nn.Flatten())
+        #for l in bottleneck:
+        #    head.append(l)
+        #head.append(output_layer)
+ 
     # Compose Model
     pretrained_model = (
         nn.Sequential(OrderedDict([('body', body), ('head', head)])) if add_head else

@@ -57,6 +57,9 @@ cfg = dict(
     seg_weight = 0.4,
     add_hidden_layer = False,   # add hidden_layer from efficientnet to smp model
     pool = 'avg',
+    keep_classifier = True,     # use original classifier (last body layer) as first bottleneck
+                                # only relevant for timm models with custom head (lin_ftrs) but original pooling
+    replace_body_layers = {},   # example: {'head.norm': 'Identity'}
     dropout_ps = [0.5],
     lin_ftrs = [],
     scale_output_layer = 1.0,   # modify initialization of the output layer weights
