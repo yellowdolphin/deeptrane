@@ -763,13 +763,14 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         optim.SGD(params, lr=lr_head, momentum=cfg.betas[0], dampening=1 - cfg.betas[1]))
     rst_epoch = 0
     if cfg.rst_name:
-        fn = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.opt'
-        if fn.exists() and not cfg.reset_opt:
-            checkpoint = torch.load(fn, map_location='cpu')
+        opt_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.opt'
+        if opt_file.exists() and not cfg.reset_opt:
+            checkpoint = torch.load(opt_file, map_location='cpu')
             xm.master_print("Restarting from previous opt state")
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             rst_epoch = checkpoint['epoch'] + 1
             cfg.optimizer_restarted = True
+    rst_epoch = cfg.rst_epoch or rst_epoch
 
     # Scheduler
     if cfg.one_cycle:

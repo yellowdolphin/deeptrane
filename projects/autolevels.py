@@ -239,7 +239,7 @@ def init(cfg):
         cfg.replace_body_layers = {'head.norm': 'Identity'}
 
 
-    if False:
+    if True:
         # rename layers to convert "features_only" model to "num_classes" model
         def translate(name, replacements):
             for old, new in replacements.items():
@@ -255,7 +255,9 @@ def init(cfg):
             'head.10': 'head.8'}
         
         def modify_state_dict(state_dict, pretrained_model_state_dict):
-            if 'head.10.weight' in  pretrained_model_state_dict:
+            if ('head.10.weight' in state_dict) and ('head.10.weight' not in pretrained_model_state_dict):
+                from collections import OrderedDict
+                print("Modifying loaded state_dict to match custom head...")
                 return OrderedDict((translate(k, replacements), v) for k, v in state_dict.items())
             return state_dict
         

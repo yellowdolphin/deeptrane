@@ -75,6 +75,7 @@ cfg = dict(
     rst_path = '.',
     rst_name = None,
     reset_opt = False,          # don't load optimizer/scheduler state dicts
+    rst_epoch = None,
     out_dir = 'output',
 
     xla = False,
