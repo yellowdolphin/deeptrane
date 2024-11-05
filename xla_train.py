@@ -864,7 +864,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         valid_start = time.perf_counter()
 
         if cfg.train_on_all:
-            valid_loss, valid_metrics = 0, []
+            valid_loss, valid_metrics = 0, {}
         else:
             if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
                 # ParallelLoader requires instantiation per epoch
@@ -895,7 +895,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
         for key in cfg.metrics:                                                           # metrics
             # cannot use valid_metric.items() because MetricCollection re-orders keys alphabetically
-            val = valid_metrics[key]
+            val = valid_metrics[key] if key in valid_metrics else 0
             if isinstance(val, list):
                 if getattr(metrics[key], 'average', '') is not None:
                     xm.master_print(f'Warning: metric {key} returned list but "average" attribute is not None')

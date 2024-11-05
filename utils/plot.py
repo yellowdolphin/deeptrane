@@ -23,7 +23,7 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
     # PyTorch metrics
     for fn in torch_metrics_files:
         print(f"Metrics from {fn}")
-        metrics_dict = torch.load(fn)
+        metrics_dict = torch.load(fn, weights_only=True)
         df = pd.DataFrame(metrics_dict).set_index('epoch')
         display(df)
 
@@ -40,7 +40,8 @@ def plot_metrics(metrics_files=None, prefix="metrics_fold"):
         best_ep = best_metric.index[best_metric.argmax()]
 
         losses.plot(title=title)
-        metrics.plot(title=title)
+        if len(metrics.columns) > 0:
+            metrics.plot(title=title)
         lr.plot(title=title)
 
         # Print metrics for spreadsheet copy&paste (tab-separated)
