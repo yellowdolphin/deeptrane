@@ -7,7 +7,7 @@ meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
 # Training
 num_folds = 5
 use_folds = [0]
-train_on_all = False
+train_on_all = True
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False

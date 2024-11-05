@@ -5,7 +5,7 @@ filetype = 'JPEG'
 meta_csv = '/content/meta.csv'  # for colab only
 
 # Training
-num_folds = 15
+num_folds = 20
 use_folds = [0]
 train_on_all = False
 frac = [0.3, 1.0]
