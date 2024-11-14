@@ -263,6 +263,8 @@ def init(cfg):
         
         cfg.modify_state_dict = modify_state_dict
 
+    cfg.improver = True
+
 
 class GammaTransformTF(tf.keras.layers.Layer):
     "Gamma transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"

@@ -85,6 +85,20 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     ### DEBUG
     timers = [0, 0, 0, 0, 0]
 
+    if cfg.improver:
+        if cfg.use_batch_tfms:
+            raise NotImplementedError('improver training with batch_tfms not implemented.')
+        # get extra batch to substitute improver_inputs, improver_labels
+        improver_inputs, improver_labels = next(iter(iterable))
+        improver_labels = improver_labels[:, :, 0:256].reshape(improver_labels.shape[0], 3 * 256)
+        improver_inputs = improver_inputs.to(device)
+        improver_labels = improver_labels.to(device)
+        identity_tfms = (torch.arange(256, device=device).to(torch.float32) / 255).repeat(3)[None, :]
+        #xm.master_print("identity_tfms is on", identity_tfms.device)
+        #xm.master_print(f"initial improver_inputs on ", improver_inputs.device)
+        #xm.master_print(f"initial improver_labels on ", improver_labels.device)
+
+
     for batch_idx, batch in enumerate(iterable, start=1):
 
         # extract inputs and labels
@@ -309,7 +323,12 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             inputs = inputs.clamp(0.0, 1.0)
 
         if cfg.curve and (cfg.curve == 'free'):
-            labels = labels.reshape(labels.shape[0], -1)
+            labels = labels.reshape(labels.shape[0], 3 * 256)
+
+        if cfg.improver:
+            #xm.master_print(f"itn {batch_idx}, improver_inputs on ", improver_inputs.device)
+            inputs = torch.concatenate([inputs, improver_inputs], dim=0)
+            labels = torch.concatenate([labels, improver_labels], dim=0)
 
         # forward and backward pass
         perform_optimizer_step = (batch_idx % cfg.n_acc == 0)
@@ -388,6 +407,17 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
         if cfg.loss_weights is not None:
             for i, m in enumerate(weighted_loss_meters):
                 m.update(weighted_losses[i].item() * cfg.n_acc, inputs.size(0))
+
+        # Transform first half batch with predicted inverse curves to get improver_inputs for next iter
+        if cfg.improver:
+            bs_half = cfg.bs // 2
+            tfms = preds[:bs_half].detach().clip(0, 1).reshape(-1, 3, 256)
+            inputs = (inputs[:bs_half] * 255).to(torch.int64)
+            # map tfms (N, C, 256) with torch.gather
+            # curves must be expanded to have same shape as inputs (except dim=2)
+            expanded_curves = tfms[..., None].expand(-1, -1, -1, inputs.size(-1))
+            improver_inputs = torch.gather(expanded_curves, dim=2, index=inputs)
+            improver_labels = labels[:bs_half] - preds[:bs_half].detach() + identity_tfms
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
