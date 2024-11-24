@@ -265,6 +265,24 @@ def init(cfg):
 
     cfg.improver = True
 
+    if 'tf' not in cfg.tags:
+        if cfg.improve_color_loss:
+            color_weight = cfg.improve_color_loss
+            from torch.nn.functional import mse_loss
+
+            def improve_color_loss(preds, labels):
+                # preds/labels reshape [N, 3 * 256] into [N, C, 256]
+                residuals = (preds - labels).reshape(-1, 3, 256)
+
+                residual_L = torch.mean(residuals, dim=1, keepdim=True)
+                color_loss = 2.0 * torch.mean(torch.square(residuals - residual_L))
+
+                return color_weight * color_loss + (1 - color_weight) * mse_loss(preds, labels)
+
+            cfg.criterion = improve_color_loss
+        else:
+            cfg.criterion = torch.nn.MSELoss()
+
 
 class GammaTransformTF(tf.keras.layers.Layer):
     "Gamma transform with blackpoint shifts before and after, trainable params, for cfg.preprocess"
@@ -1917,9 +1935,9 @@ class CurveRMSE(MeanSquaredError):
     def update(self, preds: torch.Tensor, target: torch.Tensor):
         assert preds.shape == target.shape
 
-        support = torch.linspace(0, 1, 256, dtype=preds.dtype)
         if self.curve == 'gamma':
-            # (256,) ** (N, 3) -> (N, 3, 256)
+            support = torch.linspace(0, 1, 256, dtype=preds.dtype)
+            # shapes: (1, 1, 256) ** (N, 3, 1) -> (N, 3, 256)
             target = torch.pow(support[None, None, :], torch.exp(target)[:, :, None])
             preds = torch.pow(support[None, None, :], torch.exp(preds)[:, :, None])
 
