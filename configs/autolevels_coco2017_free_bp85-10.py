@@ -34,6 +34,7 @@ augmentation = 'tfms_004'      # ignored if use_batch_tfms
 use_batch_tfms = False
 n_replicas = 8
 use_dp = False                 # slower on 2 T4 than on 1
+improve_color_loss = 0         # weight of auxiliary loss to improve colors
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
 bs = 32

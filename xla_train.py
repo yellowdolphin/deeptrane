@@ -700,8 +700,11 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     model = wrapped_model.to(device)
 
     # Criterion (default reduction: 'mean'), Metrics
-    criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()
-    if cfg.classes is None:
+    if cfg.criterion is not None:
+        criterion = cfg.criterion
+    elif cfg.classes is not None:
+        criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()
+    else:
         criterion = nn.MSELoss()
     if cfg.use_aux_loss:
         from segmentation_models_pytorch.losses.dice import DiceLoss
