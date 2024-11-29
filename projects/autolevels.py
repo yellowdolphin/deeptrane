@@ -604,7 +604,8 @@ class Curve3():
         inverse() returns the inverse function
         """
         assert np.min(alpha) > 1, f'alpha ({alpha}) out of scope, must be > 1'
-        assert (np.min(beta) > 0) and (np.max(beta) <= 1), f'beta ({beta}) out of scope, must be in (0, 1]'
+        assert np.min(beta) > 0, f'beta ({beta}) out of scope, must be > 0'
+        #assert np.all(np.logical_or((beta < 1), (alpha > 1.6))), f'(alpha, beta) ({alpha}, {beta}) out of scope'
         self.params = [np.array(p, dtype=np.float32) for p in (alpha, beta, bp / 255, bp2 / 255)]
         self.x_min = 1e-6
         self.x_max = 1.0 - 1e-6
@@ -938,10 +939,22 @@ class FreeCurveDataset(Dataset):
             self.resize = TT.Resize(cfg.size, interpolation=interpolation, antialias=cfg.antialias)
 
         self.log_gamma_range = cfg.log_gamma_range
-        self.curve3_a_range = cfg.curve3_a_range
+        if cfg.curve3_conditional_a_range is not None:
+            # make a dependent on b
+            self.curve3_b_weight = cfg.curve3_conditional_weight or 0.6
+            self.curve3_a_range = cfg.curve3_conditional_a_range
+        else:
+            self.curve3_b_weight = 0
+            self.curve3_a_range = cfg.curve3_a_range
         self.curve3_beta_range = cfg.curve3_beta_range
         self.curve4_loga_range = cfg.curve4_loga_range
-        self.curve4_b_range = cfg.curve4_b_range
+        if cfg.curve4_conditional_logb_range is not None:
+            # change to logb and make it dependent on loga
+            self.curve4_loga_weight = cfg.curve4_conditional_weight or 0.6
+            self.curve4_logb_range = cfg.curve4_conditional_logb_range
+        else:
+            self.curve4_loga_weight = None
+            self.curve4_b_range = cfg.curve4_b_range
         self.bp_range = cfg.blackpoint_range
         self.bp2_range = cfg.blackpoint2_range
         self.bp_clip = max(*cfg.blackpoint_range, *cfg.blackpoint2_range) if cfg.clip_target_blackpoint else None
@@ -984,14 +997,20 @@ class FreeCurveDataset(Dataset):
         curves.append(Curve0(gamma, bp, bp2, self.bp_clip))
 
         # beta
-        alpha = np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32))
         beta = np.random.uniform(*self.curve3_beta_range, n_channels).astype(np.float32)
+        alpha = np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32) + self.curve3_b_weight * beta)
         mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_beta else None
         curves.append(Curve3(alpha, beta, bp, bp2, self.bp_clip, mirror_mask))
 
         # curve4
-        a = np.exp(np.random.uniform(*self.curve4_loga_range, n_channels).astype(np.float32))
-        b = np.random.uniform(*self.curve4_b_range, n_channels).astype(np.float32)
+        loga = np.random.uniform(*self.curve4_loga_range, n_channels).astype(np.float32)
+        a = np.exp(loga)
+        if self.curve4_loga_weight is not None:
+            r = np.random.uniform(*self.curve4_logb_range, n_channels).astype(np.float32)
+            logb = r + self.curve4_loga_weight * loga
+            b = np.exp(logb)
+        else:
+            b = np.random.uniform(*self.curve4_b_range, n_channels).astype(np.float32)
         mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_curve4 else None
         curves.append(Curve4(a, b, bp, bp2, self.bp_clip, mirror_mask))
 
