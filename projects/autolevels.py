@@ -968,6 +968,7 @@ class FreeCurveDataset(Dataset):
         self.mirror_beta = cfg.mirror_beta
         self.mirror_curve4 = cfg.mirror_curve4
         self.curve_selection = cfg.curve_selection or 'channel-wise'  # 'channel-wise' or 'image-wise'
+        self.DEBUG = cfg.DEBUG
 
     def __len__(self):
         return len(self.df)
@@ -975,7 +976,10 @@ class FreeCurveDataset(Dataset):
     def __getitem__(self, index):
 
         fn = os.path.join(self.image_root, self.df.iloc[index, 0])
-        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
+        if fn.startswith('virtual'):
+            # Ignore file name from self.df, use dummy image
+            image = np.empty((16, 16, 3), dtype='uint8')
+        elif 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
             bytes_data = gcsfs.read(fn)
             image = PIL.Image.open(io.BytesIO(bytes_data))
         else:
@@ -1034,6 +1038,14 @@ class FreeCurveDataset(Dataset):
             target = np.einsum('ji,ijk->jk', mask, targets)
             tfm = np.einsum('ji,ijk->jk', mask, tfms)
             del targets, tfms
+            if self.DEBUG:
+                for channel, curve in enumerate(mask):
+                    if curve[0]:
+                        print(f'Curve0(gamma={gamma[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                    if curve[1]:
+                        print(f'Curve3(alpha={alpha[channel]}, beta={beta[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                    if curve[2]:
+                        print(f'Curve4(a={a[channel]}, b={b[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
         else:
             # image-wise curve selection
             curve = curves[np.random.randint(0, 3)]
