@@ -910,7 +910,7 @@ class FreeCurveDataset(Dataset):
     """Images are mapped on device using the channelwise-randomly generated target_curve"""
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
-                 return_path_attr=None):
+                 return_path_attr=None, param_csv_file=None):
         """
         Args:
             df (pd.DataFrame):                First row must contain the image file paths
@@ -969,6 +969,7 @@ class FreeCurveDataset(Dataset):
         self.mirror_curve4 = cfg.mirror_curve4
         self.curve_selection = cfg.curve_selection or 'channel-wise'  # 'channel-wise' or 'image-wise'
         self.DEBUG = cfg.DEBUG
+        self.param_csv_file = param_csv_file
 
     def __len__(self):
         return len(self.df)
@@ -1042,10 +1043,16 @@ class FreeCurveDataset(Dataset):
                 for channel, curve in enumerate(mask):
                     if curve[0]:
                         print(f'Curve0(gamma={gamma[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                        if self.param_csv_file is not None:
+                            self.param_csv_file.write(f'curve0,{gamma[channel]},0,{bp[channel]},{bp2[channel]}\n')
                     if curve[1]:
                         print(f'Curve3(alpha={alpha[channel]}, beta={beta[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                        if self.param_csv_file is not None:
+                            self.param_csv_file.write(f'curve3,{alpha[channel]},{beta[channel]},{bp[channel]},{bp2[channel]}\n')
                     if curve[2]:
                         print(f'Curve4(a={a[channel]}, b={b[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                        if self.param_csv_file is not None:
+                            self.param_csv_file.write(f'curve4,{a[channel]},{b[channel]},{bp[channel]},{bp2[channel]}\n')
         else:
             # image-wise curve selection
             curve = curves[np.random.randint(0, 3)]
