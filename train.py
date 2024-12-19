@@ -30,7 +30,7 @@ for key in 'dropout_ps lin_ftrs freeze'.split():
 for key, value in listify(parser_args.set):
     autotype(cfg, key, value)
 
-cfg.cloud = 'drive' if os.path.exists('/content') else 'kaggle' if os.path.exists('/kaggle') else 'gcp'
+cfg.cloud = 'kaggle' if 'KAGGLE_DOCKER_IMAGE' in os.environ else 'drive' if os.path.exists('/content') else 'gcp'
 if cfg.cloud == 'drive':
     cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
 
