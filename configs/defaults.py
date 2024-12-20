@@ -82,7 +82,7 @@ cfg = dict(
     dtype = 'float32',          # 'float32' or (automatic mixed precision) 'float16'
 
     ema = False,
-    muliscale = False,
+    multiscale = False,
     tta = False,
 )
 
