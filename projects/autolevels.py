@@ -1008,8 +1008,10 @@ class FreeCurveDataset(Dataset):
         # beta
         beta = np.random.uniform(*self.curve3_beta_range, n_channels).astype(np.float32)
         #alpha = np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32) + self.curve3_b_weight * beta)
-        # conditional02+:
-        alpha = 1 + np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32) + self.curve3_b_weight * beta)
+        # conditional02+: lower limit on a if bp > 10
+        a = np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32) + self.curve3_b_weight * beta
+        a = np.where(bp > 10.0, a.clip(0.5), a)
+        alpha = 1 + np.exp(a)
         mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_beta else None
         curves.append(Curve3(alpha, beta, bp, bp2, self.bp_clip, mirror_mask))
 
