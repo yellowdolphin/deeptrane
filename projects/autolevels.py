@@ -939,26 +939,32 @@ class FreeCurveDataset(Dataset):
             self.resize = TT.Resize(cfg.size, interpolation=interpolation, antialias=cfg.antialias)
 
         self.log_gamma_range = cfg.log_gamma_range
-        if cfg.curve3_conditional_a_range is not None:
-            # make a dependent on b
-            self.curve3_b_weight = cfg.curve3_conditional_weight or 0.6
-            self.curve3_a_range = cfg.curve3_conditional_a_range
-        else:
+        if cfg.curve3_conditional_a_range is None:
             self.curve3_b_weight = 0
             self.curve3_a_range = cfg.curve3_a_range
+            self.curve3_alpha_0 = 0
+        elif 'conditional01' in cfg.tags:
+            self.curve3_b_weight = cfg.curve3_conditional_weight or 0.6
+            self.curve3_a_range = cfg.curve3_conditional_a_range
+            self.curve3_alpha_0 = 0
+        else:
+            self.curve3_b_weight = cfg.curve3_conditional_weight or 0.6
+            self.curve3_a_range = cfg.curve3_conditional_a_range
+            self.curve3_alpha_0 = 1
         self.curve3_beta_range = cfg.curve3_beta_range
         self.curve4_loga_range = cfg.curve4_loga_range
-        if cfg.curve4_conditional_logb_offsets is not None:
-            # conditional02: logb = logb_0 + logb_range * (loga - loga_0)
-            self.curve4_conditional_logb_offsets = cfg.curve4_conditional_logb_offsets
-            self.curve4_logb_range = cfg.curve4_conditional_logb_range
-        elif cfg.curve4_conditional_logb_range is not None:
-            # conditional01: change to logb and make it dependent on loga
+        if cfg.curve4_conditional_logb_offsets is None:
+            self.curve4_loga_weight = None
+            self.curve4_b_range = cfg.curve4_b_range
+        elif 'conditional01' in cfg.tags:
+            # switch from b to logb and make it dependent on loga
             self.curve4_loga_weight = cfg.curve4_conditional_weight or 0.6
             self.curve4_logb_range = cfg.curve4_conditional_logb_range
         else:
-            self.curve4_loga_weight = None
-            self.curve4_b_range = cfg.curve4_b_range
+            # logb = logb_0 + logb_range * (loga - loga_0)
+            assert cfg.curve4_conditional_logb_offsets is not None, 'conditional02+ need logb_offsets'
+            self.curve4_conditional_logb_offsets = cfg.curve4_conditional_logb_offsets
+            self.curve4_logb_range = cfg.curve4_conditional_logb_range
         self.bp_range = cfg.blackpoint_range
         self.bp2_range = cfg.blackpoint2_range
         self.bp_clip = max(*cfg.blackpoint_range, *cfg.blackpoint2_range) if cfg.clip_target_blackpoint else None
@@ -999,7 +1005,7 @@ class FreeCurveDataset(Dataset):
         bp = np.random.uniform(*self.bp_range, n_channels).astype(np.float32)
         bp2 = np.random.uniform(*self.bp2_range, n_channels).astype(np.float32)
         curves = []
-        
+
         # gamma
         log_gamma = np.random.uniform(*self.log_gamma_range, n_channels).astype(np.float32)
         gamma = np.exp(log_gamma)
@@ -1007,11 +1013,9 @@ class FreeCurveDataset(Dataset):
 
         # beta
         beta = np.random.uniform(*self.curve3_beta_range, n_channels).astype(np.float32)
-        #alpha = np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32) + self.curve3_b_weight * beta)
-        # conditional02+: lower limit on a if bp > 10
         a = np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32) + self.curve3_b_weight * beta
-        a = np.where(bp > 10.0, a.clip(0.5), a)
-        alpha = 1 + np.exp(a)
+        a = np.where(bp > 10.0, a.clip(0.5), a)  # preliminary: lower limit on a if bp > 10
+        alpha = np.exp(a) + self.curve3_alpha_0
         mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_beta else None
         curves.append(Curve3(alpha, beta, bp, bp2, self.bp_clip, mirror_mask))
 
@@ -1046,7 +1050,7 @@ class FreeCurveDataset(Dataset):
                 tfms.append(tfm)
             targets = np.stack(targets)  # shape (n_curves, n_channels, 256)
             tfms = np.stack(tfms)
-            
+
             p_gamma = self.p_gamma
             p_beta = (1 - self.p_gamma) * self.p_beta
             p_curve4 = (1 - p_gamma - p_beta)
