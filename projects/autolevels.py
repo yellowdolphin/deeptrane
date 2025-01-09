@@ -657,7 +657,7 @@ class Curve3():
 
 
 class Curve4():
-    def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, bp_clip=None, mirror_mask=None, unclipped=False):
+    def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, bp_clip=None, wp=255, mirror_mask=None, unclipped=False):
         """Function y(x) = 1 - cos(π/2 * x^a)^b  with offsets bp, bp2 in x, y
 
         Input/Output range: [0, 1]
@@ -671,7 +671,7 @@ class Curve4():
         inverse() returns the inverse function 
             y^-1(x) = (2 / π)**(1 / a) * np.arccos((1 - x)**(1 / b))**(1 / a)
         """
-        self.params = [np.array(p, dtype=np.float32) for p in (a, b, bp / 255, bp2 / 255)]
+        self.params = [np.array(p, dtype=np.float32).reshape(-1) for p in (a, b, bp / 255, bp2 / 255, wp / 255)]
         self.x_min = 1e-6
         self.x_max = 1.0 - 1e-6
         self.bp_clip = max(int(bp_clip), 0) if bp_clip is not None else None
@@ -682,26 +682,26 @@ class Curve4():
     def __call__(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
         if not self.bp_is_clipped: _ = self.inverse(x)
-        a, b, bp, bp2 = (p[:, None] for p in self.params)
+        a, b, bp, bp2, wp = (p[:, None] for p in self.params)
 
-        x = bp + x * (1 - bp)
+        x = bp + x * ((1 - bp) / wp)
         x = self.mirror_mask * self.curve4(x, a, b) + (1 - self.mirror_mask) * self.inv_curve4(x, a, b)
         x = x * (1 - bp2) + bp2
         return x if self.unclipped else np.clip(x, 0, 1)
     
     def inverse(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
-        a, b, bp, bp2 = (p[:, None] for p in self.params)
+        a, b, bp, bp2, wp = (p[:, None] for p in self.params)
 
         x = (x - bp2) / (1 - bp2)
-        x = self.mirror_mask * self.inv_curve4(x, a, b) + (1 - self.mirror_mask) * self.curve4(x,  a, b)
+        x = self.mirror_mask * self.inv_curve4(x, a, b) + (1 - self.mirror_mask) * self.curve4(x, a, b)
         if self.bp_clip:
             assert x.shape == (3, 256), f'x has unexpected shape {x.shape}'
             bp_max = x[:, self.bp_clip:self.bp_clip + 1]
             bp = np.minimum(bp, bp_max)
             self.params[2] = bp[:, 0]  # propagate to future calls
             self.bp_is_clipped = True
-        x = (x - bp) / (1 - bp)
+        x = (x - bp) / ((1 - bp) / wp)
         return x if self.unclipped else np.clip(x, 0, 1)
 
     def curve4(self, x, a, b):
@@ -968,6 +968,8 @@ class FreeCurveDataset(Dataset):
         self.bp_range = cfg.blackpoint_range
         self.bp2_range = cfg.blackpoint2_range
         self.bp_clip = max(*cfg.blackpoint_range, *cfg.blackpoint2_range) if cfg.clip_target_blackpoint else None
+        self.wp_sigma = cfg.whitepoint_sigma or 0
+        assert self.wp_sigma < 255, 'whitepoint_sigma must be smaller than 255'
         self.p_gamma = cfg.p_gamma  # probability to use gamma (Curve0)
         self.p_beta = cfg.p_beta    # probability for Beta PDF (Curve3) rather than Curve4
         self.noise_level = cfg.noise_level
@@ -1004,6 +1006,11 @@ class FreeCurveDataset(Dataset):
         support = np.linspace(0, 1, 256, dtype=np.float32)
         bp = np.random.uniform(*self.bp_range, n_channels).astype(np.float32)
         bp2 = np.random.uniform(*self.bp2_range, n_channels).astype(np.float32)
+        if self.wp_sigma:
+            wp = 255 + 0.5 * self.wp_sigma * np.random.randn(n_channels)
+            wp = np.clip(wp, 255 - self.wp_sigma, 255)  # truncate at sigma
+        else:
+            wp = 255
         curves = []
 
         # gamma
@@ -1036,7 +1043,7 @@ class FreeCurveDataset(Dataset):
         else:
             b = np.random.uniform(*self.curve4_b_range, n_channels).astype(np.float32)
         mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_curve4 else None
-        curves.append(Curve4(a, b, bp, bp2, self.bp_clip, mirror_mask))
+        curves.append(Curve4(a, b, bp, bp2, self.bp_clip, wp, mirror_mask))
 
         # RNG DEBUG: checked: different random numbers on each torchrun instance.
         #print(f"bp={bp[0]:4.1f} bp2={bp2[2]:4.1f} g={gamma[0]:4.2f} alpha={alpha[2]:4.2f} beta={beta[0]:4.2f} a={a[2]:4.2f} b={b[0]:4.2f}")
