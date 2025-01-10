@@ -1,11 +1,11 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'
-filetype = 'jpg'
+filetype = 'JPEG'
 meta_csv = '/content/meta.csv'  # for colab only
 
 # Training
-num_folds = 15
+num_folds = 20
 use_folds = [0]
 train_on_all = False
 frac = [0.3, 1.0]
@@ -27,7 +27,7 @@ curve4_conditional_logb_range = (0.00, 0.47)  # logb = logb_0 + logb_range * (lo
 curve4_conditional_logb_offsets = (-0.8, -3.93)  # (logb_0, loga_0)
 mirror_curve4 = False
 p_gamma = 0.3                  # probability for using Gamma curve
-p_beta = 0.33                   # probability for using Beta PDF rather than Curve4
+p_beta = 0.5                   # probability for using Beta PDF rather than Curve4
 add_uniform_noise = False      # add uniform noise to mask uint8 discretization [bool|float]
 add_jpeg_artifacts = True
 sharpness_augment = True

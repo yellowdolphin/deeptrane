@@ -541,7 +541,7 @@ def get_pool_baseline_model(cfg, strategy):
 
 
 class Curve0():
-    def __init__(self, gamma=1.0, bp=0, bp2=0, bp_clip=None, unclipped=False):
+    def __init__(self, gamma=1.0, bp=0, bp2=0, wp=255, bp_clip=None, unclipped=False):
         """Function  y(x) = x^a  with offsets bp, bp2 in x, y
 
         Input/Output range: [0, 1]
@@ -554,7 +554,7 @@ class Curve0():
         inverse() returns the inverse function 
             y^-1(x) = x^(1 / gamma)
         """
-        self.params = [np.array(p, dtype=np.float32) for p in (gamma, bp / 255, bp2 / 255)]
+        self.params = [np.array(p, dtype=np.float32).reshape(-1) for p in (gamma, bp / 255, bp2 / 255, wp / 255)]
         self.x_min = 1e-6
         self.x_max = None
         self.bp_clip = max(int(bp_clip), 0) if bp_clip is not None else None
@@ -564,9 +564,9 @@ class Curve0():
     def __call__(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
         if not self.bp_is_clipped: _ = self.inverse(x)
-        gamma, bp, bp2 = (p[:, None] for p in self.params)
+        gamma, bp, bp2, wp = (p[:, None] for p in self.params)
 
-        x = bp + x * (1 - bp)
+        x = bp + x * ((1 - bp) / wp)
         x = np.clip(x, self.x_min, self.x_max)  # avoid nan
         x = np.power(x, gamma)
         x = x * (1 - bp2) + bp2
@@ -574,7 +574,7 @@ class Curve0():
     
     def inverse(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
-        gamma, bp, bp2 = (p[:, None] for p in self.params)
+        gamma, bp, bp2, wp = (p[:, None] for p in self.params)
 
         x = (x - bp2) / (1 - bp2)
         x = np.clip(x, self.x_min, self.x_max)  # avoid nan
@@ -585,7 +585,7 @@ class Curve0():
             bp = np.minimum(bp, bp_max)
             self.params[1] = bp[:, 0]  # propagate to future calls
             self.bp_is_clipped = True
-        x = (x - bp) / (1 - bp)
+        x = (x - bp) / ((1 - bp) / wp)
         return x if self.unclipped else np.clip(x, 0, 1)
 
 
@@ -953,8 +953,10 @@ class FreeCurveDataset(Dataset):
             self.curve3_alpha_0 = 1
         self.curve3_beta_range = cfg.curve3_beta_range
         self.curve4_loga_range = cfg.curve4_loga_range
-        if cfg.curve4_conditional_logb_offsets is None:
+        self.curve4_conditional_logb_offsets = cfg.curve4_conditional_logb_offsets
+        if cfg.curve4_conditional_logb_range is None:
             self.curve4_loga_weight = None
+            self.curve4_conditional_logb_offsets = None
             self.curve4_b_range = cfg.curve4_b_range
         elif 'conditional01' in cfg.tags:
             # switch from b to logb and make it dependent on loga
@@ -962,8 +964,7 @@ class FreeCurveDataset(Dataset):
             self.curve4_logb_range = cfg.curve4_conditional_logb_range
         else:
             # logb = logb_0 + logb_range * (loga - loga_0)
-            assert cfg.curve4_conditional_logb_offsets is not None, 'conditional02+ need logb_offsets'
-            self.curve4_conditional_logb_offsets = cfg.curve4_conditional_logb_offsets
+            assert self.curve4_conditional_logb_offsets is not None, 'conditional02+ need logb_offsets'
             self.curve4_logb_range = cfg.curve4_conditional_logb_range
         self.bp_range = cfg.blackpoint_range
         self.bp2_range = cfg.blackpoint2_range
@@ -1016,7 +1017,7 @@ class FreeCurveDataset(Dataset):
         # gamma
         log_gamma = np.random.uniform(*self.log_gamma_range, n_channels).astype(np.float32)
         gamma = np.exp(log_gamma)
-        curves.append(Curve0(gamma, bp, bp2, self.bp_clip))
+        curves.append(Curve0(gamma, bp, bp2, wp, self.bp_clip))
 
         # beta
         beta = np.random.uniform(*self.curve3_beta_range, n_channels).astype(np.float32)
@@ -1068,7 +1069,7 @@ class FreeCurveDataset(Dataset):
             if self.DEBUG:
                 for channel, curve in enumerate(mask):
                     if curve[0]:
-                        print(f'Curve0(gamma={gamma[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                        print(f'Curve0(gamma={gamma[channel]}, bp={bp[channel]}, bp2={bp2[channel]}, wp={wp[channel]})')
                         if self.param_csv_file is not None:
                             self.param_csv_file.write(f'curve0,{gamma[channel]},0,{bp[channel]},{bp2[channel]}\n')
                     if curve[1]:
