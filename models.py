@@ -485,6 +485,7 @@ def set_requires_grad(model, freeze):
     "body":       freeze all body layers
     "bn":         freeze all normalization layers in the body
     "all_but_bn": only normalization layers are trainable
+    name (str):   freeze any parameter with that name
     """
     freeze = freeze or set(['none'])
     freeze = set(s.lower() for s in freeze)
@@ -501,7 +502,7 @@ def set_requires_grad(model, freeze):
 
     # Freeze (or unfreeze) specified parts of the model
     head = (
-        model.head if hasattr(model, 'head') else 
+        model.head if hasattr(model, 'head') else
         model.get_classifier() if hasattr(model, 'get_classifier') else
         list(model.children())[-1])
     body_layers = (
@@ -528,7 +529,15 @@ def set_requires_grad(model, freeze):
         for m in model.modules():  # recursive
             if isinstance(m, normalization_classes):
                 for p in m.parameters():
-                    p.requires_grad = True if 'all_but_bn' in freeze else False        
+                    p.requires_grad = True if 'all_but_bn' in freeze else False
+
+    # Freeze parameters by name
+    for s in freeze:
+        if s in {'head', 'body', 'bn', 'all_but_bn'}:
+            continue
+        for name, p in model.named_parameters():
+            if name == s:
+                p.requires_grad = False
 
 
 def get_pretrained_timm(cfg):
