@@ -17,6 +17,8 @@ from models import is_bn
 from torch import FloatTensor, LongTensor
 from torchvision.io import encode_jpeg, decode_jpeg
 
+#import torch_xla.core.xla_model as xm  # required for multicore version
+
 
 def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, scheduler, device):
 
@@ -640,11 +642,26 @@ def get_valid_labels(cfg, metadata):
     return metadata.loc[is_valid | is_shared, class_column].values
 
 
-def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
-    "Distributed training loop master function"
+def test_mp_fn(rank, cfg, metadata, pretrained_model, use_fold):
+    # What can we pass here?
+    # metadata: ok
+    # use_fold: ok
+    # cfg: cannot be pickled if it contains any functions (only applies to cfg.modify_state_dict)
+    # xm: Error -> import here
+    # wrapped_model: RuntimeError: Lock objects should only be shared between processes through inheritance
+    # not-wrapped model: ok
+    # Any Error here also raises TypeError: 'NoneType' object is not callable
+    print("rank:", rank)
+    xm.master_print(f'In _mp_fn, rank {rank} world_size:', xm.xrt_world_size())
 
+
+def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
+    "Singlecore training loop master function"
+
+    #rank = rank or xm.get_ordinal()
     if cfg.xla:
-        xm.master_print("In _mp_fn, world_size:", xm.xrt_world_size())
+        #xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
+        print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
 
     # DDP init
     if cfg.use_ddp:
@@ -656,7 +673,9 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     # xm.xla_device, xm.get_ordinal, rank (unused) are somewhat redundant.
     # TODO: can we merge rank==device and get rid of xm.xla_device?
     # TODO: change from xla to DDP API, adapt xla (how use xm?)
-    device = xm.xla_device()
+    #device = xm.xla_device()
+    devices = xm.get_xla_supported_devices()
+    device = devices[rank]
     xm.master_print("device:", device)
 
     # Wrap DDP model

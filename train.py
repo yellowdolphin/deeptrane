@@ -169,10 +169,10 @@ if cfg.use_ddp:
 # Get distributed namespace for detected accelerator: "xm"
 if cfg.xla:
     import torch_xla.core.xla_model as xm
-    import torch_xla.distributed.xla_multiprocessing as xmp
     import torch_xla.debug.metrics as met
 
 elif cfg.use_ddp:
+    print("Using pseudo class for xm.")
     from torch.distributed import ReduceOp
 
     class xm(object):
@@ -258,6 +258,15 @@ else:
 if cfg.xla:
     cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size()
     print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
+
+    # Don't call, RuntimeError: Runtime is already initialized. Do not use the XLA device before calling xmp.spawn.
+    #print("XLA Supported Devices:", xm.get_xla_supported_devices())
+    
+    # This is necessary to make xmp.spawn(process, start_method='fork') work:
+    #print(f"TPU_PROCESS_ADDRESSES: {os.environ.get('TPU_PROCESS_ADDRESSES', None)}")  # local
+    if 'TPU_PROCESS_ADDRESSES' in os.environ:
+        os.environ.pop('TPU_PROCESS_ADDRESSES')  # see https://github.com/pytorch/xla/issues/8215
+
 elif cfg.gpu:
     cfg.n_replicas = torch.cuda.device_count() if (cfg.use_dp or cfg.use_ddp) else 1
     print(f"[ √ ] Using {cfg.n_replicas} GPUs", "(DP)" if cfg.use_dp else "(DDP)" if cfg.use_ddp else "")
@@ -279,7 +288,6 @@ if cfg.use_aux_loss:
 
 from metadata import get_metadata
 from models import get_pretrained_model, get_pretrained_timm2, get_smp_model
-from xla_train import _mp_fn
 
 # Import project (code, constant settings)
 project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
@@ -347,11 +355,44 @@ for use_fold in cfg.use_folds:
     # Start distributed training on TPU cores
     if cfg.xla:
         # MpModelWrapper wraps a model to minimize host memory usage (fork only)
-        pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
+        #pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
 
-        print("xmp.spawn (fork)")
-        xmp.spawn(_mp_fn, nprocs=cfg.n_replicas, start_method='fork',
-                  args=(cfg, metadata, pretrained_model, xm, use_fold))
+        # XLA: 2.4.0+libtpu has xmp.spawn(), 2.6 has torch_xla.launch()
+        #
+        # without start_method='fork', xmp.spawn calls train.py multiple times, then RuntimeError
+        #
+        # with nprocs=8: WARNING:root:Unsupported nprocs (8), ignoring...
+        #     maybe OK? but open issue: https://github.com/pytorch/xla/issues/8215
+        #
+        # with nprocs=None (default):
+        #     concurrent.futures.process._RemoteTraceback...
+        #     TypeError: 'NoneType' object is not callable
+        #
+        # A kaggle user tried multicore with v2.6 (torch_xla.launch()), no success, follow issue:
+        #      https://github.com/pytorch/xla/issues/8569
+        #
+        if cfg.n_replicas > 1:
+            # Try to use all 8 TPU cores
+            import torch_xla.distributed.xla_multiprocessing as xmp
+            from xla_train import test_mp_fn
+
+            # Drop cfg items that cannot be pickled, they can't be passed to _mp_fn.
+            _mp_fn_cfg = {}
+            for key, value in cfg.items():
+                if callable(value):
+                    print(f"excluding function {key} from cfg passed to _mp_fn")
+                else:
+                    _mp_fn_cfg[key] = value
+            print("calling xmp.spawn(start_method='fork')...")
+            xmp.spawn(test_mp_fn, start_method='fork',
+                      args=(_mp_fn_cfg, metadata, pretrained_model, use_fold))
+        else:
+            # This works with 1 TPU core:
+            from xla_train import _mp_fn
+
+            print(f"calling _mp_fn...")
+            rank = cfg.rank or 0
+            _mp_fn(rank, cfg, metadata, pretrained_model, xm, use_fold)
 
         if cfg.xla_metrics:
             xm.master_print()
