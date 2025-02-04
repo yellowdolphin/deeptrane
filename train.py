@@ -5,6 +5,7 @@ from glob import glob
 from pathlib import Path
 import importlib
 from multiprocessing import cpu_count
+import types
 #import warnings
 #warnings.filterwarnings('ignore')
 
@@ -168,7 +169,7 @@ if cfg.use_ddp:
 
 # Get distributed namespace for detected accelerator: "xm"
 if cfg.xla:
-    import torch_xla.core.xla_model as xm
+    #import torch_xla.core.xla_model as xm
     import torch_xla.distributed.xla_multiprocessing as xmp
     import torch_xla.debug.metrics as met
 
@@ -257,7 +258,7 @@ else:
 
 # Report accelerators
 if cfg.xla:
-    cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size()
+    cfg.n_replicas = cfg.n_replicas or 8 #xm.xrt_world_size()
     print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
 
     # Don't call, RuntimeError: Runtime is already initialized. Do not use the XLA device before calling xmp.spawn.
@@ -356,6 +357,7 @@ for use_fold in cfg.use_folds:
     # Start distributed training on TPU cores
     if cfg.xla:
         # MpModelWrapper wraps a model to minimize host memory usage (fork only)
+        # raises RuntimeError: Lock objects should only be shared between processes through inheritance
         #pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
 
         # XLA: 2.4.0+libtpu has xmp.spawn(), 2.6 has torch_xla.launch()
@@ -374,20 +376,23 @@ for use_fold in cfg.use_folds:
         #
         if cfg.n_replicas > 1:
             # Try to use all 8 TPU cores
-            from xla_train import test_mp_fn
+            from xla_train import multicore_mp_fn
 
             # Drop cfg items that cannot be pickled, they can't be passed to _mp_fn.
-            _mp_fn_cfg = {}
+            unpickable_items = set()
             for key, value in cfg.items():
-                if callable(value):
+                if isinstance(value, (types.FunctionType, types.MethodType)):
                     print(f"excluding function {key} from cfg passed to _mp_fn")
-                else:
-                    _mp_fn_cfg[key] = value
-            print("calling xmp.spawn(start_method='fork')...")
-            xmp.spawn(test_mp_fn, start_method='fork',
-                      args=(_mp_fn_cfg, metadata, pretrained_model, use_fold))
+                    unpickable_items.add(key)
+            for key in unpickable_items:
+                del cfg[key]
+
+            print("calling xmp.spawn(multicore_mp_fn, start_method='fork')...")
+            xmp.spawn(multicore_mp_fn, start_method='fork',
+                      args=({key: value for key, value in cfg.items()}, metadata, pretrained_model, use_fold))
         else:
             # This works with 1 TPU core:
+            import torch_xla.core.xla_model as xm
             from xla_train import _mp_fn
 
             print(f"calling _mp_fn...")
@@ -415,6 +420,8 @@ for use_fold in cfg.use_folds:
 
     # Train on CPU/GPU if no xla
     else:
+        from xla_train import _mp_fn
+
         if cfg.use_dp:
             model_requires_labels = pretrained_model.requires_labels  # stripped by wrapper
             pretrained_model = torch.nn.DataParallel(pretrained_model)

@@ -148,6 +148,11 @@ class AverageMeter(object):
         self.count = 0
 
     def update(self, val, n=1):
+        self.xm.master_print("self.val:", self.val.device if hasattr(self.val, 'device') else "no device")
+        self.xm.master_print("val:", val.device if hasattr(val, 'device') else "no device")
+        self.xm.master_print("n:", n.device if hasattr(n, 'device') else "no device")
+        self.xm.master_print("self.sum:", self.sum.device if hasattr(self.sum, 'device') else "no device")
+        self.xm.master_print("self.count:", self.count.device if hasattr(self.count, 'device') else "no device")
         self.val = val
         self.sum += val * n
         self.count += n
