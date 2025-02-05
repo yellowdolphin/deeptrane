@@ -12,10 +12,12 @@ from config import Config, parser
 from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
 from utils.torch_setup import torchmetrics_version
 
-# Read config file and parser_args
+# Read config files and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
-print("[ √ ] Config file:", parser_args.config_file)
+print("[ √ ] Config file(s):", parser_args.config_file, type(parser_args.config_file))
 cfg = Config('configs/defaults')
+
+
 if parser_args.config_file: cfg.update(parser_args.config_file)
 
 cfg.mode = parser_args.mode

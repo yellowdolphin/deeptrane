@@ -642,19 +642,6 @@ def get_valid_labels(cfg, metadata):
     return metadata.loc[is_valid | is_shared, class_column].values
 
 
-def test_mp_fn(rank, cfg, metadata, pretrained_model, use_fold):
-    # What can we pass here?
-    # metadata: ok
-    # use_fold: ok
-    # cfg: cannot be pickled if it contains any functions (only applies to cfg.modify_state_dict)
-    # xm: Error -> import here
-    # wrapped_model: RuntimeError: Lock objects should only be shared between processes through inheritance
-    # not-wrapped model: ok
-    # Any Error here also raises TypeError: 'NoneType' object is not callable
-    print("rank:", rank)
-    xm.master_print(f'In _mp_fn, rank {rank} world_size:', xm.xrt_world_size())
-
-
 def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     "Singlecore training loop master function"
 
