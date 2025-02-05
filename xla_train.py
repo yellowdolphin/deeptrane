@@ -20,7 +20,7 @@ from torchvision.io import encode_jpeg, decode_jpeg
 #import torch_xla.core.xla_model as xm  # required for multicore version
 
 
-def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, scheduler, device):
+def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, scheduler, device, logfile):
 
     # initialize
     batch_start = time.perf_counter()
@@ -405,6 +405,8 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             info_strings.append(f'mom {optimizer.param_groups[-1]["betas"][0]:.3f}')
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
             xm.master_print(', '.join(info_strings))
+            logfile.write(', '.join(info_strings) + '\n')
+            logfile.flush()
             if hasattr(scheduler, 'get_last_lr'):
                 current_lr = optimizer.param_groups[-1]['lr']
                 assert scheduler.get_last_lr()[-1] == current_lr, f'scheduler: {scheduler.get_last_lr()[-1]}, opt: {current_lr}'
@@ -645,327 +647,338 @@ def get_valid_labels(cfg, metadata):
 def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     "Singlecore training loop master function"
 
-    #rank = rank or xm.get_ordinal()
-    if cfg.xla:
-        #xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
-        print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
+    with open(f'{cfg.out_dir}/train.log', 'w') as logfile:
 
-    # DDP init
-    if cfg.use_ddp:
-        from torch.nn.parallel import DistributedDataParallel as DDP
-        # Assuming torchrun has set all env variables (LOCAL_RANK, ...).
-        torch.distributed.init_process_group("nccl")
+        if cfg.xla:
+            xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
+            #print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
+            logfile.write(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}\n')
+            xm.master_print('Only printing first job output, see log files for other jobs.')
 
-    # Agnostic device setup
-    # xm.xla_device, xm.get_ordinal, rank (unused) are somewhat redundant.
-    # TODO: can we merge rank==device and get rid of xm.xla_device?
-    # TODO: change from xla to DDP API, adapt xla (how use xm?)
-    #device = xm.xla_device()
-    devices = xm.get_xla_supported_devices()
-    device = devices[rank]
-    xm.master_print("device:", device)
+        # DDP init
+        if cfg.use_ddp:
+            from torch.nn.parallel import DistributedDataParallel as DDP
+            # Assuming torchrun has set all env variables (LOCAL_RANK, ...).
+            torch.distributed.init_process_group("nccl")
 
-    # Wrap DDP model
-    if cfg.use_ddp:
-        wrapped_model = DDP(wrapped_model.to(device), device_ids=[device], output_device=device)
-        wrapped_model.requires_labels = wrapped_model.module.requires_labels
+        # Agnostic device setup
+        # xm.xla_device, xm.get_ordinal, rank (unused) are somewhat redundant.
+        # TODO: can we merge rank==device and get rid of xm.xla_device?
+        # TODO: change from xla to DDP API, adapt xla (how use xm?)
+        device = xm.xla_device()
+        xm.master_print("device:", device)
 
-    # XLA deviceloader
-    if cfg.xla:
-        import torch_xla.distributed.parallel_loader as pl
-        loader_prefetch_size = 1
-        device_prefetch_size = 1
-        cfg.deviceloader = cfg.deviceloader or 'mp'  # 'mp' performs better than 'pl' on kaggle
+        # Wrap DDP model
+        if cfg.use_ddp:
+            wrapped_model = DDP(wrapped_model.to(device), device_ids=[device], output_device=device)
+            wrapped_model.requires_labels = wrapped_model.module.requires_labels
 
-    # Dataloaders
-    if cfg.fake_data == 'on_device':
-        is_valid = metadata.is_valid if hasattr(metadata, 'is_valid') else (metadata.fold == use_fold)
-        n_valid = sum(is_valid)
-        n_train = len(is_valid) - n_valid
-        train_loader, valid_loader = np.arange(n_train // cfg.bs // 8), np.arange(n_valid // cfg.bs // 8)
+        # XLA deviceloader
+        if cfg.xla:
+            import torch_xla.distributed.parallel_loader as pl
+            loader_prefetch_size = 1
+            device_prefetch_size = 1
+            cfg.deviceloader = cfg.deviceloader or 'mp'  # 'mp' performs better than 'pl' on kaggle
 
-    elif cfg.fake_data:
-        train_loader, valid_loader = get_fakedata_loaders(cfg, device)
+        # Dataloaders
+        if cfg.fake_data == 'on_device':
+            is_valid = metadata.is_valid if hasattr(metadata, 'is_valid') else (metadata.fold == use_fold)
+            n_valid = sum(is_valid)
+            n_train = len(is_valid) - n_valid
+            train_loader, valid_loader = np.arange(n_train // cfg.bs // 8), np.arange(n_valid // cfg.bs // 8)
 
-    else:
-        train_loader, valid_loader = get_dataloaders(cfg, use_fold, metadata, xm)
+        elif cfg.fake_data:
+            train_loader, valid_loader = get_fakedata_loaders(cfg, device)
 
-    if hasattr(train_loader, 'sampler'):
-        xm.master_print("Dataloader sampler:", train_loader.sampler.__class__.__name__)
-    if hasattr(train_loader, 'num_workers'):
-        xm.master_print("num_workers:", train_loader.num_workers)
-        if train_loader.num_workers and not cfg.DEBUG:
-            # JAX warning about os.fork() call clutters the output
-            import warnings
-            warnings.filterwarnings("ignore")
-            print("INFO: suppressing Warning about os.fork() and JAX potential deadlock.")
-    #batch = next(iter(valid_loader))  # OK
-    #xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
-
-    # Send model to device
-    model = wrapped_model.to(device)
-
-    # Criterion (default reduction: 'mean'), Metrics
-    if cfg.criterion is not None:
-        criterion = cfg.criterion
-    elif cfg.classes is not None:
-        criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()
-    else:
-        criterion = nn.MSELoss()
-    if cfg.use_aux_loss:
-        from segmentation_models_pytorch.losses.dice import DiceLoss
-    seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
-
-    if cfg.loss_weights:
-        cfg.loss_weights = torch.tensor(cfg.loss_weights)
-    else:
-        cfg.loss_weights = None
-
-    # cfg.metrics and metrics need to have identical keys: replace aliases in cfg.metrics
-    aliases = {
-        'micro_acc': 'acc',
-        'f1': 'F1',
-        'macro_f1': 'macro_F1',
-        'class_f1': 'class_F1',
-        'f2': 'F2',
-        'neg_rate': 'pct_N',
-        'map': 'mAP',
-        'eap5': 'eAP5',
-        }
-    cfg.metrics = cfg.metrics or []
-    cfg.metrics = [k.replace(k, aliases[k]) if k in aliases else k for k in cfg.metrics]
-    if cfg.save_best and cfg.save_best in aliases:
-        cfg.save_best = aliases[cfg.save_best]
-    if cfg.save_best:
-        metrics_and_losses = set(cfg.metrics).union(['train_loss', 'valid_loss'])
-        assert cfg.save_best in metrics_and_losses, f'{cfg.save_best} not in {metrics_and_losses}'
-
-    # torchmetrics
-    metrics = get_tm_metrics(cfg, xm)
-
-    xm.master_print('Metrics:', metrics)
-
-    # Don't Scale LRs (optimal lrs don't scale linearly with step size)
-    lr_head, lr_bn, lr_body = cfg.lr_head, cfg.lr_bn, cfg.lr_body
-
-    # Parameter Groups
-    use_parameter_groups = False if lr_head == lr_bn == lr_body else True
-    if use_parameter_groups:
-        xm.master_print(f"Using parameter groups. lr_head={lr_head}, lr_body={lr_body}, lr_bn={lr_bn}")
-        parameter_groups = {
-            'body': (p for name, p in model.body.named_parameters() if not is_bn(name)),
-            'head': model.head.parameters(),
-            'bn':   (p for name, p in model.body.named_parameters() if is_bn(name)),
-        }
-        max_lrs = {'body': lr_body, 'head': lr_head, 'bn': lr_bn}
-        params = [{'params': parameter_groups[g], 'lr': max_lrs[g]}
-                  for g in parameter_groups.keys()]
-        max_lrs = list(max_lrs.values())
-    else:
-        max_lrs = lr_head
-        params = model.parameters()
-
-    # Optimizer
-    optimizer = (
-        optim.AdamW(params, lr=lr_head, betas=cfg.betas, weight_decay=cfg.wd) if cfg.optimizer == 'AdamW' else
-        optim.Adam(params, lr=lr_head, betas=cfg.betas)                       if cfg.optimizer == 'Adam' else
-        optim.SGD(params, lr=lr_head, momentum=cfg.betas[0], dampening=1 - cfg.betas[1]))
-    rst_epoch = 0
-    if cfg.rst_name:
-        opt_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.opt'
-        if opt_file.exists() and not cfg.reset_opt:
-            checkpoint = torch.load(opt_file, map_location='cpu')
-            xm.master_print("Restarting from previous opt state")
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            rst_epoch = checkpoint['epoch'] + 1
-            cfg.optimizer_restarted = True
-    rst_epoch = cfg.rst_epoch or rst_epoch
-
-    # Scheduler
-    if cfg.one_cycle:
-        scheduler = get_one_cycle_scheduler(optimizer, max_lrs, cfg,
-                                            xm, rst_epoch, train_loader)
-    elif cfg.reduce_on_plateau:
-        # ReduceLROnPlateau must be called after validation
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5,
-                                                   patience=5, verbose=True, eps=1e-6)
-    elif isinstance(cfg.step_lr_after, int) and cfg.step_lr_factor > 0:
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=cfg.step_lr_after,
-                                        gamma=cfg.step_lr_factor)
-    elif hasattr(cfg.step_lr_after, '__iter__') and cfg.step_lr_factor > 0:
-        scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=cfg.step_lr_after,
-                                             gamma=cfg.step_lr_factor)
-    else:
-        scheduler = None
-    if scheduler:
-        xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
-        _lrs = [p["lr"] for p in optimizer.param_groups]
-        xm.master_print(f"""Initial lrs: {', '.join(f'{lr:7.2e}' for lr in _lrs)}""")
-        _lrs = [lr for lr in listify(max_lrs)]
-        xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in _lrs)}")
-        if hasattr(scheduler, 'step'):
-            xm.master_print(f"Batchwise stepping:", hasattr(scheduler, 'batchwise'))
-    if cfg.optimizer_restarted and scheduler is None:
-        for i, param_group in enumerate(optimizer.param_groups):
-            param_group['lr'] = max_lrs[i] if use_parameter_groups else max_lrs
-
-    # Maybe freeze body
-    if hasattr(model, 'body') and lr_body == 0:
-        xm.master_print("Freezing body of pretrained model")
-        for n, p in model.body.named_parameters():
-            if not is_bn(n):
-                p.requires_grad = False
-
-    model_name = f'{cfg.name}_fold{use_fold}'
-    xm.master_print(f'Checkpoints will be saved as {cfg.out_dir}/{model_name}_ep*')
-    step_size = cfg.bs * cfg.n_replicas * cfg.n_acc
-    xm.master_print(f'Training {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
-                    f'step_size={step_size}, lr={cfg.lr_head} on fold {use_fold}')
-
-    #
-    #
-    ### Training Loop ---------------------------------------------------------
-
-    metrics_dicts = []
-    best_model_score = -np.inf
-    epoch_summary_header = ''.join([
-        'epoch   ', ' train_loss ', ' valid_loss ',
-        ' '.join([f'{key:^8}' for key in cfg.metrics if not is_listmetric(metrics[key])]),
-        '   lr    ', 'min_train  min_total'])
-    xm.master_print("\n", epoch_summary_header)
-    xm.master_print("=" * (len(epoch_summary_header) + 2))
-
-    for epoch in range(rst_epoch, cfg.epochs):
-
-        # Data for verbose info
-        assert 'tf' not in globals(), 'TF has been imported!'
-        xm.master_print(f"Epoch {epoch + 1} / {cfg.epochs}, starting at {time.strftime('%a, %d %b %Y %H:%M:%S +0000')}")
-        epoch_start = time.perf_counter()
-        current_lr = optimizer.param_groups[-1]["lr"]
-        if hasattr(scheduler, 'get_last_lr'):
-            # after restart, they disagree and scheduler is correct.
-            #assert scheduler.get_last_lr()[-1] == current_lr, f'scheduler: {scheduler.get_last_lr()[-1]}, opt: {current_lr}'
-            current_lr = scheduler.get_last_lr()[-1]
-
-        # Update train_loader shuffling
-        if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
-            train_loader.sampler.set_epoch(epoch)
-
-        # Training Step
-        if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
-            # ParallelLoader requires instantiation per epoch
-            dataloader = pl.ParallelLoader(train_loader, [device],
-                                           loader_prefetch_size=loader_prefetch_size,
-                                           device_prefetch_size=device_prefetch_size
-                                           ).per_device_loader(device)
         else:
-            dataloader = train_loader
+            train_loader, valid_loader = get_dataloaders(cfg, use_fold, metadata, xm)
 
-        train_loss = train_fn(model, cfg, xm,
-                              dataloader  = dataloader,
-                              criterion   = criterion,
-                              seg_crit    = seg_crit,
-                              optimizer   = optimizer,
-                              scheduler   = scheduler,
-                              device      = device)
+        if hasattr(train_loader, 'sampler'):
+            xm.master_print("Dataloader sampler:", train_loader.sampler.__class__.__name__)
+        if hasattr(train_loader, 'num_workers'):
+            xm.master_print("num_workers:", train_loader.num_workers)
+            if train_loader.num_workers and not cfg.DEBUG:
+                # JAX warning about os.fork() call clutters the output
+                import warnings
+                warnings.filterwarnings("ignore")
+                print("INFO: suppressing Warning about os.fork() and JAX potential deadlock.")
+        #batch = next(iter(valid_loader))  # OK
+        #xm.master_print("test batch:", len(batch), batch[0].shape, batch[1].shape)
 
-        # Validation Step
-        valid_start = time.perf_counter()
+        # Send model to device
+        model = wrapped_model.to(device)
 
-        if cfg.train_on_all:
-            valid_loss, valid_metrics = 0, {}
+        # Criterion (default reduction: 'mean'), Metrics
+        if cfg.criterion is not None:
+            criterion = cfg.criterion
+        elif cfg.classes is not None:
+            criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()
         else:
+            criterion = nn.MSELoss()
+        if cfg.use_aux_loss:
+            from segmentation_models_pytorch.losses.dice import DiceLoss
+        seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
+
+        if cfg.loss_weights:
+            cfg.loss_weights = torch.tensor(cfg.loss_weights)
+        else:
+            cfg.loss_weights = None
+
+        # cfg.metrics and metrics need to have identical keys: replace aliases in cfg.metrics
+        aliases = {
+            'micro_acc': 'acc',
+            'f1': 'F1',
+            'macro_f1': 'macro_F1',
+            'class_f1': 'class_F1',
+            'f2': 'F2',
+            'neg_rate': 'pct_N',
+            'map': 'mAP',
+            'eap5': 'eAP5',
+            }
+        cfg.metrics = cfg.metrics or []
+        cfg.metrics = [k.replace(k, aliases[k]) if k in aliases else k for k in cfg.metrics]
+        if cfg.save_best and cfg.save_best in aliases:
+            cfg.save_best = aliases[cfg.save_best]
+        if cfg.save_best:
+            metrics_and_losses = set(cfg.metrics).union(['train_loss', 'valid_loss'])
+            assert cfg.save_best in metrics_and_losses, f'{cfg.save_best} not in {metrics_and_losses}'
+
+        # torchmetrics
+        metrics = get_tm_metrics(cfg, xm)
+
+        xm.master_print('Metrics:', metrics)
+
+        # Don't Scale LRs (optimal lrs don't scale linearly with step size)
+        lr_head, lr_bn, lr_body = cfg.lr_head, cfg.lr_bn, cfg.lr_body
+
+        # Parameter Groups
+        use_parameter_groups = False if lr_head == lr_bn == lr_body else True
+        if use_parameter_groups:
+            xm.master_print(f"Using parameter groups. lr_head={lr_head}, lr_body={lr_body}, lr_bn={lr_bn}")
+            parameter_groups = {
+                'body': (p for name, p in model.body.named_parameters() if not is_bn(name)),
+                'head': model.head.parameters(),
+                'bn':   (p for name, p in model.body.named_parameters() if is_bn(name)),
+            }
+            max_lrs = {'body': lr_body, 'head': lr_head, 'bn': lr_bn}
+            params = [{'params': parameter_groups[g], 'lr': max_lrs[g]}
+                    for g in parameter_groups.keys()]
+            max_lrs = list(max_lrs.values())
+        else:
+            max_lrs = lr_head
+            params = model.parameters()
+
+        # Optimizer
+        optimizer = (
+            optim.AdamW(params, lr=lr_head, betas=cfg.betas, weight_decay=cfg.wd) if cfg.optimizer == 'AdamW' else
+            optim.Adam(params, lr=lr_head, betas=cfg.betas)                       if cfg.optimizer == 'Adam' else
+            optim.SGD(params, lr=lr_head, momentum=cfg.betas[0], dampening=1 - cfg.betas[1]))
+        rst_epoch = 0
+        if cfg.rst_name:
+            opt_file = Path(cfg.rst_path) / f'{removesuffix(cfg.rst_name, ".pth")}.opt'
+            if opt_file.exists() and not cfg.reset_opt:
+                checkpoint = torch.load(opt_file, map_location='cpu')
+                xm.master_print("Restarting from previous opt state")
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                rst_epoch = checkpoint['epoch'] + 1
+                cfg.optimizer_restarted = True
+        rst_epoch = cfg.rst_epoch or rst_epoch
+
+        # Scheduler
+        if cfg.one_cycle:
+            scheduler = get_one_cycle_scheduler(optimizer, max_lrs, cfg,
+                                                xm, rst_epoch, train_loader)
+        elif cfg.reduce_on_plateau:
+            # ReduceLROnPlateau must be called after validation
+            scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5,
+                                                    patience=5, verbose=True, eps=1e-6)
+        elif isinstance(cfg.step_lr_after, int) and cfg.step_lr_factor > 0:
+            scheduler = lr_scheduler.StepLR(optimizer, step_size=cfg.step_lr_after,
+                                            gamma=cfg.step_lr_factor)
+        elif hasattr(cfg.step_lr_after, '__iter__') and cfg.step_lr_factor > 0:
+            scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=cfg.step_lr_after,
+                                                gamma=cfg.step_lr_factor)
+        else:
+            scheduler = None
+        if scheduler:
+            xm.master_print(f"Scheduler: {scheduler.__class__.__name__}")
+            _lrs = [p["lr"] for p in optimizer.param_groups]
+            xm.master_print(f"""Initial lrs: {', '.join(f'{lr:7.2e}' for lr in _lrs)}""")
+            _lrs = [lr for lr in listify(max_lrs)]
+            xm.master_print(f"Max lrs:     {', '.join(f'{lr:7.2e}' for lr in _lrs)}")
+            if hasattr(scheduler, 'step'):
+                xm.master_print(f"Batchwise stepping:", hasattr(scheduler, 'batchwise'))
+        if cfg.optimizer_restarted and scheduler is None:
+            for i, param_group in enumerate(optimizer.param_groups):
+                param_group['lr'] = max_lrs[i] if use_parameter_groups else max_lrs
+
+        # Maybe freeze body
+        if hasattr(model, 'body') and lr_body == 0:
+            xm.master_print("Freezing body of pretrained model")
+            for n, p in model.body.named_parameters():
+                if not is_bn(n):
+                    p.requires_grad = False
+
+        model_name = f'{cfg.name}_fold{use_fold}'
+        xm.master_print(f'Checkpoints will be saved as {cfg.out_dir}/{model_name}_ep*')
+        step_size = cfg.bs * cfg.n_replicas * cfg.n_acc
+        xm.master_print(f'Training {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
+                        f'step_size={step_size}, lr={cfg.lr_head} on fold {use_fold}')
+
+        #
+        #
+        ### Training Loop ---------------------------------------------------------
+
+        metrics_dicts = []
+        best_model_score = -np.inf
+        epoch_summary_header = ''.join([
+            'epoch   ', ' train_loss ', ' valid_loss ',
+            ' '.join([f'{key:^8}' for key in cfg.metrics if not is_listmetric(metrics[key])]),
+            '   lr    ', 'min_train  min_total'])
+        xm.master_print("\n", epoch_summary_header)
+        logfile.write(f'\n{epoch_summary_header}\n')
+        xm.master_print("=" * (len(epoch_summary_header) + 2))
+        logfile.write("=" * (len(epoch_summary_header) + 2) + '\n')
+        logfile.flush()
+
+        for epoch in range(rst_epoch, cfg.epochs):
+
+            # Data for verbose info
+            assert 'tf' not in globals(), 'TF has been imported!'
+            xm.master_print(f"Epoch {epoch + 1} / {cfg.epochs}, starting at {time.strftime('%a, %d %b %Y %H:%M:%S +0000')}")
+            logfile.write(f"Epoch {epoch + 1} / {cfg.epochs}, starting at {time.strftime('%a, %d %b %Y %H:%M:%S +0000')}\n")
+            logfile.flush()
+            epoch_start = time.perf_counter()
+            current_lr = optimizer.param_groups[-1]["lr"]
+            if hasattr(scheduler, 'get_last_lr'):
+                # after restart, they disagree and scheduler is correct.
+                #assert scheduler.get_last_lr()[-1] == current_lr, f'scheduler: {scheduler.get_last_lr()[-1]}, opt: {current_lr}'
+                current_lr = scheduler.get_last_lr()[-1]
+
+            # Update train_loader shuffling
+            if hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
+                train_loader.sampler.set_epoch(epoch)
+
+            # Training Step
             if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
                 # ParallelLoader requires instantiation per epoch
-                dataloader = pl.ParallelLoader(valid_loader, [device],
-                                               loader_prefetch_size=loader_prefetch_size,
-                                               device_prefetch_size=device_prefetch_size
-                                               ).per_device_loader(device)
+                dataloader = pl.ParallelLoader(train_loader, [device],
+                                            loader_prefetch_size=loader_prefetch_size,
+                                            device_prefetch_size=device_prefetch_size
+                                            ).per_device_loader(device)
             else:
-                dataloader = valid_loader
+                dataloader = train_loader
 
-            valid_loss, valid_metrics = valid_fn(model, cfg, xm,
-                                                 dataloader  = dataloader,
-                                                 criterion   = criterion,
-                                                 device      = device,
-                                                 metrics     = metrics)
+            train_loss = train_fn(model, cfg, xm,
+                                dataloader  = dataloader,
+                                criterion   = criterion,
+                                seg_crit    = seg_crit,
+                                optimizer   = optimizer,
+                                scheduler   = scheduler,
+                                device      = device,
+                                logfile     = logfile)
 
-        metrics_dict = {'epoch': epoch + 1,
-                        'train_loss': train_loss, 
-                        'valid_loss': valid_loss}
-        metrics_dict.update(valid_metrics)
-        last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else current_lr
-        avg_lr = 0.5 * (current_lr + last_lr)
-        metrics_dict['lr'] = avg_lr
+            # Validation Step
+            valid_start = time.perf_counter()
 
-        # Print epoch summary
-        epoch_summary_strings = [f'{epoch + 1:>2} / {cfg.epochs:<2}']                     # ep/epochs
-        epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
-        epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
-        for key in cfg.metrics:                                                           # metrics
-            # cannot use valid_metric.items() because MetricCollection re-orders keys alphabetically
-            val = valid_metrics[key] if key in valid_metrics else 0
-            if isinstance(val, list):
-                if getattr(metrics[key], 'average', '') is not None:
-                    xm.master_print(f'Warning: metric {key} returned list but "average" attribute is not None')
-                xm.master_print(key + ':\t' + "\t".join(f'{v:.5f}' for v in val))
+            if cfg.train_on_all:
+                valid_loss, valid_metrics = 0, {}
             else:
-                epoch_summary_strings.append(f'{val:7.5f}')
-        epoch_summary_strings.append(f'{avg_lr:7.1e}')                                    # lr
-        epoch_summary_strings.append(f'{(valid_start - epoch_start) / 60:7.2f}')          # Wall train
-        epoch_summary_strings.append(f'{(time.perf_counter() - epoch_start) / 60:7.2f}')  # Wall total
-        xm.master_print('  '.join(epoch_summary_strings))
+                if cfg.xla and (cfg.deviceloader == 'pl') and (cfg.fake_data != 'on_device'):
+                    # ParallelLoader requires instantiation per epoch
+                    dataloader = pl.ParallelLoader(valid_loader, [device],
+                                                loader_prefetch_size=loader_prefetch_size,
+                                                device_prefetch_size=device_prefetch_size
+                                                ).per_device_loader(device)
+                else:
+                    dataloader = valid_loader
 
-        # Save weights, optimizer state, scheduler state
-        # Note: xm.save must not be inside an if statement that may validate differently on
-        # different TPU cores. Reason: rendezvous inside them will hang if any core
-        # does not arrive at the rendezvous.
-        model_score = metrics_dict[cfg.save_best] if cfg.save_best else -valid_loss
-        if cfg.save_best and 'loss' in cfg.save_best: model_score = -model_score
-        if model_score > best_model_score or not cfg.save_best:
-            if cfg.save_best:
-                best_model_score = model_score
-                xm.master_print(f'{cfg.save_best or "valid_loss"} improved.')
-                fn = cfg.out_dir / f'{model_name}_best_{cfg.save_best}'
-            else:
-                fn = cfg.out_dir / f'{model_name}_ep{epoch + 1}'
+                valid_loss, valid_metrics = valid_fn(model, cfg, xm,
+                                                    dataloader  = dataloader,
+                                                    criterion   = criterion,
+                                                    device      = device,
+                                                    metrics     = metrics)
 
-            #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
-            xm.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
+            metrics_dict = {'epoch': epoch + 1,
+                            'train_loss': train_loss, 
+                            'valid_loss': valid_loss}
+            metrics_dict.update(valid_metrics)
+            last_lr = optimizer.param_groups[-1]["lr"] if hasattr(scheduler, 'batchwise') else current_lr
+            avg_lr = 0.5 * (current_lr + last_lr)
+            metrics_dict['lr'] = avg_lr
 
-            #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
-            xm.save({'optimizer_state_dict': optimizer.state_dict(),
-                     'epoch': epoch}, f'{fn}.opt')
+            # Print epoch summary
+            epoch_summary_strings = [f'{epoch + 1:>2} / {cfg.epochs:<2}']                     # ep/epochs
+            epoch_summary_strings.append(f'{train_loss:10.5f}')                               # train_loss
+            epoch_summary_strings.append(f'{valid_loss:10.5f}')                               # valid_loss
+            for key in cfg.metrics:                                                           # metrics
+                # cannot use valid_metric.items() because MetricCollection re-orders keys alphabetically
+                val = valid_metrics[key] if key in valid_metrics else 0
+                if isinstance(val, list):
+                    if getattr(metrics[key], 'average', '') is not None:
+                        xm.master_print(f'Warning: metric {key} returned list but "average" attribute is not None')
+                    xm.master_print(key + ':\t' + "\t".join(f'{v:.5f}' for v in val))
+                    logfile.write(key + ':\t' + "\t".join(f'{v:.5f}' for v in val) + '\n')
+                else:
+                    epoch_summary_strings.append(f'{val:7.5f}')
+            epoch_summary_strings.append(f'{avg_lr:7.1e}')                                    # lr
+            epoch_summary_strings.append(f'{(valid_start - epoch_start) / 60:7.2f}')          # Wall train
+            epoch_summary_strings.append(f'{(time.perf_counter() - epoch_start) / 60:7.2f}')  # Wall total
+            xm.master_print('  '.join(epoch_summary_strings))
+            logfile.write('  '.join(epoch_summary_strings) + '\n')
+            logfile.flush()
 
-            if hasattr(scheduler, 'state_dict'):
-                #xm.master_print(f'saving {model_name}_ep{epoch+1}.sched ...')
-                xm.save({'scheduler_state_dict': {
-                    k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
-                    f'{fn}.sched')
+            # Save weights, optimizer state, scheduler state
+            # Note: xm.save must not be inside an if statement that may validate differently on
+            # different TPU cores. Reason: rendezvous inside them will hang if any core
+            # does not arrive at the rendezvous.
+            model_score = metrics_dict[cfg.save_best] if cfg.save_best else -valid_loss
+            if cfg.save_best and 'loss' in cfg.save_best: model_score = -model_score
+            if model_score > best_model_score or not cfg.save_best:
+                if cfg.save_best:
+                    best_model_score = model_score
+                    xm.master_print(f'{cfg.save_best or "valid_loss"} improved.')
+                    logfile.write(f'{cfg.save_best or "valid_loss"} improved.\n')
+                    fn = cfg.out_dir / f'{model_name}_best_{cfg.save_best}'
+                else:
+                    fn = cfg.out_dir / f'{model_name}_ep{epoch + 1}'
 
-        # Save metrics in pth and csv file (rank 0 only)
-        metrics_dict['Wall'] = (time.perf_counter() - epoch_start) / 60
+                #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
+                xm.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
 
-        metrics_dicts.append(metrics_dict)
-        xm.save({k: [d[k] for d in metrics_dicts] for k in metrics_dicts[0]}, 
-                Path(cfg.out_dir) / f'metrics_fold{use_fold}.pth')
+                #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
+                xm.save({'optimizer_state_dict': optimizer.state_dict(),
+                        'epoch': epoch}, f'{fn}.opt')
 
-        if (cfg.n_replicas == 1) or (xm.get_ordinal() == 0):
-            csv_file = Path(cfg.out_dir) / f'metrics_fold{use_fold}.csv'
-            if csv_file.exists():
-                with open(csv_file, 'r') as fp:
-                    keys = fp.readline().strip().split(',')
-            else:
-                keys = list(metrics_dict.keys())
-                with open(csv_file, 'w') as fp:
-                    fp.write(','.join(keys) + '\n')
-            try:
-                line_str = ','.join(str(metrics_dict[key]) for key in keys)
-                with open(csv_file, 'a') as fp:
-                    fp.write(line_str + '\n')
-            except KeyError as e:
-                xm.master_print(key, 'missing in metrics_dict, which has keys', list(metrics_dict.keys()))
-                xm.master_print(f"Probably, {csv_file} is not a PyTorch metrics.csv file!")
+                if hasattr(scheduler, 'state_dict'):
+                    #xm.master_print(f'saving {model_name}_ep{epoch+1}.sched ...')
+                    xm.save({'scheduler_state_dict': {
+                        k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
+                        f'{fn}.sched')
 
-    if cfg.use_ddp:
-        torch.distributed.destroy_process_group()
+            # Save metrics in pth and csv file (rank 0 only)
+            metrics_dict['Wall'] = (time.perf_counter() - epoch_start) / 60
+
+            metrics_dicts.append(metrics_dict)
+            xm.save({k: [d[k] for d in metrics_dicts] for k in metrics_dicts[0]}, 
+                    Path(cfg.out_dir) / f'metrics_fold{use_fold}.pth')
+
+            if (cfg.n_replicas == 1) or (xm.get_ordinal() == 0):
+                csv_file = Path(cfg.out_dir) / f'metrics_fold{use_fold}.csv'
+                if csv_file.exists():
+                    with open(csv_file, 'r') as fp:
+                        keys = fp.readline().strip().split(',')
+                else:
+                    keys = list(metrics_dict.keys())
+                    with open(csv_file, 'w') as fp:
+                        fp.write(','.join(keys) + '\n')
+                try:
+                    line_str = ','.join(str(metrics_dict[key]) for key in keys)
+                    with open(csv_file, 'a') as fp:
+                        fp.write(line_str + '\n')
+                except KeyError as e:
+                    xm.master_print(key, 'missing in metrics_dict, which has keys', list(metrics_dict.keys()))
+                    xm.master_print(f"Probably, {csv_file} is not a PyTorch metrics.csv file!")
+
+        if cfg.use_ddp:
+            torch.distributed.destroy_process_group()

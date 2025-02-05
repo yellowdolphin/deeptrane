@@ -47,10 +47,10 @@ lr_head = 1e-2
 one_cycle = True
 div_factor = 5                            # default: 25, from Chest14: 1
 pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
-save_best = 'train_loss'
+save_best = None  # 'train_loss'
 
 # Model
-arch_name = 'rexnet_130'
+arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
@@ -58,7 +58,7 @@ rst_path = '/kaggle/input/autolevels-modelbox'
 #rst_name = ''
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [12, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'SiLU'
 
 

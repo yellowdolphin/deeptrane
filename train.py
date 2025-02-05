@@ -5,68 +5,45 @@ from glob import glob
 from pathlib import Path
 import importlib
 from multiprocessing import cpu_count
+import types
 #import warnings
 #warnings.filterwarnings('ignore')
 
-from config import Config, parser
+from config import Config, parser, DotDict
 from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
-from utils.torch_setup import torchmetrics_version
 
-# Read config files and parser_args
-parser_args, _ = parser.parse_known_args(sys.argv)
-print("[ √ ] Config file(s):", parser_args.config_file, type(parser_args.config_file))
-cfg = Config('configs/defaults')
+from metadata import get_metadata
+from models import get_pretrained_timm2, get_smp_model
+
+# Import project (code, constant settings)
+project = importlib.import_module('projects.autolevels')
 
 
-if parser_args.config_file: cfg.update(parser_args.config_file)
+DEBUG = False
+cloud = 'kaggle' if 'KAGGLE_DOCKER_IMAGE' in os.environ else 'drive' if os.path.exists('/content') else 'gcp'
+use_timm = True
 
-cfg.mode = parser_args.mode
-cfg.use_folds = parser_args.use_folds or cfg.use_folds
-cfg.epochs = parser_args.epochs or cfg.epochs
-cfg.batch_verbose = parser_args.batch_verbose or cfg.batch_verbose
-cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
-cfg.metrics = parser_args.metrics or cfg.metrics
-cfg.betas = parser_args.betas or cfg.betas
-for key in 'dropout_ps lin_ftrs freeze'.split():
-    setattr(cfg, key, cfg[key] if getattr(parser_args, key) is None else listify(getattr(parser_args, key)))
-for key, value in listify(parser_args.set):
-    autotype(cfg, key, value)
-
-cfg.cloud = 'kaggle' if 'KAGGLE_DOCKER_IMAGE' in os.environ else 'drive' if os.path.exists('/content') else 'gcp'
-if cfg.cloud == 'drive':
-    cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
-
-print(cfg)
-print("[ √ ] Cloud:", cfg.cloud)
-if cfg.cloud == 'kaggle':
+print("[ √ ] Cloud:", cloud)
+if cloud == 'kaggle':
     print("      Docker Image:", os.environ.get('KAGGLE_DOCKER_IMAGE', '?'))
-print("[ √ ] Tags:", cfg.tags)
-print("[ √ ] Mode:", cfg.mode)
-print("[ √ ] Folds:", cfg.use_folds)
-print("[ √ ] Architecture:", cfg.arch_name)
-
-cfg.save_yaml()
-
-# Config consistency checks
-if cfg.rst_name is not None:
-    rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
-    assert rst_file.exists(), f'{rst_file} not found'  # fail early
-cfg.out_dir = Path(cfg.out_dir)
-
-wheels_path = cfg.wheels_path or ('/kaggle/input/popular-wheels' if cfg.cloud == 'kaggle' else None)
-pip_option = f'-f file://{wheels_path}' if wheels_path else ''
-print("")
+print(f"[ √ ] {cpu_count()} CPUs")
 
 # Install torch.xla on TPU supported nodes
 tpu_vars = 'TPU_ACCELERATOR_TYPE TPU_PROCESS_ADDRESSES PYTORCH_LIBTPU PIP_LIBTPU ACCELERATOR_TYPE AGENT_BOOTSTRAP_IMAGE TPU_SKIP_MDS_QUERY TPU_TOPOLOGY_WRAP TPU_HOST_BOUNDS'.split()
 tpu_vars.extend(['COLAB_TPU_ADDR', 'XRT_TPU_CONFIG'])  # colab
-if any([v in os.environ for v in tpu_vars]):
-    cfg.xla = True
+found_xla = any([v in os.environ for v in tpu_vars])
+if found_xla:
+    # This is necessary to make xmp.spawn(process, start_method='fork') work:
+    #print(f"TPU_PROCESS_ADDRESSES: {os.environ.get('TPU_PROCESS_ADDRESSES', None)}")  # local
+    if 'TPU_PROCESS_ADDRESSES' in os.environ:
+        os.environ.pop('TPU_PROCESS_ADDRESSES')  # see https://github.com/pytorch/xla/issues/8215
+
+    xla_nightly = False
     # '1.8.1' works on kaggle and colab, nightly only on kaggle
-    #xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.8.1', '')
-    xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if cfg.xla_nightly else ('1.10.0', '')
+    #xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if xla_nightly else ('1.8.1', '')
+    xla_version, apt_libs = ('nightly', '--apt-packages libomp5 libopenblas-dev') if xla_nightly else ('1.10.0', '')
     # Auto installation
-    if (cfg.cloud == 'drive'):
+    if (cloud == 'drive'):
         # Colab runs now python 3.10
         # check xla_version for python 3.10: $ gsutil ls gs://tpu-pytorch/wheels/colab/*cp310*.whl
         # There is only one python 3.10 wheel for torch_xla, none for torch/torchvision.
@@ -76,7 +53,7 @@ if any([v in os.environ for v in tpu_vars]):
             import torch_xla
         except ModuleNotFoundError:
             wheel = 'https://storage.googleapis.com/tpu-pytorch/wheels/colab/torch_xla-2.0-cp310-cp310-linux_x86_64.whl'
-            quietly_run(f'pip install cloud-tpu-client==0.10 torch==2.0.0 torchvision==0.15.1 {wheel}', debug=cfg.DEBUG)
+            quietly_run(f'pip install cloud-tpu-client==0.10 torch==2.0.0 torchvision==0.15.1 {wheel}', debug=False)
             import torch_xla
     #elif (xla_version != '1.8.1') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
     elif (xla_version != '1.10.0') and not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla/experimental/pjrt.py'):
@@ -90,7 +67,7 @@ if any([v in os.environ for v in tpu_vars]):
                 'curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py',
                 f'{sys.executable} pytorch-xla-env-setup.py --version {xla_version} {apt_libs}',
                 'pip install -U numpy',  # nightly torch_xla needs newer numpy but does not "require" it
-                debug=cfg.DEBUG)
+                debug=DEBUG)
             print("LD_LIBRARY_PATH:", os.environ['LD_LIBRARY_PATH'])
     elif not os.path.exists('/opt/conda/lib/python3.7/site-packages/torch_xla'):
         try:
@@ -100,7 +77,7 @@ if any([v in os.environ for v in tpu_vars]):
             print("running pytorch-xla-env-setup.py --version 1.10.0 ...")
             quietly_run(
                 f'{sys.executable} pytorch-xla-env-setup.py --version 1.10.0',
-                debug=cfg.DEBUG)
+                debug=DEBUG)
             # for some reason does not install torch
             #quietly_run('pip install torch==1.10.0', debug=True)
     print("[ √ ] Python:", sys.version.replace('\n', ''))
@@ -116,191 +93,84 @@ if any([v in os.environ for v in tpu_vars]):
 import torch
 print("[ √ ] torch:", torch.__version__)
 
-# Install (xla compatible) torchmetrics
-#if cfg.xla and torchmetrics_version() != 'xla_compatible':
-    # Use own fork while current torchmetrics is broken. FIXED!
-    #quietly_run('pip install git+https://github.com/yellowdolphin/metrics.git', debug=cfg.DEBUG)
-
-    # Current version works with torch_xla and torch 1.8.1, but torch requirement is not met by "1.8.0a0+56b43f4",
-    # have to prevent re-installation of wrong torch version. FIXED!
-    # Switch to pypi when distributed_available fix is out (10.4?)
-    #quietly_run('pip install --no-deps git+https://github.com/Lightning-AI/metrics.git', debug=cfg.DEBUG)
-    #quietly_run('pip install numpy>=1.17.2 packaging typing-extensions lightning-utilities >=0.7.0, <0.8.0')
-#    print("installing current version of torchmetrics with requirements...")
-#    quietly_run('pip install -U torchmetrics', debug=True)
-#elif not cfg.xla and not torchmetrics_version():
-#    quietly_run('pip install torchmetrics>=0.8', debug=cfg.DEBUG)
-#else:
-#    # require 0.8.0+ for kwarg compute_groups
-#    tm_version = torchmetrics_version().split('.')
-#    if tm_version[0] == '0' and int(tm_version[1]) < 8:
-#        print("installing current version of torchmetrics...")
-#        quietly_run('pip install -U torchmetrics', debug=True)
-
 # Install torchmetrics
 quietly_run('pip install torchmetrics>=0.11.1')
 
 # Install timm
-if cfg.use_timm:
+if use_timm:
     try:
         import timm
     except ModuleNotFoundError:
-        quietly_run(f'pip install {pip_option} timm', debug=cfg.DEBUG)
+        wheels_path = '/kaggle/input/popular-wheels' if cloud == 'kaggle' else None
+        pip_option = f'-f file://{wheels_path}' if wheels_path else ''
+        quietly_run(f'pip install {pip_option} timm', debug=DEBUG)
         import timm
     print("[ √ ] timm:", timm.__version__)
 
-# Install keras if preprocess_inputs is needed
-if cfg.cloud == 'kaggle' and cfg.normalize in ['torch', 'tf', 'caffe']:
-    quietly_run(f'pip install keras=={tf.keras.__version__}', debug=cfg.DEBUG)
-if cfg.filetype == 'wds':
-    quietly_run('pip install webdataset', debug=cfg.DEBUG)
+
+from xla_train import _mp_fn
+
+def launch_mp_fns(rank, configs, metadatas, models):
+    xm.master_print("lauching jobs...")
+    cfg = DotDict(configs[rank])
+    model = models[rank]
+    metadata = metadatas[rank]
+    return _mp_fn(rank, cfg, metadata, model, xm, 0)
 
 
-print(f"[ √ ] {cpu_count()} CPUs")
+# Read config files and parser_args
+parser_args, _ = parser.parse_known_args(sys.argv)
+if found_xla:
+    assert len(parser_args.config_files) == 8, 'need 8 configs for 8 TPU cores!'
 
-# Determine GPU usage
-cfg.gpu = not cfg.xla and torch.cuda.is_available()
-if not (cfg.gpu and torch.cuda.device_count() > 1):
-    cfg.use_dp = cfg.use_ddp = False
-else:
-    # For now, ddp jobs must be run with torchrun, which sets 'RANK'
-    cfg.use_ddp = int(os.environ.get('RANK', -1)) != -1
-if cfg.use_ddp:
-    cfg.use_dp = False  # ddp overrides dp
+configs = []
+metadatas = []
+models = []
+for job_id, config_file in enumerate(parser_args.config_files):
+    print(f"\n    --- job {job_id} ---")
+    cfg = Config('configs/defaults')
+    cfg.update(config_file)
 
-# Get distributed namespace for detected accelerator: "xm"
-if cfg.xla:
-    import torch_xla.core.xla_model as xm
-    import torch_xla.debug.metrics as met
+    cfg.DEBUG = DEBUG
+    cfg.mode = parser_args.mode
+    cfg.use_folds = parser_args.use_folds or cfg.use_folds
+    cfg.epochs = parser_args.epochs or cfg.epochs
+    cfg.batch_verbose = parser_args.batch_verbose or cfg.batch_verbose
+    cfg.size = cfg.size if parser_args.size is None else sizify(parser_args.size)
+    cfg.metrics = parser_args.metrics or cfg.metrics
+    cfg.betas = parser_args.betas or cfg.betas
+    for key in 'dropout_ps lin_ftrs freeze'.split():
+        setattr(cfg, key, cfg[key] if getattr(parser_args, key) is None else listify(getattr(parser_args, key)).copy())
+    for key, value in listify(parser_args.set):
+        autotype(cfg, key, value)
+    print(f"[ √ ] lin_ftrs from {config_file}/parser: {cfg.lin_ftrs}")
 
-elif cfg.use_ddp:
-    print("Using pseudo class for xm.")
-    from torch.distributed import ReduceOp
+    cfg.cloud = cloud
+    if cfg.cloud == 'drive':
+        cfg.out_dir = get_drive_out_dir(cfg)  # config.yaml and experiments go there
 
-    class xm(object):
-        "Pseudo class to overload torch_xla.core.xla_model"
-        RANK = int(os.environ['LOCAL_RANK'])
-        WORLD_SIZE = int(os.environ['WORLD_SIZE'])
+    print(cfg)
+    print("[ √ ] Tags:", cfg.tags)
+    print("[ √ ] Mode:", cfg.mode)
+    print("[ √ ] Folds:", cfg.use_folds)
+    print("[ √ ] Architecture:", cfg.arch_name)
 
-        @classmethod
-        def get_ordinal(cls):
-            "faster than torch.distributed.get_rank()"
-            return cls.RANK
+    out_dir = Path(cfg.out_dir) / f'job_{job_id}'
+    os.makedirs(out_dir, exist_ok=True)
+    cfg.save_yaml(out_dir / 'config.yaml')
+    cfg.out_dir = out_dir
 
-        @classmethod
-        def xrt_world_size(cls):
-            "faster than torch.distributed.get_world_size()"
-            return cls.WORLD_SIZE
+    # Config consistency checks
+    if cfg.rst_name is not None:
+        rst_file = Path(cfg.rst_path) / f'{cfg.rst_name}.pth'
+        assert rst_file.exists(), f'{rst_file} not found'  # fail early
 
-        @classmethod
-        def master_print(cls, *args, **kwargs):
-            if cls.get_ordinal() == 0: print(*args, **kwargs)
-
-        @classmethod
-        def xla_device(cls):
-            #local_rank = int(os.environ["LOCAL_RANK"])
-            #global_rank = cls.get_ordinal()
-            #assert local_rank == global_rank % torch.cuda.device_count()
-            #return local_rank  # f"cuda:{local_rank}"
-            return cls.RANK
-
-        @staticmethod
-        def save(*args, **kwargs):
-            if torch.distributed.get_rank() == 0:
-                torch.save(*args, **kwargs)
-
-        @classmethod
-        def mesh_reduce(cls, tag, data, reduce_fn):
-            "Returns reduced data to process 0 (data to all others)"
-            #print(f"mesh_reduce called with tag={tag}, data={data}, reduce_fn={reduce_fn}")
-            if reduce_fn.__name__.upper() == 'LIST':
-                if isinstance(data, torch.Tensor):
-                    data_list = [torch.zeros_like(data) for _ in range(cls.xrt_world_size())]
-                    torch.distributed.gather(data, data_list if cls.get_ordinal() == 0 else None, dst=0)
-                    return data_list
-                else:
-                    data_list = [0 for _ in range(cls.xrt_world_size)]
-                    torch.distributed.gather_object(data, data_list if cls.get_ordinal() == 0 else None, dst=0)
-                    return data_list
-            op = getattr(ReduceOp, reduce_fn.__name__.upper())
-            device = cls.get_ordinal()
-            dtype = torch.float32 if isinstance(data, float) else torch.int64
-            data = torch.tensor(data, dtype=dtype, device=device)
-            torch.distributed.reduce(data, dst=0, op=op)
-            return data  # only rank 0 gets the reduced result
-
-else:
-    class xm(object):
-        "Pseudo class to overload torch_xla.core.xla_model"
-        @staticmethod
-        def master_print(*args, **kwargs):
-            print(*args, **kwargs)
-
-        @staticmethod
-        def xla_device():
-            return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        @staticmethod
-        def xrt_world_size():
-            return 1
-        
-        @staticmethod
-        def get_ordinal():
-            return 0
-
-        @staticmethod
-        def save(*args, **kwargs):
-            torch.save(*args, **kwargs)
-
-        @staticmethod
-        def mesh_reduce(tag, data, reduce_fn):
-            return reduce_fn([data])
-
-# Report accelerators
-if cfg.xla:
-    cfg.n_replicas = cfg.n_replicas or xm.xrt_world_size()
-    print(f"[ √ ] Using {cfg.n_replicas} TPU cores")
-
-    # Don't call, RuntimeError: Runtime is already initialized. Do not use the XLA device before calling xmp.spawn.
-    #print("XLA Supported Devices:", xm.get_xla_supported_devices())
-    
-    # This is necessary to make xmp.spawn(process, start_method='fork') work:
-    #print(f"TPU_PROCESS_ADDRESSES: {os.environ.get('TPU_PROCESS_ADDRESSES', None)}")  # local
-    if 'TPU_PROCESS_ADDRESSES' in os.environ:
-        os.environ.pop('TPU_PROCESS_ADDRESSES')  # see https://github.com/pytorch/xla/issues/8215
-
-elif cfg.gpu:
-    cfg.n_replicas = torch.cuda.device_count() if (cfg.use_dp or cfg.use_ddp) else 1
-    print(f"[ √ ] Using {cfg.n_replicas} GPUs", "(DP)" if cfg.use_dp else "(DDP)" if cfg.use_ddp else "")
-    if cfg.use_dp: cfg.n_replicas = 1  # pretend single-GPU job for DP (model wrapper takes care of everything)
-    print("      Device capability:", torch.cuda.get_device_capability())
-    # For (7, 0) or higher, model should be compiled (torch>=2.0)
-else:
-    cfg.n_replicas = 1
-    #cfg.bs = min(cfg.bs, 3 * cpu_count())  # avoid RAM exhaustion during CPU debug
-    print(f"[ √ ] No accelerators found, reducing bs to {cfg.bs}")
-
-if cfg.use_aux_loss:
-    try:
-        import segmentation_models_pytorch as smp
-    except ModuleNotFoundError:
-        quietly_run('pip install -qU git+https://github.com/qubvel/segmentation_models.pytorch')
-        import segmentation_models_pytorch as smp
-    print("[ √ ] segmentation_models_pytorch:", smp.__version__)
-
-from metadata import get_metadata
-from models import get_pretrained_model, get_pretrained_timm2, get_smp_model
-
-# Import project (code, constant settings)
-project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
-if project:
-    print("[ √ ] Project:", cfg.project)
     project.init(cfg)
 
-metadata = get_metadata(cfg, project)
-metadata.to_json(cfg.out_dir / 'metadata.json')
+    metadata = get_metadata(cfg, project)
+    metadata.to_json(cfg.out_dir / 'metadata.json')
 
-for use_fold in cfg.use_folds:
+    use_fold = cfg.use_folds[0]
     print(f"\nFold: {use_fold}")
     metadata['is_valid'] = metadata.fold == use_fold
     cfg.NUM_TRAINING_IMAGES = (~ metadata.is_valid).sum()
@@ -316,7 +186,6 @@ for use_fold in cfg.use_folds:
     if cfg.use_aux_loss:
         pretrained_model = get_smp_model(cfg)
     else:
-        #pretrained_model = get_pretrained_model(cfg)
         pretrained_model = get_pretrained_timm2(cfg)
     pretrained_model.requires_labels = getattr(pretrained_model, 'requires_labels', False)
     #print(pretrained_model)
@@ -348,82 +217,73 @@ for use_fold in cfg.use_folds:
         pretrained_model = torch.compile(pretrained_model)
         print(f"model compiled in {perf_counter() - t0:.1f} sec.")
 
-    fn = cfg.out_dir / f'{cfg.name}_init.pth'
-    if False and not fn.exists():
-        print(f"Saving initial model as {fn}")
-        torch.save(pretrained_model.state_dict(), fn)
+    cfg.xla = found_xla
+
+    # Drop cfg items that cannot be pickled, they can't be passed to _mp_fn.
+    pickleable_cfg = {key: value for key, value in cfg.items() 
+                      if not isinstance(value, (types.FunctionType, types.MethodType))}
+
+    configs.append(pickleable_cfg)
+    metadatas.append(metadata)
+    models.append(pretrained_model)
 
 
-    # Start distributed training on TPU cores
-    if cfg.xla:
-        # MpModelWrapper wraps a model to minimize host memory usage (fork only)
-        #pretrained_model = xmp.MpModelWrapper(pretrained_model) if cfg.n_replicas > 1 else pretrained_model
+if found_xla:
+    # Start cfg/job-distributed training on TPU cores
+    import torch_xla.core.xla_model as xm
+    import torch_xla.distributed.xla_multiprocessing as xmp
+    import torch_xla.debug.metrics as met
 
-        # XLA: 2.4.0+libtpu has xmp.spawn(), 2.6 has torch_xla.launch()
-        #
-        # without start_method='fork', xmp.spawn calls train.py multiple times, then RuntimeError
-        #
-        # with nprocs=8: WARNING:root:Unsupported nprocs (8), ignoring...
-        #     maybe OK? but open issue: https://github.com/pytorch/xla/issues/8215
-        #
-        # with nprocs=None (default):
-        #     concurrent.futures.process._RemoteTraceback...
-        #     TypeError: 'NoneType' object is not callable
-        #
-        # A kaggle user tried multicore with v2.6 (torch_xla.launch()), no success, follow issue:
-        #      https://github.com/pytorch/xla/issues/8569
-        #
-        if cfg.n_replicas > 1:
-            # Try to use all 8 TPU cores
-            import torch_xla.distributed.xla_multiprocessing as xmp
-            from xla_train import test_mp_fn
-
-            # Drop cfg items that cannot be pickled, they can't be passed to _mp_fn.
-            _mp_fn_cfg = {}
-            for key, value in cfg.items():
-                if callable(value):
-                    print(f"excluding function {key} from cfg passed to _mp_fn")
-                else:
-                    _mp_fn_cfg[key] = value
-            print("calling xmp.spawn(start_method='fork')...")
-            xmp.spawn(test_mp_fn, start_method='fork',
-                      args=(_mp_fn_cfg, metadata, pretrained_model, use_fold))
+    # Drop cfg items that cannot be pickled, they can't be passed to _mp_fn.
+    _mp_fn_cfg = {}
+    for key, value in cfg.items():
+        if callable(value):
+            print(f"excluding function {key} from cfg passed to _mp_fn")
         else:
-            # This works with 1 TPU core:
-            from xla_train import _mp_fn
+            _mp_fn_cfg[key] = value
+    print("calling xmp.spawn(start_method='fork')...")
+    xmp.spawn(launch_mp_fns, start_method='fork', args=(configs, metadatas, models))
 
-            print(f"calling _mp_fn...")
-            rank = cfg.rank or 0
-            _mp_fn(rank, cfg, metadata, pretrained_model, xm, use_fold)
+    if cfg.xla_metrics:
+        xm.master_print()
+        report = met.metrics_report()  # str
+        if 'XrtTryFreeMemory' in report:
+            xm.master_print("XrtTryFreeMemory: reduce bs!")
+        xm.master_print(report)
 
-        if cfg.xla_metrics:
-            xm.master_print()
-            report = met.metrics_report()  # str
-            if 'XrtTryFreeMemory' in report:
-                xm.master_print("XrtTryFreeMemory: reduce bs!")
-            xm.master_print(report)
-
-
-    # Start distributed training on GPUs
-    elif False and cfg.use_ddp:  # does not work, use torchscript instead!
-        import torch.multiprocessing as mp
-
-        print(f"mp.spawn {_mp_fn} on {cfg.n_replicas} GPUs with xm={xm}")
-        mp.spawn(_mp_fn,
-            args=(cfg, metadata, pretrained_model, xm, use_fold),
-            nprocs=cfg.n_replicas,
-            join=True)
-
-
+else:
     # Train on CPU/GPU if no xla
-    else:
-        if cfg.use_dp:
-            model_requires_labels = pretrained_model.requires_labels  # stripped by wrapper
-            pretrained_model = torch.nn.DataParallel(pretrained_model)
-            pretrained_model.requires_labels = model_requires_labels
 
-        local_rank = int(os.environ['LOCAL_RANK']) if cfg.use_ddp else None
-        _mp_fn(local_rank, cfg, metadata, pretrained_model, xm, use_fold)
-        del pretrained_model
+    class xm(object):
+        "Pseudo class to overload torch_xla.core.xla_model"
+        @staticmethod
+        def master_print(*args, **kwargs):
+            print(*args, **kwargs)
+
+        @staticmethod
+        def xla_device():
+            return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        @staticmethod
+        def xrt_world_size():
+            return 1
+        
+        @staticmethod
+        def get_ordinal():
+            return 0
+
+        @staticmethod
+        def save(*args, **kwargs):
+            torch.save(*args, **kwargs)
+
+        @staticmethod
+        def mesh_reduce(tag, data, reduce_fn):
+            return reduce_fn([data])
+
+
+    for cfg, metadata, model in zip(configs, metadatas, models):
+        local_rank = int(os.environ['LOCAL_RANK']) if cfg.get('use_ddp', False) else None
+        use_fold = cfg['use_folds'][0]
+        _mp_fn(local_rank, DotDict(cfg), metadata, model, xm, use_fold)
         gc.collect()
         torch.cuda.empty_cache()
