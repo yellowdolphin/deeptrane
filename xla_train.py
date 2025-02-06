@@ -366,7 +366,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
 
         if perform_optimizer_step:
-            if cfg.xla:
+            if False: #cfg.xla:
                 xm.optimizer_step(optimizer, barrier=True)  # rendevouz, required for proper xmp shutdown
             else:
                 scaler.step(optimizer)
@@ -944,15 +944,17 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
                     fn = cfg.out_dir / f'{model_name}_ep{epoch + 1}'
 
                 #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
-                xm.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
+                #xm.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
+                torch.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
 
                 #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
-                xm.save({'optimizer_state_dict': optimizer.state_dict(),
-                        'epoch': epoch}, f'{fn}.opt')
+                #xm.save({'optimizer_state_dict': optimizer.state_dict(), 'epoch': epoch}, f'{fn}.opt')
+                torch.save({'optimizer_state_dict': optimizer.state_dict(), 'epoch': epoch}, f'{fn}.opt')
 
                 if hasattr(scheduler, 'state_dict'):
                     #xm.master_print(f'saving {model_name}_ep{epoch+1}.sched ...')
-                    xm.save({'scheduler_state_dict': {
+                    #xm.save({'scheduler_state_dict': {
+                    torch.save({'scheduler_state_dict': {
                         k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
                         f'{fn}.sched')
 
@@ -960,10 +962,12 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
             metrics_dict['Wall'] = (time.perf_counter() - epoch_start) / 60
 
             metrics_dicts.append(metrics_dict)
-            xm.save({k: [d[k] for d in metrics_dicts] for k in metrics_dicts[0]}, 
+            #xm.save({k: [d[k] for d in metrics_dicts] for k in metrics_dicts[0]},
+            torch.save({k: [d[k] for d in metrics_dicts] for k in metrics_dicts[0]},
                     Path(cfg.out_dir) / f'metrics_fold{use_fold}.pth')
 
-            if (cfg.n_replicas == 1) or (xm.get_ordinal() == 0):
+            #if (cfg.n_replicas == 1) or (xm.get_ordinal() == 0):
+            if True:
                 csv_file = Path(cfg.out_dir) / f'metrics_fold{use_fold}.csv'
                 if csv_file.exists():
                     with open(csv_file, 'r') as fp:
@@ -977,8 +981,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
                     with open(csv_file, 'a') as fp:
                         fp.write(line_str + '\n')
                 except KeyError as e:
-                    xm.master_print(key, 'missing in metrics_dict, which has keys', list(metrics_dict.keys()))
-                    xm.master_print(f"Probably, {csv_file} is not a PyTorch metrics.csv file!")
+                    print(key, 'missing in metrics_dict, which has keys', list(metrics_dict.keys()))
+                    print(f"Probably, {csv_file} is not a PyTorch metrics.csv file!")
 
         if cfg.use_ddp:
             torch.distributed.destroy_process_group()

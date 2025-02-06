@@ -121,7 +121,8 @@ def launch_mp_fns(rank, configs, metadatas, models):
 # Read config files and parser_args
 parser_args, _ = parser.parse_known_args(sys.argv)
 if found_xla:
-    assert len(parser_args.config_files) == 8, 'need 8 configs for 8 TPU cores!'
+    print("configs:", parser_args.config_files)
+    assert len(parser_args.config_files) == 8, f'need 8 configs for 8 TPU cores, got {len(parser_args.config_files)}!'
 
 configs = []
 metadatas = []
