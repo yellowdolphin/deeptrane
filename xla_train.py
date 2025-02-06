@@ -404,7 +404,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             info_strings.append(f'lr {optimizer.param_groups[-1]["lr"]:7.1e}')
             info_strings.append(f'mom {optimizer.param_groups[-1]["betas"][0]:.3f}')
             info_strings.append(f'time {(time.perf_counter() - batch_start) / 60:.2f} min')
-            xm.master_print(', '.join(info_strings))
+            xm.master_print(', '.join(info_strings), flush=True)
             logfile.write(', '.join(info_strings) + '\n')
             logfile.flush()
             if hasattr(scheduler, 'get_last_lr'):
@@ -650,7 +650,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     with open(f'{cfg.out_dir}/train.log', 'w') as logfile:
 
         if cfg.xla:
-            xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
+            xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}', flush=True)
             #print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
             logfile.write(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}\n')
             xm.master_print('Only printing first job output, see log files for other jobs.')
@@ -824,7 +824,6 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         step_size = cfg.bs * cfg.n_replicas * cfg.n_acc
         xm.master_print(f'Training {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
                         f'step_size={step_size}, lr={cfg.lr_head} on fold {use_fold}')
-
         #
         #
         ### Training Loop ---------------------------------------------------------
@@ -945,18 +944,22 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
 
                 #xm.master_print(f'saving {model_name}_ep{epoch+1}.pth ...')
                 #xm.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
-                torch.save((model.module if cfg.use_ddp else model).state_dict(), f'{fn}.pth')
+                cpu_state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+                torch.save(cpu_state_dict, f'{fn}.pth')
+                #model.to('cpu')
+                #torch.save(model.state_dict(), f'{fn}.pth')
+                #model.to(device)
 
                 #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
                 #xm.save({'optimizer_state_dict': optimizer.state_dict(), 'epoch': epoch}, f'{fn}.opt')
-                torch.save({'optimizer_state_dict': optimizer.state_dict(), 'epoch': epoch}, f'{fn}.opt')
+                cpu_state_dict = {k: v.cpu() for k, v in optimizer.state_dict().items()}
+                torch.save({'optimizer_state_dict': cpu_state_dict, 'epoch': epoch}, f'{fn}.opt')
 
                 if hasattr(scheduler, 'state_dict'):
                     #xm.master_print(f'saving {model_name}_ep{epoch+1}.sched ...')
                     #xm.save({'scheduler_state_dict': {
-                    torch.save({'scheduler_state_dict': {
-                        k: v for k, v in scheduler.state_dict().items() if k != 'anneal_func'}},
-                        f'{fn}.sched')
+                    cpu_state_dict = {k: v.cpu() for k, v in scheduler.state_dict().items() if k != 'anneal_func'}
+                    torch.save({'scheduler_state_dict': cpu_state_dict}, f'{fn}.sched')
 
             # Save metrics in pth and csv file (rank 0 only)
             metrics_dict['Wall'] = (time.perf_counter() - epoch_start) / 60
