@@ -650,7 +650,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     with open(f'{cfg.out_dir}/train.log', 'w') as logfile:
 
         if cfg.xla:
-            xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}', flush=True)
+            xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
             #print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
             logfile.write(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}\n')
             xm.master_print('Only printing first job output, see log files for other jobs.')
@@ -780,7 +780,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
                 checkpoint = torch.load(opt_file, map_location='cpu')
                 xm.master_print("Restarting from previous opt state")
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                rst_epoch = checkpoint['epoch'] + 1
+                rst_epoch = checkpoint['epoch'] #+ 1 ###UNDO: temporary fix for tpu6 jobs
                 cfg.optimizer_restarted = True
         rst_epoch = cfg.rst_epoch or rst_epoch
 
@@ -952,7 +952,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
 
                 #xm.master_print(f'saving {model_name}_ep{epoch+1}.opt ...')
                 #xm.save({'optimizer_state_dict': optimizer.state_dict(), 'epoch': epoch}, f'{fn}.opt')
-                cpu_state_dict = {k: v.cpu() for k, v in optimizer.state_dict().items()}
+                #cpu_state_dict = {k: v.cpu() for k, v in optimizer.state_dict().items()}
+                cpu_state_dict = optimizer.state_dict()
                 torch.save({'optimizer_state_dict': cpu_state_dict, 'epoch': epoch}, f'{fn}.opt')
 
                 if hasattr(scheduler, 'state_dict'):
