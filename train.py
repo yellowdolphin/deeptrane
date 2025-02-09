@@ -6,8 +6,11 @@ from pathlib import Path
 import importlib
 from multiprocessing import cpu_count
 import types
-#import warnings
-#warnings.filterwarnings('ignore')
+import warnings
+import re
+warnings.filterwarnings('ignore', category=UserWarning, message=re.escape('pickleshare'))
+warnings.filterwarnings('ignore', category=FutureWarning, message=re.escape('torch.load'))
+os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 
 from config import Config, parser, DotDict
 from utils.general import quietly_run, listify, sizify, autotype, get_drive_out_dir
