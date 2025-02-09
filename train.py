@@ -223,6 +223,9 @@ for job_id, config_file in enumerate(parser_args.config_files):
     # Drop cfg items that cannot be pickled, they can't be passed to _mp_fn.
     pickleable_cfg = {key: value for key, value in cfg.items() 
                       if not isinstance(value, (types.FunctionType, types.MethodType))}
+    for key in cfg.keys():
+        if key not in pickleable_cfg:
+            print(f"excluding function/method {key} from cfg passed to _mp_fn")
 
     configs.append(pickleable_cfg)
     metadatas.append(metadata)
@@ -235,13 +238,6 @@ if found_xla:
     import torch_xla.distributed.xla_multiprocessing as xmp
     import torch_xla.debug.metrics as met
 
-    # Drop cfg items that cannot be pickled, they can't be passed to _mp_fn.
-    _mp_fn_cfg = {}
-    for key, value in cfg.items():
-        if callable(value):
-            print(f"excluding function {key} from cfg passed to _mp_fn")
-        else:
-            _mp_fn_cfg[key] = value
     print("calling xmp.spawn(start_method='fork')...")
     xmp.spawn(launch_mp_fns, start_method='fork', args=(configs, metadatas, models))
 
