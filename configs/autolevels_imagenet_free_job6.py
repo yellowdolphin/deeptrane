@@ -54,13 +54,13 @@ arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/modelbox4'
-rst_name = 'autolevels_imagenet_free_job6_fold0_ep69'
-epochs = 72
+rst_path = '/kaggle/input/rst-autolevels-train3/job_7'
+rst_name = 'autolevels_imagenet_free_job7_fold0_ep5'
+epochs = 6
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [24, 768, 768, 768]
+lin_ftrs = [36, 768, 768, 768]
 act_head = 'SiLU'
 
 

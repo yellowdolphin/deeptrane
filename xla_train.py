@@ -780,7 +780,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
                 checkpoint = torch.load(opt_file, map_location='cpu')
                 xm.master_print("Restarting from previous opt state")
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                rst_epoch = checkpoint['epoch'] #+ 1 ###UNDO: temporary fix for tpu6 jobs
+                rst_epoch = checkpoint['epoch'] + 1
                 cfg.optimizer_restarted = True
         rst_epoch = cfg.rst_epoch or rst_epoch
 
