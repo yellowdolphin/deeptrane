@@ -14,7 +14,7 @@ presize = 2.0                  # only used if use_batch_tfms
 antialias = False
 interpolation = 'NEAREST'
 predict_inverse = True
-blackpoint_range = (-85, 10)   # x-offset
+blackpoint_range = (-100, 10)  # x-offset
 blackpoint2_range = (-75, 10)  # y-offset
 whitepoint_sigma = 80
 clip_target_blackpoint = True
@@ -54,13 +54,13 @@ arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_1'
-rst_name = 'autolevels_imagenet_free_job1_fold0_ep5'
-epochs = 6
+rst_path = '/kaggle/input/rst-autolevels-train3/job_4'
+rst_name = 'autolevels_imagenet_free_job4_fold0_ep12'
+epochs = 14
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [36, 768, 768, 768]
+lin_ftrs = [30, 768, 768, 768]
 act_head = 'SiLU'
 
 

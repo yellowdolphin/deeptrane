@@ -27,7 +27,7 @@ curve4_conditional_logb_range = (0.00, 0.47)  # logb = logb_0 + logb_range * (lo
 curve4_conditional_logb_offsets = (-0.8, -3.93)  # (logb_0, loga_0)
 mirror_curve4 = False
 p_gamma = 0.3                  # probability for using Gamma curve
-p_beta = 0.5                   # probability for using Beta PDF rather than Curve4
+p_beta = 0.0                   # probability for using Beta PDF rather than Curve4
 add_uniform_noise = False      # add uniform noise to mask uint8 discretization [bool|float]
 add_jpeg_artifacts = True
 sharpness_augment = True
@@ -54,13 +54,13 @@ arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_3'
-rst_name = 'autolevels_imagenet_free_job3_fold0_ep4'
-epochs = 5
+rst_path = '/kaggle/input/rst-autolevels-train'
+rst_name = 'autolevels_imagenet_free_conditional04_fold0_ep62'
+epochs = 64
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [42, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'SiLU'
 
 

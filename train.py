@@ -9,7 +9,7 @@ import types
 import warnings
 import re
 warnings.filterwarnings('ignore', category=UserWarning, message=re.escape('pickleshare'))
-warnings.filterwarnings('ignore', category=FutureWarning, message=re.escape('torch.load'))
+warnings.filterwarnings('ignore', category=FutureWarning, message=re.escape('weights_only'))
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 
 from config import Config, parser, DotDict
