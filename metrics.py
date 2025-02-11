@@ -155,8 +155,10 @@ class AverageMeter(object):
     @property
     def average(self):
         eps = 1e-14
-        reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
-        reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
+        #reduced_sum = self.xm.mesh_reduce('meter_sum', self.sum, sum)
+        reduced_sum = sum([self.sum])
+        #reduced_count = self.xm.mesh_reduce('meter_count', self.count, sum)
+        reduced_count = sum([self.count])
         average = reduced_sum / (reduced_count + eps)
         if isinstance(average, torch.Tensor):
             #self.xm.master_print("Warning: got scalar Tensor from xm.mesh_reduce")
@@ -170,7 +172,8 @@ class AverageMeter(object):
     @property
     def current(self):
         # current value, averaged over devices (and minibatch)
-        current = self.xm.mesh_reduce('meter_val', self.val, self.avg)
+        #current = self.xm.mesh_reduce('meter_val', self.val, self.avg)
+        current = self.avg([self.val])
         if isinstance(current, torch.Tensor):
             #self.xm.master_print("Warning: got scalar Tensor from xm.mesh_reduce")
             current = current.item()

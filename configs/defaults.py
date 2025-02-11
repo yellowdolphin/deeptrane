@@ -69,7 +69,7 @@ cfg = dict(
     bn_eps = None,              # default 1e-5 (PyTorch), 1e-3 (TF)
     gn_groups = 1,              # group size for GroupNorm (gn)
     wd = 0.05,                  # default 1e-2 (AdamW)
-    freeze = [],                # options: 'none', 'all', 'head', 'body', 'bn', 'all_but_bn', 'preprocess'
+    freeze = [],                # options: 'none', 'all', 'head', 'body', 'bn', 'all_but_bn', 'preprocess', name (str)
     freeze_for_loading = [],    # TF only, see freeze
 
     rst_path = '.',

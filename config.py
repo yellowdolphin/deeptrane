@@ -63,7 +63,7 @@ class Config(DotDict):
 
 parser = argparse.ArgumentParser(description="Command line arguments supersede config file")
 
-parser.add_argument("-c", "--config_file", help="config file path")
+parser.add_argument("-c", "--config_files", nargs="+", help="config file paths")
 parser.add_argument("-m", "--mode", default='train', help="mode")
 parser.add_argument("-f", "--use_folds", nargs="+", type=int, help="cfg.use_folds")
 parser.add_argument("-v", "--batch_verbose", help="mbatch frequency of progress outputs")
