@@ -263,7 +263,7 @@ def init(cfg):
         
         cfg.modify_state_dict = modify_state_dict
 
-    cfg.improver = True
+    cfg.improver = cfg.improver or True  # always use improver in this branch
 
     if 'tf' not in cfg.tags:
         if cfg.improve_color_loss:
