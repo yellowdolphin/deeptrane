@@ -419,6 +419,10 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             expanded_curves = tfms[..., None].expand(-1, -1, -1, inputs.size(-1))
             improver_inputs = torch.gather(expanded_curves, dim=2, index=inputs)
             improver_labels = labels[:bs_half] - preds[:bs_half].detach() + identity_tfms
+            # weigh trust in labels vs self-consistency of the predictions
+            if isinstance(cfg.improver, float):
+                label_weight = cfg.improver
+                improver_labels = label_weight * improver_labels + (1 - label_weight) * identity_tfms
 
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
