@@ -90,6 +90,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
         if cfg.use_batch_tfms:
             raise NotImplementedError('improver training with batch_tfms not implemented.')
         # get extra batch to substitute improver_inputs, improver_labels
+        #xm.master_print("try get extra batch to substitute improver_inputs, improver_labels...")
         improver_inputs, improver_labels = next(iter(iterable))
         improver_labels = improver_labels[:, :, 0:256].reshape(improver_labels.shape[0], 3 * 256)
         improver_inputs = improver_inputs.to(device)
@@ -97,10 +98,18 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
         identity_tfms = (torch.arange(256, device=device).to(torch.float32) / 255).repeat(3)[None, :]
         #xm.master_print("identity_tfms is on", identity_tfms.device)
         #xm.master_print(f"initial improver_inputs on ", improver_inputs.device)
-        #xm.master_print(f"initial improver_labels on ", improver_labels.device)
+        #xm.master_print(f"initial improver_labels on ", improver_labels.device)  # OK, but why twice on TPU?
+        #xm.master_print("try get a 2nd batch...")
+        #_ = next(iter(iterable))
+        #xm.master_print("2nd batch reveived, try get a 3rd batch...")
+        #_ = next(iter(iterable))
+        #xm.master_print("3rd batch reveived")
 
 
     for batch_idx, batch in enumerate(iterable, start=1):
+        #xm.master_print(f"ITN {batch_idx}, unpacking batch...", flush=True)  # OK
+        #if batch_idx > 2:
+        #    raise KeyboardInterrupt
 
         # extract inputs and labels
         if cfg.fake_data == 'on_device':
@@ -139,7 +148,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
         else:
             inputs, labels = batch
         del batch
-        #xm.master_print("inputs:", type(inputs), inputs.shape, inputs.dtype, inputs.device)
+        #xm.master_print("inputs:", type(inputs), inputs.shape, inputs.dtype, inputs.device)  # OK
         #assert inputs.shape == (cfg.bs, 3, *cfg.size), f'wrong inputs shape: {inputs.shape}'
         #assert labels.shape == (cfg.bs,), f'wrong labels shape: {labels.shape}'
         #print(f"rank {xm.get_ordinal()} labels: {labels}")
@@ -316,6 +325,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             #    inputs = TF.rotate(inputs, angle, resample=0)
             #    inputs = TF.crop(inputs, top, left, height, width)
 
+        #xm.master_print("DEBUG 01")
         # Random Noise
         if cfg.noise_level:
             # unpack labels, use same noise_level on all channels
@@ -323,11 +333,15 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             inputs += cfg.noise_level * rnd_factor[:, None, None, None] * torch.randn_like(inputs)
             inputs = inputs.clamp(0.0, 1.0)
 
+        #xm.master_print("DEBUG 02")
         if cfg.curve and (cfg.curve == 'free'):
             labels = labels.reshape(labels.shape[0], 3 * 256)
 
+        #xm.master_print("DEBUG 03")
         if cfg.improver:
-            #xm.master_print(f"itn {batch_idx}, improver_inputs on ", improver_inputs.device)
+            #xm.master_print(f"itn {batch_idx}, improver_inputs on ", improver_inputs.device)  # NO
+            #xm.master_print(f"trying concat {inputs.shape} and {improver_inputs.shape} at dim 0...")
+            # The resulting batch has 2 * replica_bs examples
             inputs = torch.concatenate([inputs, improver_inputs], dim=0)
             labels = torch.concatenate([labels, improver_labels], dim=0)
 
@@ -336,8 +350,11 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
         if cfg.use_ddp: model.require_backward_grad_sync = perform_optimizer_step
         ### DEBUG
         t0 = time.perf_counter()
+        #xm.master_print("DEBUG 04")
         with amp_context:
+            #xm.master_print("DEBUG 05")
             preds = model(inputs, labels) if model.requires_labels else model(inputs)
+            #xm.master_print("DEBUG 06")
             ### DEBUG
             t1 = time.perf_counter()
             
@@ -383,6 +400,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
 
+        #xm.master_print("DEBUG 07")
         if perform_optimizer_step:
             if False: #cfg.xla:
                 xm.optimizer_step(optimizer, barrier=True)  # rendevouz, required for proper xmp shutdown
@@ -395,6 +413,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             if hasattr(scheduler, 'step') and hasattr(scheduler, 'batchwise'):
                 maybe_step(scheduler, xm)
 
+        #xm.master_print("DEBUG 08")
         # aggregate loss locally
         if cfg.use_aux_loss:
             # loss components cls_loss, seg_loss were not divided by n_acc.
@@ -410,6 +429,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
                 m.update(weighted_losses[i].item() * cfg.n_acc, inputs.size(0))
 
         # Transform first half batch with predicted inverse curves to get improver_inputs for next iter
+        #xm.master_print("DEBUG 09")
         if cfg.improver:
             bs_half = cfg.bs // 2
             tfms = preds[:bs_half].detach().clip(0, 1).reshape(-1, 3, 256)
@@ -423,7 +443,9 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
             if isinstance(cfg.improver, float):
                 label_weight = cfg.improver
                 improver_labels = label_weight * improver_labels + (1 - label_weight) * identity_tfms
+            #xm.master_print("Got improver input/labels for next ITN.")
 
+        #xm.master_print("DEBUG 10")
         # print batch_verbose information
         if cfg.batch_verbose and (batch_idx % cfg.batch_verbose == 0):
             info_strings = [
@@ -706,12 +728,14 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
             wrapped_model = DDP(wrapped_model.to(device), device_ids=[device], output_device=device)
             wrapped_model.requires_labels = wrapped_model.module.requires_labels
 
-        # XLA deviceloader
+        # XLA deviceloader (needed also for multijob, else device runs out of hbm)
+        # With improver, both 'pl' and 'mp' exhaust the device after 1st batch_verbose
         if cfg.xla:
             import torch_xla.distributed.parallel_loader as pl
             loader_prefetch_size = 1
             device_prefetch_size = 1
             cfg.deviceloader = cfg.deviceloader or 'mp'  # 'mp' performs better than 'pl' on kaggle
+            xm.master_print("device loader:", cfg.deviceloader)
 
         # Dataloaders
         if cfg.fake_data == 'on_device':

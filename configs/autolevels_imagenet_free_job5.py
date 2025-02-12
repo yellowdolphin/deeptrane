@@ -27,7 +27,7 @@ curve4_conditional_logb_range = (0.00, 0.47)  # logb = logb_0 + logb_range * (lo
 curve4_conditional_logb_offsets = (-0.8, -3.93)  # (logb_0, loga_0)
 mirror_curve4 = False
 p_gamma = 0.3                  # probability for using Gamma curve
-p_beta = 0.33                  # probability for using Beta PDF rather than Curve4
+p_beta = 0.5                   # probability for using Beta PDF rather than Curve4
 add_uniform_noise = False      # add uniform noise to mask uint8 discretization [bool|float]
 add_jpeg_artifacts = True
 sharpness_augment = True
@@ -38,6 +38,7 @@ use_batch_tfms = False
 n_replicas = 1
 use_dp = False                 # slower on 2 T4 than on 1
 improve_color_loss = 0         # weight of auxiliary loss to improve colors
+improver = 0.5
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
 bs = 32
@@ -54,13 +55,13 @@ arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_5'                                                                                                          
-rst_name = 'autolevels_imagenet_free_job5_fold0_ep73'
-epochs = 75
+rst_path = '/kaggle/input/rst-autolevels-train2'
+rst_name = 'autolevels_imagenet_free_conditional04_fold0_ep13'
+epochs = 14
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [24, 768, 768, 768]
+lin_ftrs = [30, 768, 768, 768]
 act_head = 'SiLU'
 
 
