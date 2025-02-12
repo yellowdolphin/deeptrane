@@ -543,7 +543,7 @@ def get_pool_baseline_model(cfg, strategy):
 
 
 class Curve0():
-    def __init__(self, gamma=1.0, bp=0, bp2=0, bp_clip=None, unclipped=False):
+    def __init__(self, gamma=1.0, bp=0, bp2=0, wp=255, bp_clip=None, unclipped=False):
         """Function  y(x) = x^a  with offsets bp, bp2 in x, y
 
         Input/Output range: [0, 1]
@@ -556,7 +556,7 @@ class Curve0():
         inverse() returns the inverse function 
             y^-1(x) = x^(1 / gamma)
         """
-        self.params = [np.array(p, dtype=np.float32) for p in (gamma, bp / 255, bp2 / 255)]
+        self.params = [np.array(p, dtype=np.float32).reshape(-1) for p in (gamma, bp / 255, bp2 / 255, wp / 255)]
         self.x_min = 1e-6
         self.x_max = None
         self.bp_clip = max(int(bp_clip), 0) if bp_clip is not None else None
@@ -566,9 +566,9 @@ class Curve0():
     def __call__(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
         if not self.bp_is_clipped: _ = self.inverse(x)
-        gamma, bp, bp2 = (p[:, None] for p in self.params)
+        gamma, bp, bp2, wp = (p[:, None] for p in self.params)
 
-        x = bp + x * (1 - bp)
+        x = bp + x * ((1 - bp) / wp)
         x = np.clip(x, self.x_min, self.x_max)  # avoid nan
         x = np.power(x, gamma)
         x = x * (1 - bp2) + bp2
@@ -576,7 +576,7 @@ class Curve0():
     
     def inverse(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
-        gamma, bp, bp2 = (p[:, None] for p in self.params)
+        gamma, bp, bp2, wp = (p[:, None] for p in self.params)
 
         x = (x - bp2) / (1 - bp2)
         x = np.clip(x, self.x_min, self.x_max)  # avoid nan
@@ -587,7 +587,7 @@ class Curve0():
             bp = np.minimum(bp, bp_max)
             self.params[1] = bp[:, 0]  # propagate to future calls
             self.bp_is_clipped = True
-        x = (x - bp) / (1 - bp)
+        x = (x - bp) / ((1 - bp) / wp)
         return x if self.unclipped else np.clip(x, 0, 1)
 
 
@@ -606,7 +606,8 @@ class Curve3():
         inverse() returns the inverse function
         """
         assert np.min(alpha) > 1, f'alpha ({alpha}) out of scope, must be > 1'
-        assert (np.min(beta) > 0) and (np.max(beta) <= 1), f'beta ({beta}) out of scope, must be in (0, 1]'
+        assert np.min(beta) > 0, f'beta ({beta}) out of scope, must be > 0'
+        #assert np.all(np.logical_or((beta < 1), (alpha > 1.6))), f'(alpha, beta) ({alpha}, {beta}) out of scope'
         self.params = [np.array(p, dtype=np.float32) for p in (alpha, beta, bp / 255, bp2 / 255)]
         self.x_min = 1e-6
         self.x_max = 1.0 - 1e-6
@@ -658,7 +659,7 @@ class Curve3():
 
 
 class Curve4():
-    def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, bp_clip=None, mirror_mask=None, unclipped=False):
+    def __init__(self, a=0.5, b=0.81, bp=0, bp2=0, bp_clip=None, wp=255, mirror_mask=None, unclipped=False):
         """Function y(x) = 1 - cos(π/2 * x^a)^b  with offsets bp, bp2 in x, y
 
         Input/Output range: [0, 1]
@@ -672,7 +673,7 @@ class Curve4():
         inverse() returns the inverse function 
             y^-1(x) = (2 / π)**(1 / a) * np.arccos((1 - x)**(1 / b))**(1 / a)
         """
-        self.params = [np.array(p, dtype=np.float32) for p in (a, b, bp / 255, bp2 / 255)]
+        self.params = [np.array(p, dtype=np.float32).reshape(-1) for p in (a, b, bp / 255, bp2 / 255, wp / 255)]
         self.x_min = 1e-6
         self.x_max = 1.0 - 1e-6
         self.bp_clip = max(int(bp_clip), 0) if bp_clip is not None else None
@@ -683,26 +684,26 @@ class Curve4():
     def __call__(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
         if not self.bp_is_clipped: _ = self.inverse(x)
-        a, b, bp, bp2 = (p[:, None] for p in self.params)
+        a, b, bp, bp2, wp = (p[:, None] for p in self.params)
 
-        x = bp + x * (1 - bp)
+        x = bp + x * ((1 - bp) / wp)
         x = self.mirror_mask * self.curve4(x, a, b) + (1 - self.mirror_mask) * self.inv_curve4(x, a, b)
         x = x * (1 - bp2) + bp2
         return x if self.unclipped else np.clip(x, 0, 1)
     
     def inverse(self, x):
         assert (x.shape[0] in {1, 3}) and (x.ndim > 1), f'x has wrong shape: {x.shape}, expecting (C, *)'
-        a, b, bp, bp2 = (p[:, None] for p in self.params)
+        a, b, bp, bp2, wp = (p[:, None] for p in self.params)
 
         x = (x - bp2) / (1 - bp2)
-        x = self.mirror_mask * self.inv_curve4(x, a, b) + (1 - self.mirror_mask) * self.curve4(x,  a, b)
+        x = self.mirror_mask * self.inv_curve4(x, a, b) + (1 - self.mirror_mask) * self.curve4(x, a, b)
         if self.bp_clip:
             assert x.shape == (3, 256), f'x has unexpected shape {x.shape}'
             bp_max = x[:, self.bp_clip:self.bp_clip + 1]
             bp = np.minimum(bp, bp_max)
             self.params[2] = bp[:, 0]  # propagate to future calls
             self.bp_is_clipped = True
-        x = (x - bp) / (1 - bp)
+        x = (x - bp) / ((1 - bp) / wp)
         return x if self.unclipped else np.clip(x, 0, 1)
 
     def curve4(self, x, a, b):
@@ -911,7 +912,7 @@ class FreeCurveDataset(Dataset):
     """Images are mapped on device using the channelwise-randomly generated target_curve"""
 
     def __init__(self, df, cfg, labeled=True, transform=None, tensor_transform=None,
-                 return_path_attr=None):
+                 return_path_attr=None, param_csv_file=None):
         """
         Args:
             df (pd.DataFrame):                First row must contain the image file paths
@@ -940,13 +941,38 @@ class FreeCurveDataset(Dataset):
             self.resize = TT.Resize(cfg.size, interpolation=interpolation, antialias=cfg.antialias)
 
         self.log_gamma_range = cfg.log_gamma_range
-        self.curve3_a_range = cfg.curve3_a_range
+        if cfg.curve3_conditional_a_range is None:
+            self.curve3_b_weight = 0
+            self.curve3_a_range = cfg.curve3_a_range
+            self.curve3_alpha_0 = 0
+        elif 'conditional01' in cfg.tags:
+            self.curve3_b_weight = cfg.curve3_conditional_weight or 0.6
+            self.curve3_a_range = cfg.curve3_conditional_a_range
+            self.curve3_alpha_0 = 0
+        else:
+            self.curve3_b_weight = cfg.curve3_conditional_weight or 0.6
+            self.curve3_a_range = cfg.curve3_conditional_a_range
+            self.curve3_alpha_0 = 1
         self.curve3_beta_range = cfg.curve3_beta_range
         self.curve4_loga_range = cfg.curve4_loga_range
-        self.curve4_b_range = cfg.curve4_b_range
+        self.curve4_conditional_logb_offsets = cfg.curve4_conditional_logb_offsets
+        if cfg.curve4_conditional_logb_range is None:
+            self.curve4_loga_weight = None
+            self.curve4_conditional_logb_offsets = None
+            self.curve4_b_range = cfg.curve4_b_range
+        elif 'conditional01' in cfg.tags:
+            # switch from b to logb and make it dependent on loga
+            self.curve4_loga_weight = cfg.curve4_conditional_weight or 0.6
+            self.curve4_logb_range = cfg.curve4_conditional_logb_range
+        else:
+            # logb = logb_0 + logb_range * (loga - loga_0)
+            assert self.curve4_conditional_logb_offsets is not None, 'conditional02+ need logb_offsets'
+            self.curve4_logb_range = cfg.curve4_conditional_logb_range
         self.bp_range = cfg.blackpoint_range
         self.bp2_range = cfg.blackpoint2_range
         self.bp_clip = max(*cfg.blackpoint_range, *cfg.blackpoint2_range) if cfg.clip_target_blackpoint else None
+        self.wp_sigma = cfg.whitepoint_sigma or 0
+        assert self.wp_sigma < 255, 'whitepoint_sigma must be smaller than 255'
         self.p_gamma = cfg.p_gamma  # probability to use gamma (Curve0)
         self.p_beta = cfg.p_beta    # probability for Beta PDF (Curve3) rather than Curve4
         self.noise_level = cfg.noise_level
@@ -957,6 +983,8 @@ class FreeCurveDataset(Dataset):
         self.mirror_beta = cfg.mirror_beta
         self.mirror_curve4 = cfg.mirror_curve4
         self.curve_selection = cfg.curve_selection or 'channel-wise'  # 'channel-wise' or 'image-wise'
+        self.DEBUG = cfg.DEBUG
+        self.param_csv_file = param_csv_file
 
     def __len__(self):
         return len(self.df)
@@ -964,7 +992,10 @@ class FreeCurveDataset(Dataset):
     def __getitem__(self, index):
 
         fn = os.path.join(self.image_root, self.df.iloc[index, 0])
-        if 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
+        if fn.startswith('virtual'):
+            # Ignore file name from self.df, use dummy image
+            image = np.empty((16, 16, 3), dtype='uint8')
+        elif 'gcsfs' in globals() and gcsfs.is_gcs_path(fn):
             bytes_data = gcsfs.read(fn)
             image = PIL.Image.open(io.BytesIO(bytes_data))
         else:
@@ -978,24 +1009,44 @@ class FreeCurveDataset(Dataset):
         support = np.linspace(0, 1, 256, dtype=np.float32)
         bp = np.random.uniform(*self.bp_range, n_channels).astype(np.float32)
         bp2 = np.random.uniform(*self.bp2_range, n_channels).astype(np.float32)
+        if self.wp_sigma:
+            wp = 255 + 0.5 * self.wp_sigma * np.random.randn(n_channels)
+            wp = np.clip(wp, 255 - self.wp_sigma, 255)  # truncate at sigma
+        else:
+            wp = 255
         curves = []
-        
+
         # gamma
         log_gamma = np.random.uniform(*self.log_gamma_range, n_channels).astype(np.float32)
         gamma = np.exp(log_gamma)
-        curves.append(Curve0(gamma, bp, bp2, self.bp_clip))
+        curves.append(Curve0(gamma, bp, bp2, wp, self.bp_clip))
 
         # beta
-        alpha = np.exp(np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32))
         beta = np.random.uniform(*self.curve3_beta_range, n_channels).astype(np.float32)
+        a = np.random.uniform(*self.curve3_a_range, n_channels).astype(np.float32) + self.curve3_b_weight * beta
+        #a = np.where(bp > 10.0, a.clip(0.5), a)  # lower limit on a if bp > 10 (not enough to avoid too steep curves)
+        alpha = np.exp(a) + self.curve3_alpha_0
         mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_beta else None
         curves.append(Curve3(alpha, beta, bp, bp2, self.bp_clip, mirror_mask))
 
         # curve4
-        a = np.exp(np.random.uniform(*self.curve4_loga_range, n_channels).astype(np.float32))
-        b = np.random.uniform(*self.curve4_b_range, n_channels).astype(np.float32)
+        loga = np.random.uniform(*self.curve4_loga_range, n_channels).astype(np.float32)
+        a = np.exp(loga)
+        if self.curve4_conditional_logb_offsets is not None:
+            # conditional02 distribution
+            logb_0, loga_0 = self.curve4_conditional_logb_offsets
+            r = np.random.uniform(*self.curve4_logb_range, n_channels).astype(np.float32)
+            logb = logb_0 + r * (loga - loga_0)
+            b = np.exp(logb)
+        elif self.curve4_loga_weight is not None:
+            # conditional01 distribution
+            r = np.random.uniform(*self.curve4_logb_range, n_channels).astype(np.float32)
+            logb = r + self.curve4_loga_weight * loga
+            b = np.exp(logb)
+        else:
+            b = np.random.uniform(*self.curve4_b_range, n_channels).astype(np.float32)
         mirror_mask = np.random.randint(low=0, high=2, size=(3, 1)).astype(np.float32) if self.mirror_curve4 else None
-        curves.append(Curve4(a, b, bp, bp2, self.bp_clip, mirror_mask))
+        curves.append(Curve4(a, b, bp, bp2, self.bp_clip, wp, mirror_mask))
 
         # RNG DEBUG: checked: different random numbers on each torchrun instance.
         #print(f"bp={bp[0]:4.1f} bp2={bp2[2]:4.1f} g={gamma[0]:4.2f} alpha={alpha[2]:4.2f} beta={beta[0]:4.2f} a={a[2]:4.2f} b={b[0]:4.2f}")
@@ -1009,7 +1060,7 @@ class FreeCurveDataset(Dataset):
                 tfms.append(tfm)
             targets = np.stack(targets)  # shape (n_curves, n_channels, 256)
             tfms = np.stack(tfms)
-            
+
             p_gamma = self.p_gamma
             p_beta = (1 - self.p_gamma) * self.p_beta
             p_curve4 = (1 - p_gamma - p_beta)
@@ -1017,6 +1068,20 @@ class FreeCurveDataset(Dataset):
             target = np.einsum('ji,ijk->jk', mask, targets)
             tfm = np.einsum('ji,ijk->jk', mask, tfms)
             del targets, tfms
+            if self.DEBUG:
+                for channel, curve in enumerate(mask):
+                    if curve[0]:
+                        print(f'Curve0(gamma={gamma[channel]}, bp={bp[channel]}, bp2={bp2[channel]}, wp={wp[channel]})')
+                        if self.param_csv_file is not None:
+                            self.param_csv_file.write(f'curve0,{gamma[channel]},0,{bp[channel]},{bp2[channel]}\n')
+                    if curve[1]:
+                        print(f'Curve3(alpha={alpha[channel]}, beta={beta[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                        if self.param_csv_file is not None:
+                            self.param_csv_file.write(f'curve3,{alpha[channel]},{beta[channel]},{bp[channel]},{bp2[channel]}\n')
+                    if curve[2]:
+                        print(f'Curve4(a={a[channel]}, b={b[channel]}, bp={bp[channel]}, bp2={bp2[channel]})')
+                        if self.param_csv_file is not None:
+                            self.param_csv_file.write(f'curve4,{a[channel]},{b[channel]},{bp[channel]},{bp2[channel]}\n')
         else:
             # image-wise curve selection
             curve = curves[np.random.randint(0, 3)]
