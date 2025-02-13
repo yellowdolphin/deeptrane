@@ -38,7 +38,7 @@ use_batch_tfms = False
 n_replicas = 1
 use_dp = False                 # slower on 2 T4 than on 1
 improve_color_loss = 0         # weight of auxiliary loss to improve colors
-improver = 0.5
+improver = None
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
 bs = 32
@@ -55,13 +55,13 @@ arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train2'
-rst_name = 'autolevels_imagenet_free_conditional04_fold0_ep13'
+rst_path = '/kaggle/input/rst-autolevels-train3/job_7'
+rst_name = 'autolevels_imagenet_free_job7_fold0_ep13'
 epochs = 14
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [30, 768, 768, 768]
+lin_ftrs = [48, 768, 768, 768]
 act_head = 'SiLU'
 
 
