@@ -1,14 +1,13 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'  # job subdir is automatically appended
-filetype = 'JPEG'
-meta_csv = '/content/meta.csv'  # for colab only
+filetype = 'jpg'
+meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
 
 # Training
-num_folds = 20
+num_folds = 5
 use_folds = [0]
-train_on_all = False
-frac = [0.3, 1.0]
+train_on_all = True
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
@@ -38,30 +37,30 @@ use_batch_tfms = False
 n_replicas = 1
 use_dp = False                 # slower on 2 T4 than on 1
 improve_color_loss = 0         # weight of auxiliary loss to improve colors
-improver = True
+improver = False
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
-bs = 8
-n_acc = 16
+bs = 64
+n_acc = 4
 batch_verbose = 1
-lr_head = 1e-5
+lr_head = 3e-4
 one_cycle = False
 div_factor = 5                            # default: 25, from Chest14: 1
 pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pipeline1: 0
 save_best = None  # 'train_loss'
 
 # Model
-arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
+arch_name = 'volo_d1_384.sail_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_3'
-rst_name = 'autolevels_imagenet_free_job3_fold0_ep15'
-epochs = 17
+rst_path = '/kaggle/input/modelbox4'
+rst_name = 'free_volo384_v32013'
+epochs = 15
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [42, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'SiLU'
 
 

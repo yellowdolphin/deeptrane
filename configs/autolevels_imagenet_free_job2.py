@@ -42,7 +42,7 @@ improver = True
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
 bs = 16
-n_acc = 16
+n_acc = 8
 batch_verbose = 1
 lr_head = 1e-5
 one_cycle = False
@@ -51,17 +51,17 @@ pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pi
 save_best = None  # 'train_loss'
 
 # Model
-arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
+arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_7'                                                                                                          
-rst_name = 'autolevels_imagenet_free_job7_fold0_ep14'
-epochs = 16
+rst_path = '/kaggle/input/rst-autolevels-train2'
+rst_name = 'autolevels_coco2017_free_conditional04_fold0_ep6'
+epochs = 7
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [48, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'SiLU'
 
 
