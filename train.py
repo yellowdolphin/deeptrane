@@ -7,8 +7,6 @@ import importlib
 from multiprocessing import cpu_count
 import types
 import warnings
-import re
-warnings.filterwarnings('ignore', category=UserWarning, message=re.escape('pickleshare'))
 #warnings.filterwarnings('ignore', category=FutureWarning, message=re.escape('weights_only')) # no effect
 warnings.filterwarnings('ignore', category=FutureWarning)
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
