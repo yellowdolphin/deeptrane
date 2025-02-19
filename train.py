@@ -96,7 +96,8 @@ import torch
 print("[ √ ] torch:", torch.__version__)
 
 # Install torchmetrics
-quietly_run('pip install torchmetrics>=0.11.1')
+#quietly_run('pip install torchmetrics>=0.11.1')
+quietly_run('pip install torchmetrics==1.6.1')
 
 # Install timm
 if use_timm:
