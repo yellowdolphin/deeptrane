@@ -17,8 +17,6 @@ from models import is_bn
 from torch import FloatTensor, LongTensor
 from torchvision.io import encode_jpeg, decode_jpeg
 
-#import torch_xla.core.xla_model as xm  # required for multicore version
-
 
 def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, scheduler, device):
 
@@ -643,6 +641,7 @@ def get_valid_labels(cfg, metadata):
 
 
 def test_mp_fn(rank, cfg, metadata, pretrained_model, use_fold):
+    "Multicore training loop master function"
     # What can we pass here?
     # metadata: ok
     # use_fold: ok
@@ -658,10 +657,8 @@ def test_mp_fn(rank, cfg, metadata, pretrained_model, use_fold):
 def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     "Singlecore training loop master function"
 
-    #rank = rank or xm.get_ordinal()
     if cfg.xla:
-        #xm.master_print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
-        print(f'In _mp_fn, rank {rank} world_size: {xm.xrt_world_size()}')
+        xm.master_print(f'In _mp_fn, rank {rank}')
 
     # DDP init
     if cfg.use_ddp:
@@ -673,9 +670,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
     # xm.xla_device, xm.get_ordinal, rank (unused) are somewhat redundant.
     # TODO: can we merge rank==device and get rid of xm.xla_device?
     # TODO: change from xla to DDP API, adapt xla (how use xm?)
-    #device = xm.xla_device()
-    devices = xm.get_xla_supported_devices()
-    device = devices[rank]
+    device = xm.xla_device()
     xm.master_print("device:", device)
 
     # Wrap DDP model

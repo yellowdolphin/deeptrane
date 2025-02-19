@@ -261,7 +261,7 @@ if cfg.xla:
 
     # Don't call, RuntimeError: Runtime is already initialized. Do not use the XLA device before calling xmp.spawn.
     #print("XLA Supported Devices:", xm.get_xla_supported_devices())
-    
+
     # This is necessary to make xmp.spawn(process, start_method='fork') work:
     #print(f"TPU_PROCESS_ADDRESSES: {os.environ.get('TPU_PROCESS_ADDRESSES', None)}")  # local
     if 'TPU_PROCESS_ADDRESSES' in os.environ:
@@ -288,6 +288,7 @@ if cfg.use_aux_loss:
 
 from metadata import get_metadata
 from models import get_pretrained_model, get_pretrained_timm2, get_smp_model
+from xla_train import _mp_fn
 
 # Import project (code, constant settings)
 project = importlib.import_module(f'projects.{cfg.project}') if cfg.project else None
@@ -388,8 +389,6 @@ for use_fold in cfg.use_folds:
                       args=(_mp_fn_cfg, metadata, pretrained_model, use_fold))
         else:
             # This works with 1 TPU core:
-            from xla_train import _mp_fn
-
             print(f"calling _mp_fn...")
             rank = cfg.rank or 0
             _mp_fn(rank, cfg, metadata, pretrained_model, xm, use_fold)
