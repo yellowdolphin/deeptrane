@@ -51,17 +51,17 @@ pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pi
 save_best = None  # 'train_loss'
 
 # Model
-arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
+arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_6'
-rst_name = 'autolevels_imagenet_free_job6_fold0_ep22'
-epochs = 24
+rst_path = '/kaggle/input/rst-autolevels-train'
+rst_name = 'autolevels_imagenet_free_conditional04_fold0_ep20'
+epochs = 21
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [30, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'SiLU'
 
 

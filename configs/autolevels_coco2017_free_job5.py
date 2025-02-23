@@ -37,7 +37,7 @@ use_batch_tfms = False
 n_replicas = 1
 use_dp = False                 # slower on 2 T4 than on 1
 improve_color_loss = 0         # weight of auxiliary loss to improve colors
-improver = True
+improver = False
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
 bs = 16
@@ -50,17 +50,17 @@ pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pi
 save_best = None  # 'train_loss'
 
 # Model
-arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
+arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/modelbox4'
-rst_name = 'free_tinyvit_tpu26last45'
-epochs = 22
+rst_path = '/kaggle/input/rst-autolevels-train2'
+rst_name = 'autolevels_imagenet_free_conditional04_fold0_ep4'
+epochs = 7
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [48, 768, 768, 768]
+lin_ftrs = [42, 768, 768, 768]
 act_head = 'SiLU'
 
 
