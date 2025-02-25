@@ -1,13 +1,14 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'  # job subdir is automatically appended
-filetype = 'jpg'
-meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
+filetype = 'JPEG'
+meta_csv = '/content/meta.csv'  # for colab only
 
 # Training
-num_folds = 5
+num_folds = 20
 use_folds = [0]
-train_on_all = True
+train_on_all = False
+frac = [0.3, 1.0]
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
@@ -37,11 +38,11 @@ use_batch_tfms = False
 n_replicas = 1
 use_dp = False                 # slower on 2 T4 than on 1
 improve_color_loss = 0         # weight of auxiliary loss to improve colors
-improver = False
+improver = True
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
-bs = 16
-n_acc = 16
+bs = 8
+n_acc = 32
 batch_verbose = 1
 lr_head = 1e-5
 one_cycle = False
@@ -54,9 +55,9 @@ arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/modelbox3'
-rst_name = 'free_xcittiny_v58003'
-epochs = 6
+rst_path = '/kaggle/input/rst-autolevels-train3/job_5'
+rst_name = 'autolevels_coco2017_free_job5_fold0_ep7'
+epochs = 8
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
