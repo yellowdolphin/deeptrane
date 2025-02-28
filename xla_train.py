@@ -2,7 +2,6 @@ from pathlib import Path
 from contextlib import nullcontext
 from future import removesuffix
 import time
-import math
 
 import numpy as np
 from metrics import get_tm_metrics, is_listmetric, AverageMeter
@@ -627,14 +626,6 @@ def valid_fn(model, cfg, xm, dataloader, criterion, device, metrics=None):
         if cfg.DEBUG and batch_idx == 1:
             xm.master_print(f"valid inputs: {inputs.shape}, value range {inputs.min():.2f} ... {inputs.max():.2f}")
 
-        # pudae's ArcFace validation
-        if cfg.pudae_valid:
-            assert preds.size()[1] == 512, f'preds have wrong shape {preds.detach().size()}'
-            all_scores.append(preds.detach().to(torch.float16))  # default: float32
-            all_preds.append(torch.zeros_like(labels, dtype=torch.int8))
-            all_labels.append(labels.to(torch.int16))  # default: int64
-            continue  # skip loss
-
         # compute local loss
         assert preds.detach().dim() == 2, f'preds have wrong dim {preds.detach().dim()}'
         assert preds.detach().size()[1] == (cfg.n_classes or cfg.channel_size), f'preds have wrong shape {preds.detach().size()}'
@@ -772,9 +763,10 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
             criterion = nn.BCEWithLogitsLoss() if cfg.multilabel else nn.CrossEntropyLoss()
         else:
             criterion = nn.MSELoss()
+        seg_crit = None
         if cfg.use_aux_loss:
             from segmentation_models_pytorch.losses.dice import DiceLoss
-        seg_crit = DiceLoss('binary') if cfg.use_aux_loss else None
+            seg_crit = DiceLoss('binary')
 
         if cfg.loss_weights:
             cfg.loss_weights = torch.tensor(cfg.loss_weights)
