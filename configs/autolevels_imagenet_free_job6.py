@@ -41,8 +41,8 @@ improve_color_loss = 0         # weight of auxiliary loss to improve colors
 improver = True
 metrics = ['curve_rmse']
 no_macro_metrics = True        # otherwise slow valid + 8-TPU-issue
-bs = 16
-n_acc = 16
+bs = 8
+n_acc = 32
 batch_verbose = 1
 lr_head = 1e-5
 one_cycle = False
@@ -51,13 +51,13 @@ pct_start = 0.25                           # default: 0.3, from Chest14: 0.6, pi
 save_best = None  # 'train_loss'
 
 # Model
-arch_name = 'tiny_vit_21m_384.dist_in22k_ft_in1k'
+arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
 rst_path = '/kaggle/input/modelbox4'
-rst_name = 'free_tinyvit_tpu28job2024'
-epochs = 25
+rst_name = 'free_xcittiny_tpu31wa13'
+epochs = 11
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]

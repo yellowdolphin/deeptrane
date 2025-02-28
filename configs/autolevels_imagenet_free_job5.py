@@ -1,13 +1,14 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'  # job subdir is automatically appended
-filetype = 'jpg'
-meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
+filetype = 'JPEG'
+meta_csv = '/content/meta.csv'  # for colab only
 
 # Training
-num_folds = 5
+num_folds = 20
 use_folds = [0]
-train_on_all = True
+train_on_all = False
+frac = [0.3, 1.0]
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
@@ -54,13 +55,13 @@ arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_7'
-rst_name = 'autolevels_coco2017_free_job7_fold0_ep23'
-epochs = 24
+rst_path = '/kaggle/input/rst-autolevels-train3/job_3'
+rst_name = 'autolevels_coco2017_free_job3_fold0_ep10'
+epochs = 11
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [24, 768, 768, 768]
+lin_ftrs = [42, 768, 768, 768]
 act_head = 'SiLU'
 
 
