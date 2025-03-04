@@ -479,6 +479,8 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     for name, value in zip('forward loss backward opt_step rest'.split(), timers):
         xm.master_print(f"    {name:<10} {value}")
     xm.master_print("")
+    logfile.write(f'train finished after {t5-t0:.1f} sec\n')
+    logfile.flush()
 
     # scheduler step after epoch
     if hasattr(scheduler, 'step') and not hasattr(scheduler, 'batchwise'):
@@ -972,7 +974,7 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
             epoch_summary_strings.append(f'{avg_lr:7.1e}')                                    # lr
             epoch_summary_strings.append(f'{(valid_start - epoch_start) / 60:7.2f}')          # Wall train
             epoch_summary_strings.append(f'{(time.perf_counter() - epoch_start) / 60:7.2f}')  # Wall total
-            xm.master_print('  '.join(epoch_summary_strings))
+            xm.master_print('  '.join(epoch_summary_strings), flush=True)
             logfile.write('  '.join(epoch_summary_strings) + '\n')
             logfile.flush()
 
