@@ -8,7 +8,7 @@ meta_csv = '/content/meta.csv'  # for colab only
 num_folds = 20
 use_folds = [0]
 train_on_all = False
-frac = [0.3, 1.0]
+frac = [0.23, 0.1]
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
@@ -55,13 +55,13 @@ arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train'
-rst_name = 'autolevels_imagenet_free_conditional04_fold0_ep10'
-epochs = 11
+rst_path = '/kaggle/input/modelbox4'
+rst_name = 'free_xcittiny_tpu29job4022'
+epochs = 23
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
-lin_ftrs = [42, 768, 768, 768]
+lin_ftrs = [24, 768, 768, 768]
 act_head = 'SiLU'
 
 
