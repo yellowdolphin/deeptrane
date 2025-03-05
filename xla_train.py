@@ -875,6 +875,8 @@ def _mp_fn(rank, cfg, metadata, wrapped_model, xm, use_fold):
         step_size = cfg.bs * cfg.n_replicas * cfg.n_acc
         xm.master_print(f'Training {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
                         f'step_size={step_size}, lr={cfg.lr_head} on fold {use_fold}')
+        logfile.write(f'Training {cfg.arch_name}, size={cfg.size}, replica_bs={cfg.bs}, '
+                      f'step_size={step_size}, lr={cfg.lr_head} on fold {use_fold}\n')
         #
         #
         ### Training Loop ---------------------------------------------------------
