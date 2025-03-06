@@ -1,13 +1,14 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'  # job subdir is automatically appended
-filetype = 'jpg'
-meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
+filetype = 'JPEG'
+meta_csv = '/content/meta.csv'  # for colab only
 
 # Training
-num_folds = 5
+num_folds = 20
 use_folds = [0]
-train_on_all = True
+train_on_all = False
+frac = [0.3, 0.5]
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
@@ -55,8 +56,8 @@ scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
 rst_path = '/kaggle/input/rst-autolevels-train3/job_4'
-rst_name = 'autolevels_coco2017_free_job4_fold0_ep13'
-epochs = 15
+rst_name = 'autolevels_coco2017_free_job4_fold0_ep15'
+epochs = 16
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]

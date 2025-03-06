@@ -479,7 +479,7 @@ def train_fn(model, cfg, xm, dataloader, criterion, seg_crit, optimizer, schedul
     for name, value in zip('forward loss backward opt_step rest'.split(), timers):
         xm.master_print(f"    {name:<10} {value}")
     xm.master_print("")
-    logfile.write(f'train finished after {t5-t0:.1f} sec\n')
+    logfile.write(f'train finished after {sum(timers):.1f} sec\n')
     logfile.flush()
 
     # scheduler step after epoch
