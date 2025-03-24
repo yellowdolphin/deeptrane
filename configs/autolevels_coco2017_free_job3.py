@@ -1,14 +1,13 @@
 # Setup
 project = 'autolevels'
 out_dir = '/kaggle/working'  # job subdir is automatically appended
-filetype = 'JPEG'
-meta_csv = '/content/meta.csv'  # for colab only
+filetype = 'jpg'
+meta_csv = '/kaggle/input/autolevels-modelbox/coco2017.csv'  # for colab only
 
 # Training
-num_folds = 20
+num_folds = 5
 use_folds = [0]
-train_on_all = False
-frac = [0.3, 0.5]
+train_on_all = True
 size = (384, 384)
 presize = 2.0                  # only used if use_batch_tfms
 antialias = False
@@ -55,9 +54,9 @@ arch_name = 'xcit_tiny_24_p8_384.fb_dist_in1k'
 scale_output_layer = 1.0
 use_gem = False
 bn_eps = 1e-5
-rst_path = '/kaggle/input/rst-autolevels-train3/job_7'
-rst_name = 'autolevels_imagenet_free_job7_fold0_ep9'
-epochs = 10
+rst_path = '/kaggle/input/modelbox4'
+rst_name = 'free_xcittiny_tpu45job4030'
+epochs = 32
 reset_opt = False
 optimizer = "Adam"  # Adam AdamW SGD
 dropout_ps = [0, 0, 0, 0]
